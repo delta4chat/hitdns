@@ -1,0 +1,22 @@
+[package]
+name = "hitdns"
+version = "0.1.0"
+edition = "2021"
+description = "hitdns is a DNS server optimized for cache hit ratio and query latency. "
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.79"
+async-trait = "0.1.77"
+dashmap = "5.5.3"
+directories = "5.0.1"
+hickory-proto = { version = "0.24.0", default-features = false }
+once_cell = "1.19.0"
+reqwest = { version = "0.11.23", default-features = false, features = ["rustls-tls"] }
+serde = { version = "1.0.195", features = ["derive"] }
+smol = "2.0.0"
+smol-timeout = "0.6.0"
+smolscale = "0.4.4"
+sqlx = { version = "0.7.3", features = ["runtime-async-std", "sqlite"] }
+
