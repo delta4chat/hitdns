@@ -1049,7 +1049,6 @@ dependencies = [
  "async-trait",
  "bincode",
  "bytes",
- "dashmap",
  "directories",
  "env_logger",
  "hickory-proto",
@@ -1057,6 +1056,7 @@ dependencies = [
  "log",
  "once_cell",
  "reqwest",
+ "scc",
  "serde",
  "smol",
  "smol-timeout",
@@ -1855,6 +1855,12 @@ name = "ryu"
 version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f98d2aa92eebf49b69786be48e4477826b256916e84a57ff2a4f21923b48eb4c"
+
+[[package]]
+name = "scc"
+version = "2.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2adeac5dfb3b1e9d8d67197e020d6bd46d37313d116c3ec65fd220d5bac67a8"
 
 [[package]]
 name = "scoped-tls"

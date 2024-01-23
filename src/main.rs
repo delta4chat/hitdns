@@ -21,7 +21,6 @@ use smol::stream::{StreamExt};
 
 //use smol::channel::{Sender, Receiver};
 
-use dashmap::DashMap;
 use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqliteSynchronous};
 //type SqliteConnection = sqlx::pool::PoolConnection<sqlx::Sqlite>;
 use sqlx::{Row, Value, ValueRef};
@@ -344,9 +343,9 @@ impl DNSCacheEntry {
 }
 
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct DNSCache {
-    memory: DashMap<DNSQuery, DNSCacheEntry>,
+    memory: scc::HashMap<DNSQuery, DNSCacheEntry>,
     disk: SqlitePool,
     //resolvers: DNSResolvers,
     resolver: DNSOverHTTPS,
@@ -358,7 +357,7 @@ unsafe impl Send for DNSCache {}
 impl DNSCache {
     async fn new(resolver: DNSOverHTTPS) -> anyhow::Result<Self> {
         let disk = HITDNS_SQLITE_POOL.clone();
-        let memory = DashMap::new();
+        let memory = scc::HashMap::new();
 
         let mut ret = sqlx::query("SELECT * FROM hitdns_cache_v1").fetch(&disk);
         while let Ok(Some(line)) = ret.try_next().await {
@@ -369,7 +368,7 @@ impl DNSCache {
             let query: DNSQuery = bincode::deserialize(&query)?;
             let entry: DNSEntry = bincode::deserialize(&entry)?;
             let cache_entry: DNSCacheEntry = entry.into();
-            memory.insert(query, cache_entry);
+            memory.insert_async(query, cache_entry).await.unwrap();
         }
         Ok(Self {
             memory,
@@ -385,10 +384,11 @@ impl DNSCache {
         let query: DNSQuery = req.try_into()?;
 
         let cache_entry =
-            self.memory.entry(query.clone())
+            self.memory.entry_async(query.clone()).await
             .or_insert_with(||{
                 query.clone().into()
-            });
+            })
+            .get().clone();
 
         let entry = cache_entry.update(
             self.resolver.clone(),
