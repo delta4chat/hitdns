@@ -28,28 +28,28 @@ scc = "2.0.11"
 serde = { version = "1.0.195", features = ["derive"] }
 smol = "2.0.0"
 smol-timeout = "0.6.0"
-smolscale = "0.4.4"
+smolscale = { version = "0.4.4", features = ["preempt"] }
 sqlx = { version = "0.7.3", features = ["runtime-async-std", "sqlite"], default-features = false }
 
 [profile.dev]
 panic = "unwind"
 opt-level = 2
 lto = "off"
-strip = "none"
-codegen-units = 1024
+#strip = "none"
+codegen-units = 1
 overflow-checks = true
 debug-assertions = true
-debug = "full"
+debug = "limited"
 incremental = false
 
 [profile.release]
 panic = "unwind"
 opt-level = 2
-lto = true
-strip = "none"
+#lto = true
+#strip = "none"
 codegen-units = 1
 overflow-checks = true
 debug-assertions = false
-debug = "limited"
+#debug = "limited"
 incremental = false
 

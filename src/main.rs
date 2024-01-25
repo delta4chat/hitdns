@@ -2,6 +2,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use std::sync::Arc;
 use std::pin::Pin;
+use std::ops::Deref;
 
 mod dns {
     pub use hickory_proto::op::*;
@@ -110,25 +111,25 @@ impl TryInto<DNSQuery> for dns::Message {
 impl From<dns::Query> for DNSQuery {
     fn from(val: dns::Query) -> DNSQuery {
         DNSQuery {
-            name: val.name().to_string(),
+            name: val.name().to_string().to_ascii_lowercase(),
             rdclass: val.query_class().into(),
             rdtype: val.query_type().into(),
         }
     }
 }
-impl From<DNSQuery> for dns::Query {
-    fn from(val: DNSQuery) -> dns::Query {
+impl From<&DNSQuery> for dns::Query {
+    fn from(val: &DNSQuery) -> dns::Query {
         use dns::IntoName;
         dns::Query::new()
-            .set_name(val.name.into_name().unwrap())
+            .set_name(val.name.to_ascii_lowercase().into_name().unwrap())
             .set_query_class(val.rdclass.into())
             .set_query_type(val.rdtype.into())
             .to_owned()
     }
 }
 
-impl From<DNSQuery> for dns::Message {
-    fn from(val: DNSQuery) -> dns::Message {
+impl From<&DNSQuery> for dns::Message {
+    fn from(val: &DNSQuery) -> dns::Message {
         dns::Message::new()
             .set_id(0)
             .set_message_type(dns::MessageType::Query)
@@ -189,55 +190,40 @@ impl TryInto<Arc<DNSEntry>> for DNSCacheStatus {
 
 #[derive(Debug, Clone)]
 struct DNSCacheEntry {
-    query: DNSQuery,
+    query: Arc<DNSQuery>,
     entry: Arc<RwLock<
                Option<Arc<DNSEntry>>
            >>,
     update_task: Arc<RwLock<
-                Arc< smol::Task<anyhow::Result<()>> >
+                Option<Arc< smol::Task<anyhow::Result<()>> >>
                   >>,
-    update_notify: Arc<RwLock<Receiver<()>>>,
+    update_notify: Arc<RwLock<
+                Option< Receiver<()> >
+                >>,
 }
-impl From<DNSQuery> for DNSCacheEntry {
-    fn from(query: DNSQuery) -> DNSCacheEntry {
-        let (_, update_notify) = smol::channel::bounded(1);
+impl From<Arc<DNSQuery>> for DNSCacheEntry {
+    fn from(query: Arc<DNSQuery>) -> DNSCacheEntry {
         DNSCacheEntry {
             query,
             entry: Arc::new(RwLock::new(None)),
-            update_task: Arc::new(
-                RwLock::new(
-                    Arc::new(
-                        smol::spawn(smol::future::ready(Ok(())))
-                    )
-                )
-            ),
-            update_notify: Arc::new(RwLock::new(update_notify)),
+            update_task: Arc::new(RwLock::new(None)),
+            update_notify: Arc::new(RwLock::new(None)),
         }
     }
 }
-impl From<DNSEntry> for DNSCacheEntry {
-    fn from(entry: DNSEntry) -> DNSCacheEntry {
-        let (_, update_notify) = smol::channel::bounded(1);
-        DNSCacheEntry {
-            query: entry.query.clone(),
-            entry: Arc::new(RwLock::new(Some(Arc::new(entry)))),
-            update_task: Arc::new(
-                RwLock::new(
-                    Arc::new(
-                        smol::spawn(smol::future::ready(Ok(())))
-                    )
-                )
-            ),
-            update_notify: Arc::new(RwLock::new(update_notify)),
-        }
+impl From<Arc<DNSEntry>> for DNSCacheEntry {
+    fn from(entry: Arc<DNSEntry>) -> DNSCacheEntry {
+        let query = entry.query.clone();
+        let mut this: DNSCacheEntry =Arc::new(query).into();
+        this.entry = Arc::new(RwLock::new(Some(entry)));
+        this
     }
 }
 
 impl DNSCacheEntry {
     async fn status(&self) -> DNSCacheStatus {
-        let maybe_entry = self.entry.read().await;
-        if maybe_entry.is_some() {
-            maybe_entry.clone().unwrap().into()
+        if let Some(entry) = self.entry.read().await.deref().clone() {
+            entry.into()
         } else {
             DNSCacheStatus::Miss
         }
@@ -246,15 +232,29 @@ impl DNSCacheEntry {
     // wait until finish.
     async fn wait(&self) {
         while self.is_updating().await {
-            log::trace!("still in updating...");
-            //smol::Timer::after(Duration::from_millis(50)).await;
-            let _ = self.update_notify.read().await.recv().await;
+            log::debug!("{:?} still in updating...", self.query);
+            smol::Timer::after(Duration::from_millis(50)).await;
+            if let Some(maybe_rx) = self.update_notify.read().timeout(Duration::from_millis(20)).await {
+                if let Some(rx) = maybe_rx.as_ref() {
+                    let _ = rx.recv().await;
+                } else {
+                    break;
+                }
+            } else {
+                log::warn!("timed out get read lock for update_notify!");
+            }
         }
 
     }
     async fn is_updating(&self) -> bool {
-        if let Some(t) = self.update_task.read().timeout(Duration::from_millis(20)).await {
-            t.is_finished() == false
+        // smol-timeout Option
+        if let Some(maybe_task) = self.update_task.read().timeout(Duration::from_millis(20)).await {
+            // Option<smol::Task>
+            if let Some(task) = maybe_task.deref().clone() {
+                task.is_finished() == false
+            } else {
+                false
+            }
         } else {
             log::warn!("get read lock timeout!!!");
             true
@@ -274,10 +274,10 @@ impl DNSCacheEntry {
         }
 
         if self.is_updating().await {
-            log::debug!("another update processing.");
+            log::debug!("{:?} another update processing.", self.query);
 
             if let DNSCacheStatus::Miss = status {
-                log::debug!("no last success result. force waiting until first result producted.");
+                log::debug!("{:?} no last success result. force waiting until first result producted.", self.query);
 
                 self.wait().await;
                 return self.status().await.try_into();
@@ -294,12 +294,12 @@ impl DNSCacheEntry {
         let entry_lock = self.entry.clone();
         let query = self.query.clone();
         let (update_tx, update_rx) =smol::channel::bounded(1);
-        *self.update_notify.write().await = update_rx;
-        *self.update_task.write().await = Arc::new(
+        *self.update_notify.write().await = Some(update_rx);
+        *self.update_task.write().await = Some(Arc::new(
             smolscale::spawn(async move {
                 let upstream = resolver.dns_upstream();
                 let start = Instant::now();
-                let mut response = match resolver.dns_resolve(query.clone()).timeout(timeout).await {
+                let mut response = match resolver.dns_resolve(&query).timeout(timeout).await {
                         Some(v) => v?,
                         None => {
                             anyhow::bail!("resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}", query);
@@ -322,7 +322,7 @@ impl DNSCacheEntry {
                 *response.extensions_mut() = None;
 
                 let entry = Arc::new(DNSEntry {
-                    query: query.clone(),
+                    query: query.deref().clone(),
                     response: response.to_vec()?,
                     elapsed,
                     upstream,
@@ -339,13 +339,13 @@ impl DNSCacheEntry {
 
                 Ok(())
             })
-        );
+        ));
 
         if let DNSCacheStatus::Miss = status {
             // this is first query (or previous queries never success).
             // so must wait until finished.
 
-            log::debug!("there no any previous success result, must wait...");
+            log::debug!("DNSCacheEntry: {:?} there no any previous success result, must wait...", self.query);
             self.wait().await;
 
             // return newset hit result.
@@ -381,7 +381,7 @@ impl DNSCache {
 
             let query: DNSQuery = bincode::deserialize(&query)?;
             let entry: DNSEntry = bincode::deserialize(&entry)?;
-            let cache_entry: DNSCacheEntry = entry.into();
+            let cache_entry: DNSCacheEntry = Arc::new(entry).into();
             memory.insert_async(query, cache_entry).await.unwrap();
         }
         Ok(Self {
@@ -393,14 +393,16 @@ impl DNSCache {
 
     // cached query
     async fn query(&self, req: dns::Message) -> anyhow::Result<dns::Message> {
-        log::debug!("received new query: {:?}", &req);
+        let started = Instant::now();
+
         let req_id: u16 = req.id();
         let query: DNSQuery = req.try_into()?;
+        log::debug!("DNSCache: received new query: id={req_id} query={:?}", &query);
 
         let cache_entry =
             self.memory.entry_async(query.clone()).await
             .or_insert_with(||{
-                query.clone().into()
+                Arc::new(query).into()
             })
             .get().clone();
 
@@ -433,6 +435,7 @@ impl DNSCache {
             record.set_ttl(ttl);
         }
 
+        log::debug!("DNSCache: got response! id={req_id} query={:?} elapsed={:?} response={res:?}", cache_entry.query, started.elapsed());
         Ok(res)
     }
 }
@@ -512,7 +515,7 @@ unsafe impl Send for DNSOverHTTPS {}
 //impl DNSResolver for DNSOverHTTPS {
 impl DNSOverHTTPS {
     // un-cached DNS Query
-    async fn dns_resolve(&self, query: DNSQuery) -> anyhow::Result<dns::Message> {
+    async fn dns_resolve(&self, query: &DNSQuery) -> anyhow::Result<dns::Message> {
         log::info!("DoH un-cached Query: {query:?}");
 
         let req: dns::Message = query.into();
@@ -637,11 +640,10 @@ impl DNSDaemon {
         let tcp_task = smolscale::spawn(async move {
             loop {
                 let (mut conn, peer) = tcp.accept().await?;
-                log::debug!("accepted new incoming TCP DNS request from {peer:?}");
                 let cache = cache.clone();
                 smolscale::spawn(async move {
                     let mut buf = vec![0u8; 65535];
-                    let mut buf2;
+                    let mut buf2: Vec<u8> = Vec::new();
                     let mut len = [0u8; 2];
                     let mut len2: usize;
 
@@ -654,13 +656,19 @@ impl DNSDaemon {
 
                         req = dns::Message::from_vec(&buf[..len2])?;
                         res = cache.query(req).await?;
-                        buf2 = res.to_vec()?;
-                        len2 = buf2.len();
-                        assert!(len2 <= 65535);
-                        len = (len2 as u16).to_be_bytes();
 
-                        conn.write(&len).await?;
-                        conn.write_all(&buf2).await?;
+                        {
+                            let buf = res.to_vec()?;
+                            len2 = buf.len();
+                            if len2 > 65535 {
+                                anyhow::bail!("response too long, it must less than 65536.");
+                            }
+                            len = (len2 as u16).to_be_bytes();
+                            buf2.clear();
+                            buf2.extend(&len);
+                            buf2.extend(&buf);
+                        }
+                        conn.write(&buf2).await?;
                     }
 
                     #[allow(unreachable_code)]
@@ -682,9 +690,6 @@ impl DNSDaemon {
     }
 
     async fn run(self) {
-        self.udp_task.detach();
-        self.tcp_task.detach();
-
         loop {
             log::trace!("cache status: {:?}", self.cache.memory.len());
             log::trace!("smolscale worker threads: {:?}", smolscale::running_threads());
@@ -712,5 +717,6 @@ async fn main_async() -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
+    smolscale::permanently_single_threaded();
     smolscale::block_on(main_async())
 }
