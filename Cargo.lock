@@ -1082,7 +1082,7 @@ dependencies = [
 
 [[package]]
 name = "hitdns"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-lock 3.3.0",
@@ -1900,9 +1900,9 @@ checksum = "f98d2aa92eebf49b69786be48e4477826b256916e84a57ff2a4f21923b48eb4c"
 
 [[package]]
 name = "scc"
-version = "2.0.11"
+version = "2.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2adeac5dfb3b1e9d8d67197e020d6bd46d37313d116c3ec65fd220d5bac67a8"
+checksum = "7df5a8cdb49b9d91e8008e9c52312d5750b855c3f4cc099328d70f817ffa6685"
 
 [[package]]
 name = "scoped-tls"
