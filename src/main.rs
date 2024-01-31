@@ -13,12 +13,16 @@ mod dns {
 use serde::{Serialize, Deserialize};
 use bytes::Bytes;
 
-use std::net::{SocketAddr/*, IpAddr*/};
+use std::net::{SocketAddr, IpAddr};
 use smol::net::AsyncToSocketAddrs;
+
 use smol::net::UdpSocket;
 use smol::net::{TcpListener, TcpStream};
+
 use smol::io::{AsyncReadExt, AsyncWriteExt};
 use smol::stream::{StreamExt};
+
+use smol::future::Future;
 
 use smol::channel::{Sender, Receiver};
 
@@ -30,7 +34,7 @@ use smol_timeout::TimeoutExt;
 use async_trait::async_trait;
 
 use once_cell::sync::Lazy;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // command line argument parser
 use clap::Parser;
@@ -81,28 +85,29 @@ struct DNSQuery {
     rdclass: u16,
     rdtype: u16,
 }
-impl TryInto<DNSQuery> for dns::Message {
+
+impl TryFrom<dns::Message> for DNSQuery {
     type Error = anyhow::Error;
-    fn try_into(self: dns::Message) -> anyhow::Result<DNSQuery> {
-        if self.message_type() != dns::MessageType::Query {
-            anyhow::bail!("unexpected received non-query DNS message: {self:?}");
+    fn try_from(msg: dns::Message) -> anyhow::Result<Self> {
+        if msg.message_type() != dns::MessageType::Query {
+            anyhow::bail!("unexpected receive a non-query DNS message: {msg:?}");
         }
-        let queries = self.queries();
+
+        let queries = msg.queries();
         let queries_len = queries.len();
+
         if queries_len == 0 {
-            anyhow::bail!("unexpected DNS query message without any query section: {self:?}");
+            anyhow::bail!("unexpected DNS query message without any query section: {msg:?}");
         }
+
+        // the best way to prevent the attacks of "try to fill large junk in DNS Server disk", that is, just keep first one query, and complete ignore "answers section" and "authority section" such as these field can store data that useless for query.
         if queries_len > 1 {
-            anyhow::bail!("unexpected DNS query message with multi queries: {self:?}");
+            log::debug!("unexpected DNS query message with multi queries, just keep the first query.");
+        }
+        if msg.name_servers().len() > 0 || msg.answers().len() > 0 {
+            log::debug!("unexpected DNS query message with authority/answer section, ignore these sections.");
         }
 
-        /*
-        if self.name_servers().len() > 0 || self.answers().len() > 0 {
-            anyhow::bail!("unexpected DNS query message with authority/answer section: {self:?}");
-        }
-        */
-
-        assert!(queries_len == 1);
         let query: dns::Query = queries[0].clone();
         Ok(query.into())
     }
@@ -110,6 +115,14 @@ impl TryInto<DNSQuery> for dns::Message {
 
 impl From<dns::Query> for DNSQuery {
     fn from(val: dns::Query) -> DNSQuery {
+        let mut name =
+            val.name().to_string().to_ascii_lowercase();
+
+        // de-duplicate by convert all domain to "ends with dot"
+        if ! name.ends_with(".") {
+            name.push('.');
+        }
+
         DNSQuery {
             name: val.name().to_string().to_ascii_lowercase(),
             rdclass: val.query_class().into(),
@@ -117,14 +130,22 @@ impl From<dns::Query> for DNSQuery {
         }
     }
 }
-impl From<&DNSQuery> for dns::Query {
-    fn from(val: &DNSQuery) -> dns::Query {
+impl TryFrom<&DNSQuery> for dns::Query {
+    type Error = anyhow::Error;
+    fn try_from(val: &DNSQuery) -> anyhow::Result<dns::Query> {
         use dns::IntoName;
-        dns::Query::new()
-            .set_name(val.name.to_ascii_lowercase().into_name().unwrap())
+
+        let mut name = val.name.to_string().to_ascii_lowercase();
+        if ! name.ends_with(".") {
+            name.push('.');
+        }
+
+        Ok(dns::Query::new()
+            .set_name(val.name.to_ascii_lowercase().into_name()?)
             .set_query_class(val.rdclass.into())
             .set_query_type(val.rdtype.into())
             .to_owned()
+        )
     }
 }
 
@@ -138,7 +159,7 @@ impl From<&DNSQuery> for dns::Message {
             .set_recursion_available(false)
             .set_authentic_data(false)
             .set_checking_disabled(false)
-            .add_query(val.into())
+            .add_query(val.try_into().unwrap())
             .to_owned()
     }
 }
@@ -152,10 +173,10 @@ struct DNSEntry {
     elapsed: Duration,
 }
 
-impl TryInto<dns::Message> for &DNSEntry {
+impl TryFrom<&DNSEntry> for dns::Message {
     type Error = anyhow::Error;
-    fn try_into(self) -> anyhow::Result<dns::Message> {
-        Ok(dns::Message::from_vec(&self.response)?)
+    fn try_from(entry: &DNSEntry) -> anyhow::Result<dns::Message> {
+        Ok(dns::Message::from_vec(&entry.response)?)
     }
 }
 
@@ -362,7 +383,7 @@ impl DNSCacheEntry {
 struct DNSCache {
     memory: scc::HashMap<DNSQuery, DNSCacheEntry>,
     //disk: SqlitePool,
-    //resolvers: DNSResolvers,
+    //resolvers: Arc<DNSResolvers>,
     resolver: DNSOverHTTPS,
 }
 /// SAFETY: Async access
@@ -440,15 +461,94 @@ impl DNSCache {
     }
 }
 
+struct Hosts {
+    map: std::collections::HashMap<String, Vec<IpAddr>>,
+}
+impl TryFrom<&PathBuf> for Hosts {
+    type Error = anyhow::Error;
+    fn try_from(filename: &PathBuf) -> anyhow::Result<Hosts> {
+        const HOSTS_EXAMPLE: &'static str = "   two examples of hosts.txt that is: 142.250.189.206 ipv4.google.com | 2607:f8b0:4005:814::200e ipv6.google.com   ";
+        use std::collections::HashMap;
+        let mut map: HashMap<String, Vec<IpAddr>> = HashMap::new();
+        let mut file: String = std::fs::read_to_string(filename)?;
+
+        // compatible Unix/Linux LF, Windows CR LF, and Mac CR
+        // LF    = \n
+        // CR LF = \r\n
+        // CR    = \r
+        while file.contains("\r") {
+            file = file.replace("\r", "\n");
+        }
+        while file.contains("\n\n") {
+            file = file.replace("\n\n", "\n");
+        }
+
+        // debug checks
+        assert_eq!(file.contains("\r\n"), false);
+        assert_eq!(file.contains("\r"), false);
+        assert_eq!(file.contains("\n\n"), false);
+
+        let mut lines = 0;
+        for line in file.split("\n") {
+            lines += 1;
+
+            let mut line = line.to_string();
+            // convert all Tab character to space
+            while line.contains("\t") {
+                line = line.replace("\t", " ");
+            }
+
+            // ignore comments.
+            if ! line.contains(" ") { continue; }
+            if line.replace(" ", "").starts_with("#") { continue; }
+
+            while line.contains("  ") {
+                line = line.replace("  ", " ");
+            }
+            let words = Vec::from_iter(line.split(" "));
+            let words_len = words.len();
+            if words_len <= 1 {
+                log::warn!("Hosts: {filename:?}: ignore invalid line: no space character found at line {lines}. {HOSTS_EXAMPLE}");
+                continue;
+            }
+            let ip: IpAddr = match words[0].parse() {
+                Ok(ip) => ip,
+                Err(error) => {
+                    log::warn!("Hosts: {filename:?}: ignore corrupted line: cannot parse the first word of line {lines} as a IPv4 or IPv6 address. {HOSTS_EXAMPLE}");
+                    continue;
+                }
+            };
+            let mut domain = words[1].to_string();
+            if ! domain.ends_with(".") {
+                domain.push('.');
+            }
+
+            // any words following the first and last word, expect these is comments.
+            if words.len() > 2 {
+                log::debug!("Hosts: {filename:?}: ignore tailing words of line {lines}.");
+            }
+
+            let mut ip_list = map.entry(domain).or_insert_with(|| { Vec::new() });
+            ip_list.push(ip);
+        }
+
+        log::info!("Hosts: total {lines} lines loaded, {} domain names loaded. mapping: {map:#?}", map.len());
+
+        Ok(Self {
+            map
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 struct DNSOverHTTPS {
     client: reqwest::Client,
     url: reqwest::Url,
 }
 
-impl DNSOverHTTPS {
+impl<'a> DNSOverHTTPS {
     const CONTENT_TYPE: &'static str = "application/dns-message";
-    fn new(url: impl ToString) -> anyhow::Result<Self> {
+    fn new(url: impl ToString, hosts: Option<Hosts>) -> anyhow::Result<Self> {
         let url: String = url.to_string();
         let url = reqwest::Url::parse(&url)?;
 
@@ -459,19 +559,23 @@ impl DNSOverHTTPS {
         struct NoDNS;
         impl reqwest::dns::Resolve for NoDNS {
             fn resolve(&self, _: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
-                panic!("un");
+                panic!("unexpected DNS resolve request from reqwest::Client in DoH client. this avoids infinity-recursive DNS resolving if hitdns itself as a system resolver. because TLS certificate Common Name or Alt Subject Name can be IP addresses, so you can use IP address instead of a domain name (need DoH server supports). or instead you can give a hosts.txt file by --hosts or --use-system-hosts");
+                
                 /*
-                Pin::new(Box::new(async move {
-                    Err(anyhow::Error::msg("unexpected DNS resolve request from reqwest::Client in DoH client."))
-                }))*/
+                Pin::new(async move {
+                    Box::new(Err(anyhow::Error::msg("unexpected DNS resolve request from reqwest::Client in DoH client.")))
+                })
+                Box::new(async {
+                    Err(Box::new(anyhow::Error::msg()))
+                })
+                Pin::new(Box::new(Err(dummy())))
+                */
             }
         }
 
-        let client =
+        // client builder
+        let mut cb =
             reqwest::Client::builder()
-
-            // disable all DNS resove
-            .dns_resolver(Arc::new(NoDNS{}))
 
             // log::trace
             .connection_verbose(true)
@@ -497,8 +601,31 @@ impl DNSOverHTTPS {
             .pool_idle_timeout(None)
             .pool_max_idle_per_host(5)
 
+            // disable all DNS resove
+            .dns_resolver(Arc::new(NoDNS{}));
+
+        if let Some(hosts) = hosts {
+            use std::io::Read;
+            for (domain, ips) in hosts.map.iter() {
+                let ips: Vec<SocketAddr> = {
+                    let mut x = Vec::new();
+                    for ip in ips.iter() {
+                        x.push(SocketAddr::new(*ip, 0));
+                    }
+                    x
+                };
+                // this is a stupid design by reqwest developers
+                // they said "Since the DNS protocol has no notion of ports, ... any port in the overridden addr will be ignored and traffic sent to the conventional port for the given scheme (e.g. 80 for http)."
+                // so why this API does not accept Vec<IpAddr> as argument type instead of Vec<SocketAddr> ?!
+                // alao the same problem exists at reqwest::ClientBuilder::resolve method
+                // 
+                // https://docs.rs/reqwest/0.11.23/reqwest/struct.ClientBuilder.html#method.resolve_to_addrs
+                // https://docs.rs/reqwest/0.11.23/reqwest/struct.ClientBuilder.html#method.resolve
+                cb = cb.resolve_to_addrs(domain, &ips);
+            }
+        }
             // build client
-            .build()?;
+        let client = cb.build()?;
 
         Ok(Self {
             client,
@@ -506,14 +633,8 @@ impl DNSOverHTTPS {
         })
     }
 }
-/*
-/// SAFETY: Async
-unsafe impl Sync for DNSOverHTTPS {}
-unsafe impl Send for DNSOverHTTPS {}
-*/
 
-//impl DNSResolver for DNSOverHTTPS {
-impl DNSOverHTTPS {
+impl DNSResolver for DNSOverHTTPS {
     // un-cached DNS Query
     async fn dns_resolve(&self, query: &DNSQuery) -> anyhow::Result<dns::Message> {
         log::info!("DoH un-cached Query: {query:?}");
@@ -575,10 +696,10 @@ enum DNSUpstream {
     DoQ(DNSOverQUIC),
 }
 
-#[async_trait]
-trait DNSResolver: Send + Sync + 'static {
+//#[async_trait]
+trait DNSResolver {
     /// un-cached DNS query
-    async fn dns_resolve(&self, query: DNSQuery) -> anyhow::Result<dns::Message>;
+    fn dns_resolve(&self, query: &DNSQuery) -> impl Future<Output=anyhow::Result<dns::Message>>;
 
     /// a description for upstream, usually URL or any other.
     fn dns_upstream(&self) -> String;
@@ -588,15 +709,35 @@ trait DNSResolver: Send + Sync + 'static {
 }
 
 /*
-#[derive(Clone)]
-struct DNSResolvers(Vec<Arc<Box<dyn DNSResolver>>>);
+impl DNSResolver for T
+where T: 
+{
+}
+
+impl core::fmt::Debug for dyn DNSResolver {
+    fn fmt(&self, f: 
+}
+
+struct DNSResolvers {
+    resolver_list: Vec<Arc<dyn DNSResolver>>,
+}
+
+impl core::ops::Index<usize> for DNSResolvers {
+    type Output = Box<&dyn DNSResolver>;
+    fn index(&self, pos: usize) -> Self::Output {
+        Box::new(
+            self.resolver_list[pos].as_ref()
+        )
+    }
+}
 
 impl DNSResolvers {
-    async fn select_best(&'a self) -> anyhow::Result<Arc<Box<dyn DNSResolver>>> {
-        let resolver = self.0 [0].clone();
+    async fn select_best(&self) -> anyhow::Result<Box<&dyn DNSResolver>> {
+        let resolver = self[0].clone();
         Ok(resolver)
     }
-}*/
+}
+*/
 
 struct DNSDaemon {
     udp: UdpSocket, udp_task: smol::Task<anyhow::Result<()>>,
@@ -605,12 +746,19 @@ struct DNSDaemon {
 }
 
 impl DNSDaemon {
-    async fn new(listen: impl AsyncToSocketAddrs, doh_url: impl ToString) -> anyhow::Result<Self> {
-        let udp_ = UdpSocket::bind(&listen).await?;
-        let tcp_ = TcpListener::bind(&listen).await?;
+    async fn new(opt: HitdnsOpt) -> anyhow::Result<Self> {
+        let udp_ = UdpSocket::bind(&opt.listen).await?;
+        let tcp_ = TcpListener::bind(&opt.listen).await?;
 
         let cache_ = Arc::new(DNSCache::new(
-            DNSOverHTTPS::new(doh_url.to_string())?
+            DNSOverHTTPS::new(
+                opt.doh_upstream,
+                if let Some(ref hosts_filename) = opt.hosts {
+                    Some(hosts_filename.try_into()?)
+                } else {
+                    None
+                }
+            )?
         ).await?);
 
         let cache = cache_.clone();
@@ -702,6 +850,15 @@ impl DNSDaemon {
 
 #[derive(Debug, Clone, clap::Parser)]
 struct HitdnsOpt {
+    /// location of a hosts.txt file.
+    /// examples of this file format, that can be found at /etc/hosts (Unix-like systems), or
+    /// C:\Windows\system32\driver\etc\hosts (Windows)
+    #[arg(long)]
+    hosts: Option<PathBuf>,
+
+    #[arg(long)]
+    use_system_hosts: bool,
+
     #[arg(long, default_value="127.0.0.1:10053")]
     listen: SocketAddr,
 
@@ -712,7 +869,7 @@ struct HitdnsOpt {
 async fn main_async() -> anyhow::Result<()> {
     env_logger::init();
     let opt = HitdnsOpt::parse();
-    DNSDaemon::new(opt.listen, opt.doh_upstream).await?.run().await;
+    DNSDaemon::new(opt).await?.run().await;
     Ok(())
 }
 
