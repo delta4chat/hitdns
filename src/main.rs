@@ -658,6 +658,7 @@ struct DNSOverHTTPS {
 
 impl<'a> DNSOverHTTPS {
     const CONTENT_TYPE: &'static str = "application/dns-message";
+
     fn new(url: impl ToString, maybe_hosts: Option<Hosts>) -> anyhow::Result<Self> {
         let url: String = url.to_string();
         let url = reqwest::Url::parse(&url).log_warn()?;
@@ -986,7 +987,7 @@ async fn main_async() -> anyhow::Result<()> {
             log::warn!("cannot find your system-side hosts.txt, please provaide a path by --hosts");
         } else {
             let filename = PathBuf::from(filename);
-            opt.hosts = filename.try_into().log_warn().ok();
+            opt.hosts = Some(filename);
         }
     }
     DNSDaemon::new(opt).await.log_error()?.run().await;
