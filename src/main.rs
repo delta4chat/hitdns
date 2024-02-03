@@ -983,6 +983,7 @@ async fn main_async() -> anyhow::Result<()> {
             } else {
                 ""
             };
+
         if filename.is_empty() {
             log::warn!("cannot find your system-side hosts.txt, please provaide a path by --hosts");
         } else {
@@ -1004,3 +1005,4 @@ fn main() -> anyhow::Result<()> {
     //smolscale::set_max_threads(2);
     smolscale::block_on(main_async())
 }
+
