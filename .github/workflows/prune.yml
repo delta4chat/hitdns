@@ -1,0 +1,33 @@
+name: auto delete any binaries older
+on:
+  workflow_dispatch:
+
+  schedule:
+  - cron: "0 0 * * *"
+
+jobs:
+  auto-pruning:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Switch bin branch
+        run: |
+          git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git switch --orphan bin && git pull origin bin
+          tar vvcf /tmp/git-branch-bin-newest-commit.tar bin/ .gitignore *.py
+          git switch --orphan bin1
+          tar vvxf /tmp/git-branch-bin-newest-commit.tar
+          git add -A
+          git commit -m 'prune any older history, just keep latest contents'
+
+      - name: Run bin-prune.py
+        run: python3 bin-prune.py
+
+      - name: Push changes
+        run: |
+          git add -A
+          git commit -m 'auto delete old binary'
+          git branch -D bin
+          git branch -M bin1 bin
+          git push origin bin -f

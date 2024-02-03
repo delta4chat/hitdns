@@ -1,0 +1,336 @@
+name: Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cross:
+    needs: amd64-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create binary directory for this job
+        run: |
+          git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git switch --orphan bin && git pull origin bin
+          git switch bin
+          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
+          git switch master
+          git reset --hard ${{github.sha}}
+
+      # do not continue-on-error if cross install failed
+      - name: Install Cross
+        run: cargo install cross
+
+      - name: Cross Build aarch64 android
+        continue-on-error: true
+        run: for i in {1..5};do echo try build $i; bash upx.sh cross build --release --target aarch64-linux-android --verbose && break;done;
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.aarch64-android
+          path: target/aarch64-linux-android/release/hitdns
+      - name: Upload binary of aarch64 android
+        continue-on-error: true
+        run: |
+          git switch bin
+          git pull origin bin
+          if cp -v target/aarch64-linux-android/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.aarch64-android
+          then
+            git add -A
+            git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 android"
+            git push origin bin
+          fi
+          git switch master
+          git reset --hard ${{github.sha}}
+
+      - name: Cross Build x86 android (64-bit)
+        continue-on-error: true
+        run: for i in {1..5};do echo try build $i; bash upx.sh cross build --release --target x86_64-linux-android --verbose && break;done;
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.amd64-android
+          path: target/x86_64-linux-android/release/hitdns
+      - name: Upload binary of amd64 android
+        continue-on-error: true
+        run: |
+          git switch bin
+          git pull origin bin
+          if cp -v target/x86_64-linux-android/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-android
+          then
+            git add -A
+            git commit -m "[${{github.sha}}] upload binary of hitdns amd64 android"
+            git push origin bin
+          fi
+          git switch master
+          git reset --hard ${{github.sha}}
+
+      - name: Cross Build aarch64 linux
+        continue-on-error: true
+        run: for i in {1..5};do echo try build $i; bash upx.sh cross build --release --target aarch64-unknown-linux-gnu --verbose && break;done;
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.aarch64-linux
+          path: target/aarch64-unknown-linux-gnu/release/hitdns
+      - name: Upload binary of aarch64 linux
+        continue-on-error: true
+        run: |
+          git switch bin
+          git pull origin bin
+          if cp -v target/aarch64-unknown-linux-gnu/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.aarch64-linux
+          then
+            git add -A
+            git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 linux"
+            git push origin bin
+          fi
+          git switch master
+          git reset --hard ${{github.sha}}
+
+      - name: Cross Build aarch64 linux (musl)
+        continue-on-error: true
+        run: for i in {1..5};do echo try build $i; bash upx.sh cross build --release --target aarch64-unknown-linux-musl --verbose && break;done;
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.aarch64-linux-musl
+          path: target/aarch64-unknown-linux-musl/release/hitdns
+      - name: Upload binary of aarch64 linux (musl)
+        continue-on-error: true
+        run: |
+          git switch bin
+          git pull origin bin
+          if cp -v target/aarch64-unknown-linux-musl/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.aarch64-linux-musl
+          then
+            git add -A
+            git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 linux (musl)"
+            git push origin bin
+          fi
+          git switch master
+          git reset --hard ${{github.sha}}
+
+      - name: Cross Build amd64 FreeBSD
+        continue-on-error: true
+        run: for i in {1..5};do echo try build $i; bash upx.sh cross build --release --target x86_64-unknown-freebsd --verbose && break;done;
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.amd64-freebsd
+          path: target/x86_64-unknown-freebsd/release/hitdns
+      - name: Upload binary of amd64 freebsd
+        continue-on-error: true
+        run: |
+          git switch bin
+          git pull origin bin
+          if cp -v target/x86_64-unknown-freebsd/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-freebsd
+          then
+            git add -A
+            git commit -m "[${{github.sha}}] upload binary of hitdns amd64 freebsd"
+            git push origin bin
+          fi
+          git switch master
+          git reset --hard ${{github.sha}}
+
+      - name: Cross Build amd64 NetBSD
+        continue-on-error: true
+        run: for i in {1..5};do echo try build $i; bash upx.sh cross build --release --target x86_64-unknown-netbsd --verbose && break;done;
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.amd64-netbsd
+          path: target/x86_64-unknown-netbsd/release/hitdns
+      - name: Upload binary of amd64 netbsd
+        continue-on-error: true
+        run: |
+          git switch bin
+          git pull origin bin
+          if cp -v target/x86_64-unknown-netbsd/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-netbsd
+          then
+            git add -A
+            git commit -m "[${{github.sha}}] upload binary of hitdns amd64 netbsd"
+            git push origin bin
+          fi
+          git switch master
+          git reset --hard ${{github.sha}}
+
+      - name: Cross Build WebAssembly
+        continue-on-error: true
+        run: for i in {1..5};do echo try build $i; bash upx.sh cross build --release --target wasm32-unknown-emscripten --verbose && break;done;  ls -hl target/wasm32-unknown-emscripten/release/
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.wasm32-unknown-emscripten
+          path: target/wasm32-unknown-emscripten/release/hitdns
+      - name: Upload binary of wasm32-unknown-emscripten
+        continue-on-error: true
+        run: |
+          git switch bin
+          git pull origin bin
+          if cp -v target/wasm32-unknown-emscripten/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.wasm32-unknown-emscripten
+          then
+            git add -A
+            git commit -m "[${{github.sha}}] upload binary of hitdns wasm32-unknown-emscripten"
+            git push origin bin
+          fi
+          git switch master
+          git reset --hard ${{github.sha}}
+
+  amd64-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create binary directory for this job
+        run: |
+          git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git switch --orphan bin && git pull origin bin
+          git switch bin
+          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/
+          git switch master
+          git reset --hard ${{github.sha}}
+          if git log -1 | grep -F "auto-submit}"
+          then
+            echo "Skip any auto commit by bots"
+            exit 100
+          fi
+          if git log -1 | grep -F "#NOCI"
+          then
+            echo "This commit Disable CI"
+            exit 1
+          fi
+
+      - name: Build Linux
+        run: for i in {1..5};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
+
+#      - name: Run tests
+#        run: cargo test --release --verbose -- --nocapture
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.amd64-linux
+          path: target/release/hitdns
+
+      - name: Upload binary of amd64 linux
+        run: |
+          git switch bin
+          git pull origin bin
+          cp -v target/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-linux
+          git add -A
+          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux"
+          git push origin bin
+          git switch master
+          git reset --hard ${{github.sha}}
+
+  amd64-linux-musl:
+    needs: amd64-linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create binary directory for this job
+        run: |
+          git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git switch --orphan bin && git pull origin bin
+          git switch bin
+          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
+          git switch master
+          git reset --hard ${{github.sha}}
+
+      - name: Update apt and install Musl
+        run: sudo apt update && sudo apt -y install musl musl-tools
+
+      - name: Rust add Musl target triple
+        run: rustup target add x86_64-unknown-linux-musl
+
+      - name: Build Linux (Musl)
+        run: for i in {1..5};do echo try build $i; bash upx.sh cargo build --release --target x86_64-unknown-linux-musl --verbose && break;done;
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.amd64-linux-musl
+          path: target/x86_64-unknown-linux-musl/release/hitdns
+
+      - name: Upload binary of amd64 linux (musl)
+        run: |
+          git switch bin
+          git pull origin bin
+          cp -v target/x86_64-unknown-linux-musl/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-linux-musl
+          git add -A
+          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)"
+          git push origin bin
+          git switch master
+          git reset --hard ${{github.sha}}
+
+  amd64-windows:
+    needs: amd64-linux
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create binary directory for this job
+        run: |
+          git config --global user.name github-actions
+          git config --global user.email github-actions@github.com
+          git switch --orphan bin && git pull origin bin
+          git switch bin
+          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
+          git switch master
+          git reset --hard ${{github.sha}}
+        shell: bash
+
+      - name: Build (windows)
+        run: for i in {1..5};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
+        shell: bash
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.amd64-windows.exe
+          path: target/release/hitdns.exe
+
+      - name: Upload binary of amd64 windows
+        run: |
+          git switch bin
+          git pull origin bin
+          cp target/release/hitdns.exe bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-windows.exe
+          git add -A
+          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows"
+          git push origin bin
+          git switch master
+          git reset --hard ${{github.sha}}
+        shell: bash
+
+  amd64-mac:
+    needs: amd64-linux
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Create binary directory for this job
+        run: |
+          git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git switch --orphan bin && git pull origin bin
+          git switch bin
+          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
+          git switch master
+          git reset --hard ${{github.sha}}
+      
+      - name: Build (mac)
+        run: for i in {1..5};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: hitdns.amd64-mac
+          path: target/release/hitdns
+
+      - name: Upload binary of amd64 mac
+        run: |
+          git switch bin
+          git pull origin bin
+          cp -v target/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-mac
+          git add -A
+          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac"
+          git push origin bin
+          git switch master
+          git reset --hard ${{github.sha}}
+
