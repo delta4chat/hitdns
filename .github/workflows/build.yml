@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
+        #with:
+        #  submodules: true
 
       - name: Create binary directory for this job
         run: |
@@ -219,8 +219,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
+        #with:
+        #  submodules: true
 
       - name: Create binary directory for this job
         run: |
@@ -268,8 +268,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
+        #with:
+        #  submodules: true
 
       - name: Create binary directory for this job
         run: |
@@ -310,8 +310,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
+        #with:
+        #  submodules: true
 
       - name: Create binary directory for this job
         run: |
@@ -350,8 +350,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
+        #with:
+        #  submodules: true
 
       - name: Create binary directory for this job
         run: |

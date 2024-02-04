@@ -1,3 +1,0 @@
-[submodule "lib/smolscale"]
-	path = lib/smolscale
-	url = https://github.com/delta4chat/smolscale
