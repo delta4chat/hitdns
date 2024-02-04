@@ -5,8 +5,18 @@ use std::ops::Deref;
 
 mod dns {
     pub use hickory_proto::op::*;
-    pub use hickory_proto::rr::{/*Name, */IntoName};
-    //pub use hickory_proto::rr::record_type::RecordType;
+    pub use hickory_proto::rr::IntoName;
+
+    pub use hickory_proto::rr::LowerName;
+    pub use LowerName as Name;
+
+    pub use hickory_proto::rr::dns_class::DNSClass;
+    pub use DNSClass as Class;
+    pub use DNSClass as RdClass;
+
+    pub use hickory_proto::rr::record_type::RecordType;
+    pub use RecordType as Type;
+    pub use RecordType as RdType;
 }
 
 use serde::{Serialize, Deserialize};
@@ -24,8 +34,12 @@ use smol::future::Future;
 
 use smol::channel::{Sender, Receiver};
 
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqliteSynchronous};
-use sqlx::{Row, Value, ValueRef};
+#[cfg(feature="sqlite")]
+use sqlx::{
+    sqlite::{SqlitePool, SqlitePoolOptions, SqliteConnectOptions, SqliteJournalMode, SqliteLockingMode, SqliteSynchronous},
+    {Row, Value, ValueRef},
+};
+
 use async_lock::RwLock;
 
 use smol_timeout::TimeoutExt;
@@ -41,63 +55,35 @@ use clap::Parser;
 use core::fmt::Debug;
 
 trait LogResult: Debug + Sized {
+    fn log_generic(self, level: log::Level) -> Self;
+
     fn log_error(self) -> Self {
-        log::error!("{:?}", self);
-        self
+        self.log_generic(log::Level::Error)
     }
 
     fn log_warn(self) -> Self {
-        log::warn!("{:?}", self);
-        self
+        self.log_generic(log::Level::Warn)
     }
 
     fn log_info(self) -> Self {
-        log::info!("{:?}", self);
-        self
+        self.log_generic(log::Level::Info)
     }
 
     fn log_debug(self) -> Self {
-        log::debug!("{:?}", self);
-        self
+        self.log_generic(log::Level::Debug)
     }
     fn log_trace(self) -> Self {
-        log::trace!("{:?}", self);
-        self
+        self.log_generic(log::Level::Trace)
     }
 }
 
 impl<T: Debug, E: Debug> LogResult for Result<T, E> {
-    fn log_error(self) -> Self {
+    fn log_generic(self, level: log::Level) -> Self {
         if let Err(_) = self {
-            log::error!("{:?}", self);
+            log::log!(level, "{:?}", self);
         }
         self
     }
-    fn log_warn(self) -> Self {
-        if let Err(_) = self {
-            log::error!("{:?}", self);
-        }
-        self
-    }
-    fn log_info(self) -> Self {
-        if let Err(_) = self {
-            log::info!("{:?}", self);
-        }
-        self
-    }
-    fn log_debug(self) -> Self {
-        if let Err(_) = self {
-            log::error!("{:?}", self);
-        }
-        self
-    }
-    fn log_trace(self) -> Self {
-        if let Err(_) = self {
-            log::trace!("{:?}", self);
-        }
-        self
-    }
-
 }
 
 static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(||{
@@ -107,12 +93,53 @@ static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(||{
 
 });
 
+#[cfg(feature="sled")]
+static HITDNS_SLED_FILENAME: Lazy<PathBuf> = Lazy::new(||{
+    let mut buf = (*HITDNS_DIR).clone();
+    buf.push("hitdns.cache.sled.db");
+    buf
+});
+
+#[cfg(feature="sled")]
+static HITDNS_SLED_DB: Lazy<sled::Db> = Lazy::new(||{
+    let db = sled::Config::new()
+        .path(&*HITDNS_SLED_FILENAME)
+        //.mode(sled::Mode::HighThroughput)
+        .cache_capacity(1048576 * 8)
+        .flush_every_ms(Some(1000))
+        .temporary(false)
+        .print_profile_on_drop(true)
+        .use_compression(false)
+        //.compression_factor(22)
+        .open().unwrap();
+
+    // watchdog that triggered by every write ops
+    {
+        let db = db.clone();
+        let mut evt = db.watch_prefix([]);
+        std::thread::Builder::new()
+            .name("hitdns-sled-sync".to_string())
+            .spawn(move || {
+                loop {
+                    while let Some(_) = evt.next() {
+                        log::info!("flush sled {:?}", Instant::now());
+                        db.flush()
+                            .expect("unable flush sled");
+                    }
+                }
+            }).expect("cannot create sled flush watchdog");
+    }
+    db
+});
+
+#[cfg(feature="sqlite")]
 static HITDNS_SQLITE_FILENAME: Lazy<PathBuf> = Lazy::new(||{
     let mut buf = (*HITDNS_DIR).clone();
     buf.push("cache.sqlx.sqlite.db");
     buf
 });
 
+#[cfg(feature="sqlite")]
 static HITDNS_SQLITE_POOL: Lazy<SqlitePool> = Lazy::new(||{
     let file = &*HITDNS_SQLITE_FILENAME;
     println!("{file:?}");
@@ -185,7 +212,7 @@ impl From<dns::Query> for DNSQuery {
         }
 
         DNSQuery {
-            name: val.name().to_string().to_ascii_lowercase(),
+            name,
             rdclass: val.query_class().into(),
             rdtype: val.query_type().into(),
         }
@@ -193,7 +220,9 @@ impl From<dns::Query> for DNSQuery {
 }
 impl TryFrom<&DNSQuery> for dns::Query {
     type Error = anyhow::Error;
-    fn try_from(val: &DNSQuery) -> anyhow::Result<dns::Query> {
+    fn try_from(val: &DNSQuery)
+        -> anyhow::Result<dns::Query>
+    {
         use dns::IntoName;
 
         let mut name = val.name.to_string().to_ascii_lowercase();
@@ -202,7 +231,7 @@ impl TryFrom<&DNSQuery> for dns::Query {
         }
 
         Ok(dns::Query::new()
-            .set_name(val.name.to_ascii_lowercase().into_name()?)
+            .set_name(name.into_name()?)
             .set_query_class(val.rdclass.into())
             .set_query_type(val.rdtype.into())
             .to_owned()
@@ -415,10 +444,37 @@ impl DNSCacheEntry {
                 *entry_lock.write().await = Some(entry.clone());
                 update_tx.send(()).await.log_error()?;
 
+                #[cfg(feature="sqlite")]
                 {
-                    let query: Vec<u8> = bincode::serialize(&query).log_error()?;
-                    let entry: Vec<u8> = bincode::serialize(&entry).log_error()?;
-                    sqlx::query("INSERT OR IGNORE INTO hitdns_cache_v1 VALUES (?1, ?2); UPDATE hitdns_cache_v1 SET entry = ?2 WHERE query = ?1").bind(query).bind(entry).execute(&*HITDNS_SQLITE_POOL).await.log_warn()?;
+                    let query: Vec<u8> =
+                        bincode::serialize(&query)
+                        .log_error()?;
+                    let entry: Vec<u8> =
+                        bincode::serialize(&entry)
+                        .log_error()?;
+
+                    sqlx::query("INSERT OR IGNORE INTO hitdns_cache_v1 VALUES (?1, ?2); UPDATE hitdns_cache_v1 SET entry = ?2 WHERE query = ?1")
+                        .bind(query).bind(entry)
+                        .execute(&*HITDNS_SQLITE_POOL)
+                        .await.log_warn()?;
+                }
+
+                #[cfg(feature="sled")]
+                {
+                    let query: Vec<u8> =
+                        bincode::serialize(&query)
+                        .log_error()?;
+                    let entry: Vec<u8> =
+                        bincode::serialize(&entry)
+                        .log_error()?;
+
+                    let tree =
+                        HITDNS_SLED_DB
+                        .open_tree(b"hitdns_cache_v2")
+                        .log_warn()?;
+
+                    tree.insert(query, entry)
+                        .log_warn()?;
                 }
 
                 Ok(())
@@ -457,17 +513,84 @@ impl DNSCache {
     async fn new(resolver: DNSOverHTTPS) -> anyhow::Result<Self> {
         let memory = scc::HashMap::new();
 
-        let mut ret = sqlx::query("SELECT * FROM hitdns_cache_v1").fetch(&*HITDNS_SQLITE_POOL);
-        while let Ok(Some(line)) = ret.try_next().await {
-            assert_eq!(line.columns().len(), 2);
-            let query: Vec<u8> = line.try_get_raw(0)?.to_owned().decode();
-            let entry: Vec<u8> = line.try_get_raw(1)?.to_owned().decode();
+        #[cfg(feature="sqlite")]
+        {
+            let mut ret = sqlx::query("SELECT * FROM hitdns_cache_v1").fetch(&*HITDNS_SQLITE_POOL);
+            while let Ok(Some(line)) = ret.try_next().await {
+                assert_eq!(line.columns().len(), 2);
+                let query: Vec<u8> =
+                    line.try_get_raw(0)?.to_owned()
+                    .decode();
+                let entry: Vec<u8> =
+                    line.try_get_raw(1)?.to_owned()
+                    .decode();
 
-            let query: DNSQuery = bincode::deserialize(&query).log_error()?;
-            let entry: DNSEntry = bincode::deserialize(&entry).log_error()?;
-            let cache_entry: DNSCacheEntry = Arc::new(entry).into();
-            memory.insert_async(query, cache_entry).await.unwrap();
+                let query: DNSQuery =
+                    bincode::deserialize(&query)
+                    .log_error()?;
+                let entry: DNSEntry =
+                    bincode::deserialize(&entry)
+                    .log_error()?;
+
+                let cache_entry: DNSCacheEntry =
+                    Arc::new(entry).into();
+
+                let _ = memory.insert(query, cache_entry);
+            }
         }
+
+        #[cfg(feature="sled")]
+        {
+            let tree =
+                HITDNS_SLED_DB
+                .open_tree(b"hitdns_cache_v2").unwrap();
+
+            for ret in tree.iter() {
+                let (query, entry) = match ret {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::warn!("end of sled: {e:?}");
+                        break;
+                    }
+                };
+
+                let query: DNSQuery =
+                    bincode::deserialize(&query)
+                    .log_error()?;
+                let entry: DNSEntry =
+                    bincode::deserialize(&entry)
+                    .log_error()?;
+
+                let cache_entry: DNSCacheEntry =
+                    Arc::new(entry).into();
+
+                let _ = memory.insert(query, cache_entry);
+            }
+
+            // if enabled both 'sqlite' and 'sled' feature,
+            // this will doing a migration that copying original DNS entry from sqlite to sled.
+            #[cfg(all(feature="sqlite", feature="sled"))]
+            {
+                let mut x = Vec::new();
+                memory.scan(|k, v| {
+                    x.push((k.clone(), v.clone()));
+                });
+                for (query, cache_entry) in x.iter() {
+                    let query: Vec<u8> =
+                        bincode::serialize(&query)?;
+                    let entry: Vec<u8> =
+                        bincode::serialize(&{
+                            let entry: Arc<DNSEntry> =
+                                cache_entry.status()
+                                .await.try_into()?;
+                            Arc::into_inner(entry)
+                        })?;
+
+                    tree.insert(query, entry).unwrap();
+                }
+            }
+        }
+
         Ok(Self {
             memory,
             //disk,
