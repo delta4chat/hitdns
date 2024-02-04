@@ -14,7 +14,9 @@ jobs:
     needs: amd64-linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Create binary directory for this job
         run: |
@@ -216,7 +218,9 @@ jobs:
   amd64-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Create binary directory for this job
         run: |
@@ -263,7 +267,9 @@ jobs:
     needs: amd64-linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Create binary directory for this job
         run: |
@@ -303,7 +309,9 @@ jobs:
     needs: amd64-linux
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Create binary directory for this job
         run: |
@@ -341,7 +349,9 @@ jobs:
     needs: amd64-linux
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
       - name: Create binary directory for this job
         run: |
