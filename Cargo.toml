@@ -29,8 +29,8 @@ serde = { version = "1.0.195", features = ["derive"] }
 smol = "2.0.0"
 smol-timeout = "0.6.0"
 
-smolscale = { version = "0.4.4", features = ["preempt"] }
-#smolscale = { path = "../smolscale", features = ["preempt"] }
+#smolscale = { version = "0.4.4", features = ["preempt"] }
+smolscale = { git = "https://github.com/delta4chat/smolscale", features = ["preempt"] }
 
 sqlx = { version = "0.7.3", features = ["runtime-async-std", "sqlite"], default-features = false }
 
