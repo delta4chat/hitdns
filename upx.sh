@@ -13,13 +13,15 @@ fi
 
 if type xz
 then
-	xz -v -e -9 -T8 $1 && mv $1.xz $1
-elif type gzip
-then
-	gzip -9 $1 && mv $1.gz $1
-else
-	echo failed to compress file size, fallback to strip?
+	cat $1 | xz -c -v -e -9 > $1.xz && mv $1.xz $1 && exit
 fi
+
+if type gzip
+then
+	cat $1 | gzip -c -9 > $1.gz && mv $1.gz $1 && exit
+fi
+
+echo failed to compress file size, fallback to strip?
 EOF
 
 command $*
