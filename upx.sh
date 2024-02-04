@@ -8,8 +8,10 @@ tmp=$(mktemp || exit)
 tee $tmp <<"EOF"
 if type upx
 then
-	upx $1
-elif type xz
+	upx $1 && exit
+fi
+
+if type xz
 then
 	xz -v -e -9 -T8 $1 && mv $1.xz $1
 elif type gzip

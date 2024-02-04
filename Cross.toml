@@ -1,892 +1,669 @@
 [target.aarch64-apple-darwin]
 image = "ghcr.io/cross-rs/aarch64-apple-darwin:edge"
 
-
 [target.aarch64-apple-ios]
 image = "ghcr.io/cross-rs/aarch64-apple-ios:edge"
-
 
 [target.aarch64-apple-ios-macabi]
 image = "ghcr.io/cross-rs/aarch64-apple-ios-macabi:edge"
 
-
 [target.aarch64-apple-ios-sim]
 image = "ghcr.io/cross-rs/aarch64-apple-ios-sim:edge"
-
 
 [target.aarch64-apple-tvos]
 image = "ghcr.io/cross-rs/aarch64-apple-tvos:edge"
 
-
 [target.aarch64-apple-tvos-sim]
 image = "ghcr.io/cross-rs/aarch64-apple-tvos-sim:edge"
-
 
 [target.aarch64-apple-watchos-sim]
 image = "ghcr.io/cross-rs/aarch64-apple-watchos-sim:edge"
 
-
 [target.aarch64-fuchsia]
 image = "ghcr.io/cross-rs/aarch64-fuchsia:edge"
-
 
 [target.aarch64-kmc-solid_asp3]
 image = "ghcr.io/cross-rs/aarch64-kmc-solid_asp3:edge"
 
-
 [target.aarch64-linux-android]
 image = "ghcr.io/cross-rs/aarch64-linux-android:edge"
-
 
 [target.aarch64-nintendo-switch-freestanding]
 image = "ghcr.io/cross-rs/aarch64-nintendo-switch-freestanding:edge"
 
-
 [target.aarch64-pc-windows-gnullvm]
 image = "ghcr.io/cross-rs/aarch64-pc-windows-gnullvm:edge"
-
 
 [target.aarch64-pc-windows-msvc]
 image = "ghcr.io/cross-rs/aarch64-pc-windows-msvc:edge"
 
-
 [target.aarch64-unknown-freebsd]
 image = "ghcr.io/cross-rs/aarch64-unknown-freebsd:edge"
-
 
 [target.aarch64-unknown-fuchsia]
 image = "ghcr.io/cross-rs/aarch64-unknown-fuchsia:edge"
 
-
 [target.aarch64-unknown-hermit]
 image = "ghcr.io/cross-rs/aarch64-unknown-hermit:edge"
-
 
 [target.aarch64-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:edge"
 
-
 [target.aarch64-unknown-linux-gnu_ilp32]
 image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu_ilp32:edge"
-
 
 [target.aarch64-unknown-linux-musl]
 image = "ghcr.io/cross-rs/aarch64-unknown-linux-musl:edge"
 
-
 [target.aarch64-unknown-linux-ohos]
 image = "ghcr.io/cross-rs/aarch64-unknown-linux-ohos:edge"
-
 
 [target.aarch64-unknown-netbsd]
 image = "ghcr.io/cross-rs/aarch64-unknown-netbsd:edge"
 
-
 [target.aarch64-unknown-none]
 image = "ghcr.io/cross-rs/aarch64-unknown-none:edge"
-
 
 [target.aarch64-unknown-none-softfloat]
 image = "ghcr.io/cross-rs/aarch64-unknown-none-softfloat:edge"
 
-
 [target.aarch64-unknown-nto-qnx710]
 image = "ghcr.io/cross-rs/aarch64-unknown-nto-qnx710:edge"
-
 
 [target.aarch64-unknown-openbsd]
 image = "ghcr.io/cross-rs/aarch64-unknown-openbsd:edge"
 
-
 [target.aarch64-unknown-redox]
 image = "ghcr.io/cross-rs/aarch64-unknown-redox:edge"
-
 
 [target.aarch64-unknown-teeos]
 image = "ghcr.io/cross-rs/aarch64-unknown-teeos:edge"
 
-
 [target.aarch64-unknown-uefi]
 image = "ghcr.io/cross-rs/aarch64-unknown-uefi:edge"
-
 
 [target.aarch64-uwp-windows-msvc]
 image = "ghcr.io/cross-rs/aarch64-uwp-windows-msvc:edge"
 
-
 [target.aarch64-wrs-vxworks]
 image = "ghcr.io/cross-rs/aarch64-wrs-vxworks:edge"
-
 
 [target.aarch64_be-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/aarch64_be-unknown-linux-gnu:edge"
 
-
 [target.aarch64_be-unknown-linux-gnu_ilp32]
 image = "ghcr.io/cross-rs/aarch64_be-unknown-linux-gnu_ilp32:edge"
-
 
 [target.aarch64_be-unknown-netbsd]
 image = "ghcr.io/cross-rs/aarch64_be-unknown-netbsd:edge"
 
-
 [target.arm-linux-androideabi]
 image = "ghcr.io/cross-rs/arm-linux-androideabi:edge"
-
 
 [target.arm-unknown-linux-gnueabi]
 image = "ghcr.io/cross-rs/arm-unknown-linux-gnueabi:edge"
 
-
 [target.arm-unknown-linux-gnueabihf]
 image = "ghcr.io/cross-rs/arm-unknown-linux-gnueabihf:edge"
-
 
 [target.arm-unknown-linux-musleabi]
 image = "ghcr.io/cross-rs/arm-unknown-linux-musleabi:edge"
 
-
 [target.arm-unknown-linux-musleabihf]
 image = "ghcr.io/cross-rs/arm-unknown-linux-musleabihf:edge"
-
 
 [target.arm64_32-apple-watchos]
 image = "ghcr.io/cross-rs/arm64_32-apple-watchos:edge"
 
-
 [target.armeb-unknown-linux-gnueabi]
 image = "ghcr.io/cross-rs/armeb-unknown-linux-gnueabi:edge"
-
 
 [target.armebv7r-none-eabi]
 image = "ghcr.io/cross-rs/armebv7r-none-eabi:edge"
 
-
 [target.armebv7r-none-eabihf]
 image = "ghcr.io/cross-rs/armebv7r-none-eabihf:edge"
-
 
 [target.armv4t-none-eabi]
 image = "ghcr.io/cross-rs/armv4t-none-eabi:edge"
 
-
 [target.armv4t-unknown-linux-gnueabi]
 image = "ghcr.io/cross-rs/armv4t-unknown-linux-gnueabi:edge"
-
 
 [target.armv5te-none-eabi]
 image = "ghcr.io/cross-rs/armv5te-none-eabi:edge"
 
-
 [target.armv5te-unknown-linux-gnueabi]
 image = "ghcr.io/cross-rs/armv5te-unknown-linux-gnueabi:edge"
-
 
 [target.armv5te-unknown-linux-musleabi]
 image = "ghcr.io/cross-rs/armv5te-unknown-linux-musleabi:edge"
 
-
 [target.armv5te-unknown-linux-uclibceabi]
 image = "ghcr.io/cross-rs/armv5te-unknown-linux-uclibceabi:edge"
-
 
 [target.armv6-unknown-freebsd]
 image = "ghcr.io/cross-rs/armv6-unknown-freebsd:edge"
 
-
 [target.armv6-unknown-netbsd-eabihf]
 image = "ghcr.io/cross-rs/armv6-unknown-netbsd-eabihf:edge"
-
 
 [target.armv6k-nintendo-3ds]
 image = "ghcr.io/cross-rs/armv6k-nintendo-3ds:edge"
 
-
 [target.armv7-linux-androideabi]
 image = "ghcr.io/cross-rs/armv7-linux-androideabi:edge"
-
 
 [target.armv7-sony-vita-newlibeabihf]
 image = "ghcr.io/cross-rs/armv7-sony-vita-newlibeabihf:edge"
 
-
 [target.armv7-unknown-freebsd]
 image = "ghcr.io/cross-rs/armv7-unknown-freebsd:edge"
-
 
 [target.armv7-unknown-linux-gnueabi]
 image = "ghcr.io/cross-rs/armv7-unknown-linux-gnueabi:edge"
 
-
 [target.armv7-unknown-linux-gnueabihf]
 image = "ghcr.io/cross-rs/armv7-unknown-linux-gnueabihf:edge"
-
 
 [target.armv7-unknown-linux-musleabi]
 image = "ghcr.io/cross-rs/armv7-unknown-linux-musleabi:edge"
 
-
 [target.armv7-unknown-linux-musleabihf]
 image = "ghcr.io/cross-rs/armv7-unknown-linux-musleabihf:edge"
-
 
 [target.armv7-unknown-linux-ohos]
 image = "ghcr.io/cross-rs/armv7-unknown-linux-ohos:edge"
 
-
 [target.armv7-unknown-linux-uclibceabi]
 image = "ghcr.io/cross-rs/armv7-unknown-linux-uclibceabi:edge"
-
 
 [target.armv7-unknown-linux-uclibceabihf]
 image = "ghcr.io/cross-rs/armv7-unknown-linux-uclibceabihf:edge"
 
-
 [target.armv7-unknown-netbsd-eabihf]
 image = "ghcr.io/cross-rs/armv7-unknown-netbsd-eabihf:edge"
-
 
 [target.armv7-wrs-vxworks-eabihf]
 image = "ghcr.io/cross-rs/armv7-wrs-vxworks-eabihf:edge"
 
-
 [target.armv7a-kmc-solid_asp3-eabi]
 image = "ghcr.io/cross-rs/armv7a-kmc-solid_asp3-eabi:edge"
-
 
 [target.armv7a-kmc-solid_asp3-eabihf]
 image = "ghcr.io/cross-rs/armv7a-kmc-solid_asp3-eabihf:edge"
 
-
 [target.armv7a-none-eabi]
 image = "ghcr.io/cross-rs/armv7a-none-eabi:edge"
-
 
 [target.armv7a-none-eabihf]
 image = "ghcr.io/cross-rs/armv7a-none-eabihf:edge"
 
-
 [target.armv7k-apple-watchos]
 image = "ghcr.io/cross-rs/armv7k-apple-watchos:edge"
-
 
 [target.armv7r-none-eabi]
 image = "ghcr.io/cross-rs/armv7r-none-eabi:edge"
 
-
 [target.armv7r-none-eabihf]
 image = "ghcr.io/cross-rs/armv7r-none-eabihf:edge"
-
 
 [target.armv7s-apple-ios]
 image = "ghcr.io/cross-rs/armv7s-apple-ios:edge"
 
-
 [target.asmjs-unknown-emscripten]
 image = "ghcr.io/cross-rs/asmjs-unknown-emscripten:edge"
-
 
 [target.avr-unknown-gnu-atmega328]
 image = "ghcr.io/cross-rs/avr-unknown-gnu-atmega328:edge"
 
-
 [target.bpfeb-unknown-none]
 image = "ghcr.io/cross-rs/bpfeb-unknown-none:edge"
-
 
 [target.bpfel-unknown-none]
 image = "ghcr.io/cross-rs/bpfel-unknown-none:edge"
 
-
 [target.csky-unknown-linux-gnuabiv2]
 image = "ghcr.io/cross-rs/csky-unknown-linux-gnuabiv2:edge"
-
 
 [target.csky-unknown-linux-gnuabiv2hf]
 image = "ghcr.io/cross-rs/csky-unknown-linux-gnuabiv2hf:edge"
 
-
 [target.hexagon-unknown-linux-musl]
 image = "ghcr.io/cross-rs/hexagon-unknown-linux-musl:edge"
-
 
 [target.i386-apple-ios]
 image = "ghcr.io/cross-rs/i386-apple-ios:edge"
 
-
 [target.i586-pc-nto-qnx700]
 image = "ghcr.io/cross-rs/i586-pc-nto-qnx700:edge"
-
 
 [target.i586-pc-windows-msvc]
 image = "ghcr.io/cross-rs/i586-pc-windows-msvc:edge"
 
-
 [target.i586-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/i586-unknown-linux-gnu:edge"
-
 
 [target.i586-unknown-linux-musl]
 image = "ghcr.io/cross-rs/i586-unknown-linux-musl:edge"
 
-
 [target.i586-unknown-netbsd]
 image = "ghcr.io/cross-rs/i586-unknown-netbsd:edge"
-
 
 [target.i686-apple-darwin]
 image = "ghcr.io/cross-rs/i686-apple-darwin:edge"
 
-
 [target.i686-linux-android]
 image = "ghcr.io/cross-rs/i686-linux-android:edge"
-
 
 [target.i686-pc-windows-gnu]
 image = "ghcr.io/cross-rs/i686-pc-windows-gnu:edge"
 
-
 [target.i686-pc-windows-gnullvm]
 image = "ghcr.io/cross-rs/i686-pc-windows-gnullvm:edge"
-
 
 [target.i686-pc-windows-msvc]
 image = "ghcr.io/cross-rs/i686-pc-windows-msvc:edge"
 
-
 [target.i686-unknown-freebsd]
 image = "ghcr.io/cross-rs/i686-unknown-freebsd:edge"
-
 
 [target.i686-unknown-haiku]
 image = "ghcr.io/cross-rs/i686-unknown-haiku:edge"
 
-
 [target.i686-unknown-hurd-gnu]
 image = "ghcr.io/cross-rs/i686-unknown-hurd-gnu:edge"
-
 
 [target.i686-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/i686-unknown-linux-gnu:edge"
 
-
 [target.i686-unknown-linux-musl]
 image = "ghcr.io/cross-rs/i686-unknown-linux-musl:edge"
-
 
 [target.i686-unknown-netbsd]
 image = "ghcr.io/cross-rs/i686-unknown-netbsd:edge"
 
-
 [target.i686-unknown-openbsd]
 image = "ghcr.io/cross-rs/i686-unknown-openbsd:edge"
-
 
 [target.i686-unknown-uefi]
 image = "ghcr.io/cross-rs/i686-unknown-uefi:edge"
 
-
 [target.i686-uwp-windows-gnu]
 image = "ghcr.io/cross-rs/i686-uwp-windows-gnu:edge"
-
 
 [target.i686-uwp-windows-msvc]
 image = "ghcr.io/cross-rs/i686-uwp-windows-msvc:edge"
 
-
 [target.i686-wrs-vxworks]
 image = "ghcr.io/cross-rs/i686-wrs-vxworks:edge"
-
 
 [target.loongarch64-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/loongarch64-unknown-linux-gnu:edge"
 
-
 [target.loongarch64-unknown-none]
 image = "ghcr.io/cross-rs/loongarch64-unknown-none:edge"
-
 
 [target.loongarch64-unknown-none-softfloat]
 image = "ghcr.io/cross-rs/loongarch64-unknown-none-softfloat:edge"
 
-
 [target.m68k-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/m68k-unknown-linux-gnu:edge"
-
 
 [target.mips-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/mips-unknown-linux-gnu:edge"
 
-
 [target.mips-unknown-linux-musl]
 image = "ghcr.io/cross-rs/mips-unknown-linux-musl:edge"
-
 
 [target.mips-unknown-linux-uclibc]
 image = "ghcr.io/cross-rs/mips-unknown-linux-uclibc:edge"
 
-
 [target.mips64-openwrt-linux-musl]
 image = "ghcr.io/cross-rs/mips64-openwrt-linux-musl:edge"
-
 
 [target.mips64-unknown-linux-gnuabi64]
 image = "ghcr.io/cross-rs/mips64-unknown-linux-gnuabi64:edge"
 
-
 [target.mips64-unknown-linux-muslabi64]
 image = "ghcr.io/cross-rs/mips64-unknown-linux-muslabi64:edge"
-
 
 [target.mips64el-unknown-linux-gnuabi64]
 image = "ghcr.io/cross-rs/mips64el-unknown-linux-gnuabi64:edge"
 
-
 [target.mips64el-unknown-linux-muslabi64]
 image = "ghcr.io/cross-rs/mips64el-unknown-linux-muslabi64:edge"
-
 
 [target.mipsel-sony-psp]
 image = "ghcr.io/cross-rs/mipsel-sony-psp:edge"
 
-
 [target.mipsel-sony-psx]
 image = "ghcr.io/cross-rs/mipsel-sony-psx:edge"
-
 
 [target.mipsel-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/mipsel-unknown-linux-gnu:edge"
 
-
 [target.mipsel-unknown-linux-musl]
 image = "ghcr.io/cross-rs/mipsel-unknown-linux-musl:edge"
-
 
 [target.mipsel-unknown-linux-uclibc]
 image = "ghcr.io/cross-rs/mipsel-unknown-linux-uclibc:edge"
 
-
 [target.mipsel-unknown-netbsd]
 image = "ghcr.io/cross-rs/mipsel-unknown-netbsd:edge"
-
 
 [target.mipsel-unknown-none]
 image = "ghcr.io/cross-rs/mipsel-unknown-none:edge"
 
-
 [target.mipsisa32r6-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/mipsisa32r6-unknown-linux-gnu:edge"
-
 
 [target.mipsisa32r6el-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/mipsisa32r6el-unknown-linux-gnu:edge"
 
-
 [target.mipsisa64r6-unknown-linux-gnuabi64]
 image = "ghcr.io/cross-rs/mipsisa64r6-unknown-linux-gnuabi64:edge"
-
 
 [target.mipsisa64r6el-unknown-linux-gnuabi64]
 image = "ghcr.io/cross-rs/mipsisa64r6el-unknown-linux-gnuabi64:edge"
 
-
 [target.msp430-none-elf]
 image = "ghcr.io/cross-rs/msp430-none-elf:edge"
-
 
 [target.nvptx64-nvidia-cuda]
 image = "ghcr.io/cross-rs/nvptx64-nvidia-cuda:edge"
 
-
 [target.powerpc-unknown-freebsd]
 image = "ghcr.io/cross-rs/powerpc-unknown-freebsd:edge"
-
 
 [target.powerpc-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/powerpc-unknown-linux-gnu:edge"
 
-
 [target.powerpc-unknown-linux-gnuspe]
 image = "ghcr.io/cross-rs/powerpc-unknown-linux-gnuspe:edge"
-
 
 [target.powerpc-unknown-linux-musl]
 image = "ghcr.io/cross-rs/powerpc-unknown-linux-musl:edge"
 
-
 [target.powerpc-unknown-netbsd]
 image = "ghcr.io/cross-rs/powerpc-unknown-netbsd:edge"
-
 
 [target.powerpc-unknown-openbsd]
 image = "ghcr.io/cross-rs/powerpc-unknown-openbsd:edge"
 
-
 [target.powerpc-wrs-vxworks]
 image = "ghcr.io/cross-rs/powerpc-wrs-vxworks:edge"
-
 
 [target.powerpc-wrs-vxworks-spe]
 image = "ghcr.io/cross-rs/powerpc-wrs-vxworks-spe:edge"
 
-
 [target.powerpc64-ibm-aix]
 image = "ghcr.io/cross-rs/powerpc64-ibm-aix:edge"
-
 
 [target.powerpc64-unknown-freebsd]
 image = "ghcr.io/cross-rs/powerpc64-unknown-freebsd:edge"
 
-
 [target.powerpc64-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/powerpc64-unknown-linux-gnu:edge"
-
 
 [target.powerpc64-unknown-linux-musl]
 image = "ghcr.io/cross-rs/powerpc64-unknown-linux-musl:edge"
 
-
 [target.powerpc64-unknown-openbsd]
 image = "ghcr.io/cross-rs/powerpc64-unknown-openbsd:edge"
-
 
 [target.powerpc64-wrs-vxworks]
 image = "ghcr.io/cross-rs/powerpc64-wrs-vxworks:edge"
 
-
 [target.powerpc64le-unknown-freebsd]
 image = "ghcr.io/cross-rs/powerpc64le-unknown-freebsd:edge"
-
 
 [target.powerpc64le-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/powerpc64le-unknown-linux-gnu:edge"
 
-
 [target.powerpc64le-unknown-linux-musl]
 image = "ghcr.io/cross-rs/powerpc64le-unknown-linux-musl:edge"
-
 
 [target.riscv32gc-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/riscv32gc-unknown-linux-gnu:edge"
 
-
 [target.riscv32gc-unknown-linux-musl]
 image = "ghcr.io/cross-rs/riscv32gc-unknown-linux-musl:edge"
-
 
 [target.riscv32i-unknown-none-elf]
 image = "ghcr.io/cross-rs/riscv32i-unknown-none-elf:edge"
 
-
 [target.riscv32im-unknown-none-elf]
 image = "ghcr.io/cross-rs/riscv32im-unknown-none-elf:edge"
-
 
 [target.riscv32imac-esp-espidf]
 image = "ghcr.io/cross-rs/riscv32imac-esp-espidf:edge"
 
-
 [target.riscv32imac-unknown-none-elf]
 image = "ghcr.io/cross-rs/riscv32imac-unknown-none-elf:edge"
-
 
 [target.riscv32imac-unknown-xous-elf]
 image = "ghcr.io/cross-rs/riscv32imac-unknown-xous-elf:edge"
 
-
 [target.riscv32imc-esp-espidf]
 image = "ghcr.io/cross-rs/riscv32imc-esp-espidf:edge"
-
 
 [target.riscv32imc-unknown-none-elf]
 image = "ghcr.io/cross-rs/riscv32imc-unknown-none-elf:edge"
 
-
 [target.riscv64-linux-android]
 image = "ghcr.io/cross-rs/riscv64-linux-android:edge"
-
 
 [target.riscv64gc-unknown-freebsd]
 image = "ghcr.io/cross-rs/riscv64gc-unknown-freebsd:edge"
 
-
 [target.riscv64gc-unknown-fuchsia]
 image = "ghcr.io/cross-rs/riscv64gc-unknown-fuchsia:edge"
-
 
 [target.riscv64gc-unknown-hermit]
 image = "ghcr.io/cross-rs/riscv64gc-unknown-hermit:edge"
 
-
 [target.riscv64gc-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/riscv64gc-unknown-linux-gnu:edge"
-
 
 [target.riscv64gc-unknown-linux-musl]
 image = "ghcr.io/cross-rs/riscv64gc-unknown-linux-musl:edge"
 
-
 [target.riscv64gc-unknown-netbsd]
 image = "ghcr.io/cross-rs/riscv64gc-unknown-netbsd:edge"
-
 
 [target.riscv64gc-unknown-none-elf]
 image = "ghcr.io/cross-rs/riscv64gc-unknown-none-elf:edge"
 
-
 [target.riscv64gc-unknown-openbsd]
 image = "ghcr.io/cross-rs/riscv64gc-unknown-openbsd:edge"
-
 
 [target.riscv64imac-unknown-none-elf]
 image = "ghcr.io/cross-rs/riscv64imac-unknown-none-elf:edge"
 
-
 [target.s390x-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/s390x-unknown-linux-gnu:edge"
-
 
 [target.s390x-unknown-linux-musl]
 image = "ghcr.io/cross-rs/s390x-unknown-linux-musl:edge"
 
-
 [target.sparc-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/sparc-unknown-linux-gnu:edge"
-
 
 [target.sparc-unknown-none-elf]
 image = "ghcr.io/cross-rs/sparc-unknown-none-elf:edge"
 
-
 [target.sparc64-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/sparc64-unknown-linux-gnu:edge"
-
 
 [target.sparc64-unknown-netbsd]
 image = "ghcr.io/cross-rs/sparc64-unknown-netbsd:edge"
 
-
 [target.sparc64-unknown-openbsd]
 image = "ghcr.io/cross-rs/sparc64-unknown-openbsd:edge"
-
 
 [target.sparcv9-sun-solaris]
 image = "ghcr.io/cross-rs/sparcv9-sun-solaris:edge"
 
-
 [target.thumbv4t-none-eabi]
 image = "ghcr.io/cross-rs/thumbv4t-none-eabi:edge"
-
 
 [target.thumbv5te-none-eabi]
 image = "ghcr.io/cross-rs/thumbv5te-none-eabi:edge"
 
-
 [target.thumbv6m-none-eabi]
 image = "ghcr.io/cross-rs/thumbv6m-none-eabi:edge"
-
 
 [target.thumbv7a-pc-windows-msvc]
 image = "ghcr.io/cross-rs/thumbv7a-pc-windows-msvc:edge"
 
-
 [target.thumbv7a-uwp-windows-msvc]
 image = "ghcr.io/cross-rs/thumbv7a-uwp-windows-msvc:edge"
-
 
 [target.thumbv7em-none-eabi]
 image = "ghcr.io/cross-rs/thumbv7em-none-eabi:edge"
 
-
 [target.thumbv7em-none-eabihf]
 image = "ghcr.io/cross-rs/thumbv7em-none-eabihf:edge"
-
 
 [target.thumbv7m-none-eabi]
 image = "ghcr.io/cross-rs/thumbv7m-none-eabi:edge"
 
-
 [target.thumbv7neon-linux-androideabi]
 image = "ghcr.io/cross-rs/thumbv7neon-linux-androideabi:edge"
-
 
 [target.thumbv7neon-unknown-linux-gnueabihf]
 image = "ghcr.io/cross-rs/thumbv7neon-unknown-linux-gnueabihf:edge"
 
-
 [target.thumbv7neon-unknown-linux-musleabihf]
 image = "ghcr.io/cross-rs/thumbv7neon-unknown-linux-musleabihf:edge"
-
 
 [target.thumbv8m.base-none-eabi]
 image = "ghcr.io/cross-rs/thumbv8m.base-none-eabi:edge"
 
-
 [target.thumbv8m.main-none-eabi]
 image = "ghcr.io/cross-rs/thumbv8m.main-none-eabi:edge"
-
 
 [target.thumbv8m.main-none-eabihf]
 image = "ghcr.io/cross-rs/thumbv8m.main-none-eabihf:edge"
 
-
 [target.wasm32-unknown-emscripten]
 image = "ghcr.io/cross-rs/wasm32-unknown-emscripten:edge"
-
 
 [target.wasm32-unknown-unknown]
 image = "ghcr.io/cross-rs/wasm32-unknown-unknown:edge"
 
-
 [target.wasm32-wasi]
 image = "ghcr.io/cross-rs/wasm32-wasi:edge"
-
 
 [target.wasm32-wasi-preview1-threads]
 image = "ghcr.io/cross-rs/wasm32-wasi-preview1-threads:edge"
 
-
 [target.wasm64-unknown-unknown]
 image = "ghcr.io/cross-rs/wasm64-unknown-unknown:edge"
-
 
 [target.x86_64-apple-darwin]
 image = "ghcr.io/cross-rs/x86_64-apple-darwin:edge"
 
-
 [target.x86_64-apple-ios]
 image = "ghcr.io/cross-rs/x86_64-apple-ios:edge"
-
 
 [target.x86_64-apple-ios-macabi]
 image = "ghcr.io/cross-rs/x86_64-apple-ios-macabi:edge"
 
-
 [target.x86_64-apple-tvos]
 image = "ghcr.io/cross-rs/x86_64-apple-tvos:edge"
-
 
 [target.x86_64-apple-watchos-sim]
 image = "ghcr.io/cross-rs/x86_64-apple-watchos-sim:edge"
 
-
 [target.x86_64-fortanix-unknown-sgx]
 image = "ghcr.io/cross-rs/x86_64-fortanix-unknown-sgx:edge"
-
 
 [target.x86_64-fuchsia]
 image = "ghcr.io/cross-rs/x86_64-fuchsia:edge"
 
-
 [target.x86_64-linux-android]
 image = "ghcr.io/cross-rs/x86_64-linux-android:edge"
-
 
 [target.x86_64-pc-nto-qnx710]
 image = "ghcr.io/cross-rs/x86_64-pc-nto-qnx710:edge"
 
-
 [target.x86_64-pc-solaris]
 image = "ghcr.io/cross-rs/x86_64-pc-solaris:edge"
-
 
 [target.x86_64-pc-windows-gnu]
 image = "ghcr.io/cross-rs/x86_64-pc-windows-gnu:edge"
 
-
 [target.x86_64-pc-windows-gnullvm]
 image = "ghcr.io/cross-rs/x86_64-pc-windows-gnullvm:edge"
-
 
 [target.x86_64-pc-windows-msvc]
 image = "ghcr.io/cross-rs/x86_64-pc-windows-msvc:edge"
 
-
 [target.x86_64-sun-solaris]
 image = "ghcr.io/cross-rs/x86_64-sun-solaris:edge"
-
 
 [target.x86_64-unikraft-linux-musl]
 image = "ghcr.io/cross-rs/x86_64-unikraft-linux-musl:edge"
 
-
 [target.x86_64-unknown-dragonfly]
 image = "ghcr.io/cross-rs/x86_64-unknown-dragonfly:edge"
-
 
 [target.x86_64-unknown-freebsd]
 image = "ghcr.io/cross-rs/x86_64-unknown-freebsd:edge"
 
-
 [target.x86_64-unknown-fuchsia]
 image = "ghcr.io/cross-rs/x86_64-unknown-fuchsia:edge"
-
 
 [target.x86_64-unknown-haiku]
 image = "ghcr.io/cross-rs/x86_64-unknown-haiku:edge"
 
-
 [target.x86_64-unknown-hermit]
 image = "ghcr.io/cross-rs/x86_64-unknown-hermit:edge"
-
 
 [target.x86_64-unknown-illumos]
 image = "ghcr.io/cross-rs/x86_64-unknown-illumos:edge"
 
-
 [target.x86_64-unknown-l4re-uclibc]
 image = "ghcr.io/cross-rs/x86_64-unknown-l4re-uclibc:edge"
-
 
 [target.x86_64-unknown-linux-gnu]
 image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnu:edge"
 
-
 [target.x86_64-unknown-linux-gnux32]
 image = "ghcr.io/cross-rs/x86_64-unknown-linux-gnux32:edge"
-
 
 [target.x86_64-unknown-linux-musl]
 image = "ghcr.io/cross-rs/x86_64-unknown-linux-musl:edge"
 
-
 [target.x86_64-unknown-linux-ohos]
 image = "ghcr.io/cross-rs/x86_64-unknown-linux-ohos:edge"
-
 
 [target.x86_64-unknown-netbsd]
 image = "ghcr.io/cross-rs/x86_64-unknown-netbsd:edge"
 
-
 [target.x86_64-unknown-none]
 image = "ghcr.io/cross-rs/x86_64-unknown-none:edge"
-
 
 [target.x86_64-unknown-openbsd]
 image = "ghcr.io/cross-rs/x86_64-unknown-openbsd:edge"
 
-
 [target.x86_64-unknown-redox]
 image = "ghcr.io/cross-rs/x86_64-unknown-redox:edge"
-
 
 [target.x86_64-unknown-uefi]
 image = "ghcr.io/cross-rs/x86_64-unknown-uefi:edge"
 
-
 [target.x86_64-uwp-windows-gnu]
 image = "ghcr.io/cross-rs/x86_64-uwp-windows-gnu:edge"
-
 
 [target.x86_64-uwp-windows-msvc]
 image = "ghcr.io/cross-rs/x86_64-uwp-windows-msvc:edge"
 
-
 [target.x86_64-wrs-vxworks]
 image = "ghcr.io/cross-rs/x86_64-wrs-vxworks:edge"
 
-
 [target.x86_64h-apple-darwin]
 image = "ghcr.io/cross-rs/x86_64h-apple-darwin:edge"
-
 

@@ -49,6 +49,8 @@ jobs:
           fi
           git switch master
           git reset --hard ${{github.sha}}
+          cargo clean
+          docker image prune -a -f
 
       - name: Cross Build x86 android (64-bit)
         continue-on-error: true
@@ -70,6 +72,8 @@ jobs:
           fi
           git switch master
           git reset --hard ${{github.sha}}
+          cargo clean
+          docker image prune -a -f
 
       - name: Cross Build aarch64 linux
         continue-on-error: true
@@ -91,6 +95,8 @@ jobs:
           fi
           git switch master
           git reset --hard ${{github.sha}}
+          cargo clean
+          docker image prune -a -f
 
       - name: Cross Build aarch64 linux (musl)
         continue-on-error: true
@@ -112,6 +118,8 @@ jobs:
           fi
           git switch master
           git reset --hard ${{github.sha}}
+          cargo clean
+          docker image prune -a -f
 
       - name: Cross Build amd64 FreeBSD
         continue-on-error: true
@@ -133,6 +141,8 @@ jobs:
           fi
           git switch master
           git reset --hard ${{github.sha}}
+          cargo clean
+          docker image prune -a -f
 
       - name: Cross Build amd64 NetBSD
         continue-on-error: true
@@ -154,6 +164,8 @@ jobs:
           fi
           git switch master
           git reset --hard ${{github.sha}}
+          cargo clean
+          docker image prune -a -f
 
       - name: Cross Build mips-el Linux musl
         continue-on-error: true
@@ -175,6 +187,8 @@ jobs:
           fi
           git switch master
           git reset --hard ${{github.sha}}
+          cargo clean
+          docker image prune -a -f
 
       - name: Cross Build WebAssembly
         continue-on-error: true
@@ -196,6 +210,8 @@ jobs:
           fi
           git switch master
           git reset --hard ${{github.sha}}
+          cargo clean
+          docker image prune -a -f
 
   amd64-linux:
     runs-on: ubuntu-latest
