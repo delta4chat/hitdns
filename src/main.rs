@@ -105,6 +105,7 @@ static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(||{
     dir
 
 });
+
 #[cfg(feature="sqlite")]
 static HITDNS_SQLITE_FILENAME: Lazy<PathBuf> = Lazy::new(||{
     let mut buf = (*HITDNS_DIR).clone();

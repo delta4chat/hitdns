@@ -1,6 +1,6 @@
 [package]
 name = "hitdns"
-version = "0.3.5"
+version = "0.3.6"
 edition = "2021"
 description = "hitdns is a DNS forward server optimized for cache hit ratio and query latency."
 license = "GPL-3.0"
@@ -10,7 +10,7 @@ repository="https://github.com/delta4chat/hitdns"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
+default = [ "sqlite" ]
 sqlite = [ "dep:sqlx" ]
 sled = [ "dep:sled" ]
 rocks = [ "dep:rocks" ]
