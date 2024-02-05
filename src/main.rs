@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant, SystemTime};
 
 use std::sync::Arc;
+use std::pin::Pin;
 use std::ops::Deref;
 
 mod dns {
@@ -43,6 +44,15 @@ use sqlx::{
 use async_lock::RwLock;
 
 use smol_timeout::TimeoutExt;
+
+// a helper for wrapping non-Sized
+async fn timeout_helper<T>(
+    fut: impl Future<Output=T>,
+    time: Duration
+) -> Option<T> {
+    let fut = async move { fut.await };
+    fut.timeout(time).await
+}
 
 use once_cell::sync::Lazy;
 use std::path::PathBuf;
@@ -104,14 +114,14 @@ static HITDNS_SLED_FILENAME: Lazy<PathBuf> = Lazy::new(||{
 static HITDNS_SLED_DB: Lazy<sled::Db> = Lazy::new(||{
     let db = sled::Config::new()
         .path(&*HITDNS_SLED_FILENAME)
-        //.mode(sled::Mode::HighThroughput)
+        .mode(sled::Mode::HighThroughput)
         .cache_capacity(1048576 * 8)
         .flush_every_ms(Some(1000))
         .temporary(false)
         .print_profile_on_drop(true)
-        .use_compression(false)
-        //.compression_factor(22)
-        .open().unwrap();
+        .use_compression(true)
+        .compression_factor(22)
+        .open().expect("cannot open sled db");
 
     // watchdog that triggered by every write ops
     {
@@ -160,9 +170,10 @@ static HITDNS_SQLITE_POOL: Lazy<SqlitePool> = Lazy::new(||{
                 .journal_mode(SqliteJournalMode::Wal)
                 .locking_mode(SqliteLockingMode::Normal)
                 .synchronous(SqliteSynchronous::Normal)
-            ).await.unwrap();
+            ).await
+            .expect("sqlx cannot connect to sqlite db");
 
-        sqlx::query("CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT").execute(&pool).await.unwrap();
+        sqlx::query("CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT").execute(&pool).await.expect("sqlx cannot create table in opened sqlite db");
         pool
     })
 });
@@ -378,7 +389,7 @@ impl DNSCacheEntry {
     /// if DNSEntry exists and expired, starting a background task for updating that, then return expired result.
     /// if DNSEntry does not exists, start a foreground task, waiting until it successfully or timed out.
     /// this method promises never starting multi task for cache miss.
-    async fn update(&self, resolver: DNSOverHTTPS, timeout: Duration) -> anyhow::Result<Arc<DNSEntry>> {
+    async fn update(&self, resolver: Arc<dyn DNSResolver>, timeout: Duration) -> anyhow::Result<Arc<DNSEntry>> {
         let status = self.status().await;
         // no need update a un-expired DNSRecord.
         // cache hit.
@@ -412,10 +423,10 @@ impl DNSCacheEntry {
             smolscale::spawn(async move {
                 let upstream = resolver.dns_upstream();
                 let start = Instant::now();
-                let mut response = match resolver.dns_resolve(&query).timeout(timeout).await {
+                let mut response = match timeout_helper(resolver.dns_resolve(&query), timeout).await {
                         Some(v) => v?,
                         None => {
-                            anyhow::bail!("resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}", query);
+                            anyhow::bail!("resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}", &query);
                         }
                     };
                 let elapsed = start.elapsed();
@@ -500,18 +511,18 @@ impl DNSCacheEntry {
 
 #[derive(Debug, Clone)]
 struct DNSCache {
-    memory: scc::HashMap<DNSQuery, DNSCacheEntry>,
+    memory: Arc<scc::HashMap<DNSQuery, DNSCacheEntry>>,
     //disk: SqlitePool,
-    //resolvers: Arc<DNSResolvers>,
-    resolver: DNSOverHTTPS,
+    resolvers: Arc<DNSResolverArray>,
+    //resolver: DNSOverHTTPS,
 }
 /// SAFETY: Async access
 unsafe impl Sync for DNSCache {}
 unsafe impl Send for DNSCache {}
 
 impl DNSCache {
-    async fn new(resolver: DNSOverHTTPS) -> anyhow::Result<Self> {
-        let memory = scc::HashMap::new();
+    async fn new(resolvers: DNSResolverArray) -> anyhow::Result<Self> {
+        let memory = Arc::new(scc::HashMap::new());
 
         #[cfg(feature="sqlite")]
         {
@@ -543,7 +554,7 @@ impl DNSCache {
         {
             let tree =
                 HITDNS_SLED_DB
-                .open_tree(b"hitdns_cache_v2").unwrap();
+                .open_tree(b"hitdns_cache_v2").context("cannot open sled tree").log_warn()?;
 
             for ret in tree.iter() {
                 let (query, entry) = match ret {
@@ -571,22 +582,25 @@ impl DNSCache {
             // this will doing a migration that copying original DNS entry from sqlite to sled.
             #[cfg(all(feature="sqlite", feature="sled"))]
             {
-                let mut x = Vec::new();
+                let mut x = vec![];
                 memory.scan(|k, v| {
+                    log::debug!("migrate {k:?} / {v:?}");
                     x.push((k.clone(), v.clone()));
                 });
                 for (query, cache_entry) in x.iter() {
                     let query: Vec<u8> =
-                        bincode::serialize(&query)?;
+                        bincode::serialize(&query)
+                        .log_error()?;
                     let entry: Vec<u8> =
                         bincode::serialize(&{
                             let entry: Arc<DNSEntry> =
                                 cache_entry.status()
-                                .await.try_into()?;
+                                .await.try_into()
+                                .log_error()?;
                             Arc::into_inner(entry)
                         })?;
 
-                    tree.insert(query, entry).unwrap();
+                    tree.insert(query, entry).context("cannot insert to sled tree")?;
                 }
             }
         }
@@ -594,7 +608,7 @@ impl DNSCache {
         Ok(Self {
             memory,
             //disk,
-            resolver,
+            resolvers: Arc::new(resolvers),
         })
     }
 
@@ -614,8 +628,8 @@ impl DNSCache {
             .get().clone();
 
         let entry = cache_entry.update(
-            //self.resolvers.select_best(),
-            self.resolver.clone(),
+            self.resolvers.select_best()?,
+            //self.resolver.clone(),
             Duration::from_secs(10)
         ).await.log_warn()?;
 
@@ -782,7 +796,7 @@ struct DNSOverHTTPS {
 impl<'a> DNSOverHTTPS {
     const CONTENT_TYPE: &'static str = "application/dns-message";
 
-    fn new(url: impl ToString, maybe_hosts: Option<Hosts>) -> anyhow::Result<Self> {
+    fn new(url: impl ToString, maybe_hosts: &Option<Hosts>, mut tls_sni: bool) -> anyhow::Result<Self> {
         let url: String = url.to_string();
         let url = reqwest::Url::parse(&url).log_warn()?;
 
@@ -806,6 +820,12 @@ impl<'a> DNSOverHTTPS {
            }
         }
 
+        if let Some(ref hosts) = maybe_hosts {
+            if ! hosts.map.is_empty() {
+                tls_sni = true;
+            }
+        }
+
         // client builder
         let mut cb =
             reqwest::Client::builder()
@@ -817,7 +837,7 @@ impl<'a> DNSOverHTTPS {
             .use_rustls_tls()
             .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .https_only(true)
-            .tls_sni(false)
+            .tls_sni(tls_sni)
 
             // HTTP/2 setting
             .http2_prior_knowledge() // use HTTP/2 only
@@ -841,7 +861,7 @@ impl<'a> DNSOverHTTPS {
         if let Some(hosts) = maybe_hosts {
             for (domain, ips) in hosts.map.iter() {
                 let ips: Vec<SocketAddr> = {
-                    let mut x = Vec::new();
+                    let mut x = vec![];
                     for ip in ips.iter() {
                         x.push(SocketAddr::new(*ip, 0));
                     }
@@ -858,11 +878,9 @@ impl<'a> DNSOverHTTPS {
             url,
         })
     }
-}
 
-impl DNSResolver for DNSOverHTTPS {
     // un-cached DNS Query
-    async fn dns_resolve(&self, query: &DNSQuery) -> anyhow::Result<dns::Message> {
+    async fn _dns_resolve(&self, query: &DNSQuery) -> anyhow::Result<dns::Message> {
         log::info!("DoH un-cached Query: {query:?}");
 
         let req: dns::Message = query.try_into().log_warn()?;
@@ -896,6 +914,17 @@ impl DNSResolver for DNSOverHTTPS {
         log::info!("DoH un-cached response {response:?}");
         Ok(response)
     }
+}
+
+impl DNSResolver for DNSOverHTTPS {
+    fn dns_resolve(&self, query: &DNSQuery)
+        -> DNSResolving
+    {
+        let query = query.clone();
+        Box::pin(async move {
+            self._dns_resolve(&query).await
+        })
+    }
 
     fn dns_upstream(&self) -> String {
         self.url.to_string()
@@ -912,6 +941,7 @@ struct DNSOverTLS {
     sessions: Vec<TlsStream>,
     addr: SocketAddr,
 }
+
 struct DNSOverQUIC {
     addr: SocketAddr,
 }
@@ -922,38 +952,76 @@ enum DNSUpstream {
     DoQ(DNSOverQUIC),
 }
 
-//#[async_trait]
-trait DNSResolver {
+type DNSResolving<'a> = Pin<Box<
+    dyn Future<
+        Output=anyhow::Result<dns::Message>
+    > + Send + 'a
+>>;
+
+trait DNSResolver: Send + Sync + 'static {
     /// un-cached DNS query
-    fn dns_resolve(&self, query: &DNSQuery) -> impl Future<Output=anyhow::Result<dns::Message>>;
+    fn dns_resolve(&self, query: &DNSQuery) ->DNSResolving;
 
     /// a description for upstream, usually URL or any other.
     fn dns_upstream(&self) -> String;
 
     /// a protocol type of upstream
     fn dns_protocol(&self) -> &str;
+
+    //fn dns_metrics(&self) -> DNSMetrics;
 }
 
 /*
-impl DNSResolver for T
-where T: 
+impl<T: AsRef<DNSResolver> DNSResolver for &T
 {
 }
+*/
 
 impl core::fmt::Debug for dyn DNSResolver {
-    fn fmt(&self, f: 
-}*/
-
-struct DNSResolvers {
-    //list: Vec<Arc<dyn DNSResolver>>,
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
+        Ok(())
+    }
 }
-/*
-impl DNSResolvers {
-    fn select_best(&self) -> anyhow::Result<impl DNSResolver> {
+
+#[derive(Debug, Clone)]
+struct DNSResolverArray {
+    list: Arc<Vec<Arc<dyn DNSResolver>>>,
+}
+
+impl DNSResolverArray {
+    fn select_best(&self) -> anyhow::Result<Arc<dyn DNSResolver>> {
+        // TODO: select best resolver by latency and reliability
         let resolver = self.list[0].clone();
         Ok(resolver)
     }
-}*/
+
+    fn from(
+        mut val: impl Iterator<Item=Arc<dyn DNSResolver>>
+    ) -> DNSResolverArray {
+        let mut list = Vec::new();
+        while let Some(resolver) = val.next() {
+            list.push(resolver);
+        }
+
+        DNSResolverArray {
+            list: Arc::new(list)
+        }
+    }
+}
+
+/*
+impl DNSResolver for DNSResolverArray {
+    fn dns_resolve(&self, query: &DNSQuery) ->DNSResolving{
+        self.select_best().dns_resolve(query)
+    }
+
+    fn dns_upstream(&self) -> String {
+    }
+
+    fn dns_protocol(&self) -> &str {
+    }
+}
+*/
 
 #[derive(Debug)]
 struct DNSDaemon {
@@ -967,16 +1035,30 @@ impl DNSDaemon {
         let udp_ = UdpSocket::bind(&opt.listen).await.log_error()?;
         let tcp_ = TcpListener::bind(&opt.listen).await.log_error()?;
 
-        let cache_ = Arc::new(DNSCache::new(
-            DNSOverHTTPS::new(
-                opt.doh_upstream,
-                if let Some(ref hosts_filename) = opt.hosts {
-                    hosts_filename.try_into().log_warn().ok()
-                } else {
-                    None
-                }
-            )?
-        ).await?);
+        let hosts =
+            if let Some(ref hosts_filename) = opt.hosts {
+                hosts_filename.try_into().log_warn().ok()
+            } else {
+                None
+            };
+        let resolvers = {
+            let mut x: Vec<Arc<dyn DNSResolver>> = vec![];
+            for url in opt.doh_upstream.iter() {
+                x.push(
+                    Arc::new(
+                        DNSOverHTTPS::new(
+                            url,
+                            &hosts,
+                            opt.tls_sni
+                        )?
+                    )
+                );
+            }
+            DNSResolverArray::from(x.into_iter())
+        };
+        let cache_ = Arc::new(
+            DNSCache::new(resolvers).await?
+        );
 
         let cache = cache_.clone();
         let udp = udp_.clone();
@@ -991,7 +1073,7 @@ impl DNSDaemon {
                 smolscale::spawn(async move {
                     let req = dns::Message::from_vec(&msg).log_debug()?;
                     let res: dns::Message = cache.query(req).await.log_warn()?;
-                    udp.send_to(res.to_vec().unwrap().as_ref(), peer).await.log_error()?;
+                    udp.send_to(res.to_vec().expect("bug: DNSCache.query returns invalid data").as_ref(), peer).await.log_error()?;
                     Ok::<_, anyhow::Error>(())
                 }).detach();
             }
@@ -1009,7 +1091,7 @@ impl DNSDaemon {
                 let cache = cache.clone();
                 smolscale::spawn(async move {
                     let mut buf = vec![0u8; 65535];
-                    let mut buf2: Vec<u8> = Vec::new();
+                    let mut buf2: Vec<u8> = vec![];
                     let mut len = [0u8; 2];
                     let mut len2: usize;
 
@@ -1083,11 +1165,20 @@ struct HitdnsOpt {
     #[arg(long)]
     use_system_hosts: bool,
 
+    /// Whether enable TLS SNI extension.
+    /// if this is unspecified, default disable SNI (for bypass internet censorship in few totalitarian countries)
+    /// if you specified --tls-sni or --hosts or --use-system-hosts, then TLS SNI will enabled by default.
+    #[arg(long)]
+    tls_sni: bool,
+
+    /// Listen address of local plaintext DNS server.
     #[arg(long, default_value="127.0.0.1:10053")]
     listen: SocketAddr,
 
+    /// upstream URL of DoH server.
+    /// DNS over HTTPS
     #[arg(long, default_value="https://1.0.0.1/dns-query")]
-    doh_upstream: String,
+    doh_upstream: Vec<String>,
 }
 
 async fn main_async() -> anyhow::Result<()> {

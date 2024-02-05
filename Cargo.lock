@@ -518,6 +518,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 
 [[package]]
+name = "cmake"
+version = "0.1.50"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "colorchoice"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -623,19 +632,6 @@ checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
 dependencies = [
  "generic-array",
  "typenum",
-]
-
-[[package]]
-name = "dashmap"
-version = "5.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
-dependencies = [
- "cfg-if",
- "hashbrown",
- "lock_api",
- "once_cell",
- "parking_lot_core 0.9.9",
 ]
 
 [[package]]
@@ -1127,6 +1123,7 @@ dependencies = [
  "log",
  "once_cell",
  "reqwest",
+ "rocks",
  "scc",
  "serde",
  "sled",
@@ -1857,16 +1854,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "rocks"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59fba458161d2e2c398e3e7361f7a1351c6d33d2852ed9d0ad9f655b85bcc6ae"
+dependencies = [
+ "lazy_static",
+ "rocks-sys",
+]
+
+[[package]]
+name = "rocks-sys"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72d19d586699f2cb70ad475db8df8f3b91d9cc495c4df33bb37acec6dd5d05a3"
+dependencies = [
+ "cc",
+ "cmake",
+ "pkg-config",
+ "vcpkg",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d626bb9dae77e28219937af045c257c28bfd3f69333c512553507f5f9798cb76"
-
-[[package]]
-name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustix"
@@ -1943,6 +1956,9 @@ name = "scc"
 version = "2.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "676aa089f19bc2dd9932c8ac6460134d63e30829cb49541a424d80e14083037e"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "scoped-tls"
@@ -2099,9 +2115,9 @@ dependencies = [
 
 [[package]]
 name = "smolscale2"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fc563076af15eb4e61ba74851a4d81cdf495ac09c003e966872b6fdeb615859"
+checksum = "b0c2c0d8a79f103dbf281b4a39b06e2f5d99cbbefa8dbd00b133e9d01dd41869"
 dependencies = [
  "anyhow",
  "async-channel 1.9.0",
@@ -2115,7 +2131,6 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-queue",
  "crossbeam-utils",
- "dashmap",
  "event-listener 2.5.3",
  "fastrand 1.9.0",
  "flume 0.10.14",
@@ -2127,10 +2142,9 @@ dependencies = [
  "once_cell",
  "parking_lot 0.12.1",
  "pin-project-lite 0.2.13",
- "rustc-hash",
+ "scc",
  "scopeguard",
  "slab",
- "smallvec",
  "st3",
  "tabwriter",
  "thread_local",
