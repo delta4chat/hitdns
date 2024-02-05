@@ -41,6 +41,9 @@ use sqlx::{
     {Row, Value, ValueRef},
 };
 
+#[cfg(feature="rocks")]
+use rocks::rocksdb;
+
 use async_lock::RwLock;
 
 use smol_timeout::TimeoutExt;
@@ -102,6 +105,41 @@ static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(||{
     dir
 
 });
+#[cfg(feature="sqlite")]
+static HITDNS_SQLITE_FILENAME: Lazy<PathBuf> = Lazy::new(||{
+    let mut buf = (*HITDNS_DIR).clone();
+    buf.push("cache.sqlx.sqlite.db");
+    buf
+});
+
+#[cfg(feature="sqlite")]
+static HITDNS_SQLITE_POOL: Lazy<SqlitePool> = Lazy::new(||{
+    let file = &*HITDNS_SQLITE_FILENAME;
+    println!("{file:?}");
+    smol::block_on(async move {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .min_connections(1)
+            .acquire_timeout(Duration::from_secs(10))
+
+            .max_lifetime(None)
+            .idle_timeout(None)
+
+            .connect_with(
+                SqliteConnectOptions::new()
+                .filename(file)
+                .create_if_missing(true)
+                .read_only(false)
+                .journal_mode(SqliteJournalMode::Wal)
+                .locking_mode(SqliteLockingMode::Normal)
+                .synchronous(SqliteSynchronous::Normal)
+            ).await
+            .expect("sqlx cannot connect to sqlite db");
+
+        sqlx::query("CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT").execute(&pool).await.expect("sqlx cannot create table in opened sqlite db");
+        pool
+    })
+});
 
 #[cfg(feature="sled")]
 static HITDNS_SLED_FILENAME: Lazy<PathBuf> = Lazy::new(||{
@@ -142,40 +180,29 @@ static HITDNS_SLED_DB: Lazy<sled::Db> = Lazy::new(||{
     db
 });
 
-#[cfg(feature="sqlite")]
-static HITDNS_SQLITE_FILENAME: Lazy<PathBuf> = Lazy::new(||{
+#[cfg(feature="rocks")]
+static HITDNS_ROCKS_FILENAME: Lazy<PathBuf> = Lazy::new(||{
     let mut buf = (*HITDNS_DIR).clone();
-    buf.push("cache.sqlx.sqlite.db");
+    buf.push("hitdns.cache.rocks.db");
     buf
 });
 
-#[cfg(feature="sqlite")]
-static HITDNS_SQLITE_POOL: Lazy<SqlitePool> = Lazy::new(||{
-    let file = &*HITDNS_SQLITE_FILENAME;
-    println!("{file:?}");
-    smol::block_on(async move {
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .min_connections(1)
-            .acquire_timeout(Duration::from_secs(10))
+#[cfg(feature="rocks")]
+static HITDNS_ROCKS_DB: Lazy<sled::Db> = Lazy::new(||{
+    let opt = rocksdb::Options::default()
+        .map_db_options(|db_opt| {
+            db_opt.create_if_missing(true)
+        })
+        .map_cf_options(|cf_opt| {
+            cf_opt //.disable_auto_compactions(true)
+        });
+    let db =
+        rocksdb::DB::open(opt, *HITDNS_ROCKS_FILENAME)
+        .unwrap();
 
-            .max_lifetime(None)
-            .idle_timeout(None)
+    let _ = db.create_column_family(Default::default(), "hitdns_cache_v3").log_warn();
 
-            .connect_with(
-                SqliteConnectOptions::new()
-                .filename(file)
-                .create_if_missing(true)
-                .read_only(false)
-                .journal_mode(SqliteJournalMode::Wal)
-                .locking_mode(SqliteLockingMode::Normal)
-                .synchronous(SqliteSynchronous::Normal)
-            ).await
-            .expect("sqlx cannot connect to sqlite db");
-
-        sqlx::query("CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT").execute(&pool).await.expect("sqlx cannot create table in opened sqlite db");
-        pool
-    })
+    db
 });
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -486,6 +513,18 @@ impl DNSCacheEntry {
 
                     tree.insert(query, entry)
                         .log_warn()?;
+                }
+
+                #[cfg(feature="rocks")]
+                {
+                    let query: Vec<u8> =
+                        bincode::serialize(&query)
+                        .log_error()?;
+                    let entry: Vec<u8> =
+                        bincode::serialize(&entry)
+                        .log_error()?;
+
+                    HITDNS_ROCKS_DB.put(Default::default(), query, entry)?;
                 }
 
                 Ok(())
