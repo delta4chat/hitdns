@@ -40,6 +40,7 @@ smolscale = { package = "smolscale2", version = "0.4.6", features = ["preempt"] 
 
 sqlx = { optional = true, version = "0.7.3", features = ["runtime-async-std", "sqlite"], default-features = false }
 sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"], default-features = false }
+fastrand = "2.0.1"
 #sled = { optional = true, version = "1.0.0-alpha.120" }
 
 [profile.dev]

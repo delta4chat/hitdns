@@ -1109,6 +1109,7 @@ dependencies = [
  "clap",
  "directories",
  "env_logger",
+ "fastrand 2.0.1",
  "hickory-proto",
  "hyper",
  "log",
