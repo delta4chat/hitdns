@@ -1,6 +1,6 @@
 [package]
 name = "hitdns"
-version = "0.3.6"
+version = "0.3.7"
 edition = "2021"
 description = "hitdns is a DNS forward server optimized for cache hit ratio and query latency."
 license = "GPL-3.0"
@@ -56,11 +56,11 @@ incremental = false
 [profile.release]
 panic = "unwind"
 opt-level = 2
-#lto = true
+lto = true
 #strip = "none"
 codegen-units = 1
 overflow-checks = true
 debug-assertions = false
-#debug = "limited"
+debug = "limited"
 incremental = false
 
