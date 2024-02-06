@@ -518,15 +518,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 
 [[package]]
-name = "cmake"
-version = "0.1.50"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
-dependencies = [
- "cc",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1123,7 +1114,6 @@ dependencies = [
  "log",
  "once_cell",
  "reqwest",
- "rocks",
  "scc",
  "serde",
  "sled",
@@ -1851,28 +1841,6 @@ dependencies = [
  "spin",
  "untrusted",
  "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "rocks"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59fba458161d2e2c398e3e7361f7a1351c6d33d2852ed9d0ad9f655b85bcc6ae"
-dependencies = [
- "lazy_static",
- "rocks-sys",
-]
-
-[[package]]
-name = "rocks-sys"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72d19d586699f2cb70ad475db8df8f3b91d9cc495c4df33bb37acec6dd5d05a3"
-dependencies = [
- "cc",
- "cmake",
- "pkg-config",
- "vcpkg",
 ]
 
 [[package]]

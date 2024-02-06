@@ -41,9 +41,6 @@ use sqlx::{
     {Row, Value, ValueRef},
 };
 
-#[cfg(feature="rocks")]
-use rocks::rocksdb;
-
 use async_lock::RwLock;
 
 use smol_timeout::TimeoutExt;
@@ -116,7 +113,6 @@ static HITDNS_SQLITE_FILENAME: Lazy<PathBuf> = Lazy::new(||{
 #[cfg(feature="sqlite")]
 static HITDNS_SQLITE_POOL: Lazy<SqlitePool> = Lazy::new(||{
     let file = &*HITDNS_SQLITE_FILENAME;
-    println!("{file:?}");
     smol::block_on(async move {
         let pool = SqlitePoolOptions::new()
             .max_connections(1)
@@ -151,59 +147,16 @@ static HITDNS_SLED_FILENAME: Lazy<PathBuf> = Lazy::new(||{
 
 #[cfg(feature="sled")]
 static HITDNS_SLED_DB: Lazy<sled::Db> = Lazy::new(||{
-    let db = sled::Config::new()
+    sled::Config::new()
         .path(&*HITDNS_SLED_FILENAME)
         .mode(sled::Mode::HighThroughput)
-        .cache_capacity(1048576 * 8)
+        .cache_capacity(1048576 * 8) // 8.0 MB
         .flush_every_ms(Some(1000))
         .temporary(false)
         .print_profile_on_drop(true)
         .use_compression(true)
         .compression_factor(22)
-        .open().expect("cannot open sled db");
-
-    // watchdog that triggered by every write ops
-    {
-        let db = db.clone();
-        let mut evt = db.watch_prefix([]);
-        std::thread::Builder::new()
-            .name("hitdns-sled-sync".to_string())
-            .spawn(move || {
-                loop {
-                    while let Some(_) = evt.next() {
-                        log::info!("flush sled {:?}", Instant::now());
-                        db.flush()
-                            .expect("unable flush sled");
-                    }
-                }
-            }).expect("cannot create sled flush watchdog");
-    }
-    db
-});
-
-#[cfg(feature="rocks")]
-static HITDNS_ROCKS_FILENAME: Lazy<PathBuf> = Lazy::new(||{
-    let mut buf = (*HITDNS_DIR).clone();
-    buf.push("hitdns.cache.rocks.db");
-    buf
-});
-
-#[cfg(feature="rocks")]
-static HITDNS_ROCKS_DB: Lazy<sled::Db> = Lazy::new(||{
-    let opt = rocksdb::Options::default()
-        .map_db_options(|db_opt| {
-            db_opt.create_if_missing(true)
-        })
-        .map_cf_options(|cf_opt| {
-            cf_opt //.disable_auto_compactions(true)
-        });
-    let db =
-        rocksdb::DB::open(opt, *HITDNS_ROCKS_FILENAME)
-        .unwrap();
-
-    let _ = db.create_column_family(Default::default(), "hitdns_cache_v3").log_warn();
-
-    db
+        .open().expect("cannot open sled db")
 });
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -512,20 +465,8 @@ impl DNSCacheEntry {
                         .open_tree(b"hitdns_cache_v2")
                         .log_warn()?;
 
-                    tree.insert(query, entry)
-                        .log_warn()?;
-                }
-
-                #[cfg(feature="rocks")]
-                {
-                    let query: Vec<u8> =
-                        bincode::serialize(&query)
-                        .log_error()?;
-                    let entry: Vec<u8> =
-                        bincode::serialize(&entry)
-                        .log_error()?;
-
-                    HITDNS_ROCKS_DB.put(Default::default(), query, entry)?;
+                    tree.insert(query, entry).log_warn()?;
+                    tree.flush_async().await.log_error()?;
                 }
 
                 Ok(())
@@ -577,11 +518,23 @@ impl DNSCache {
                     .decode();
 
                 let query: DNSQuery =
-                    bincode::deserialize(&query)
-                    .log_error()?;
+                    match
+                        bincode::deserialize(&query)
+                        .context("cannot deserialize 'query' from sqlite")
+                        .log_error()
+                    {
+                        Ok(v) => v,
+                        _ => { continue; },
+                    };
                 let entry: DNSEntry =
-                    bincode::deserialize(&entry)
-                    .log_error()?;
+                    match
+                        bincode::deserialize(&entry)
+                        .context("cannot deserialize 'entry' from sqlite")
+                        .log_error()
+                    {
+                        Ok(v) => v,
+                        _ => { continue; },
+                    };
 
                 let cache_entry: DNSCacheEntry =
                     Arc::new(entry).into();
@@ -597,20 +550,34 @@ impl DNSCache {
                 .open_tree(b"hitdns_cache_v2").context("cannot open sled tree").log_warn()?;
 
             for ret in tree.iter() {
+                log::trace!("from sled tree: {ret:?}");
+
                 let (query, entry) = match ret {
                     Ok(v) => v,
                     Err(e) => {
-                        log::warn!("end of sled: {e:?}");
-                        break;
+                        log::warn!("cannot fetch one from sled tree (error={e:?}). end of sled tree?");
+                        continue;
                     }
                 };
 
                 let query: DNSQuery =
-                    bincode::deserialize(&query)
-                    .log_error()?;
+                    match
+                        bincode::deserialize(&query)
+                        .context("cannot deserialize 'query' from sled")
+                        .log_error()
+                    {
+                        Ok(v) => v,
+                        _ => { continue; },
+                    };
                 let entry: DNSEntry =
-                    bincode::deserialize(&entry)
-                    .log_error()?;
+                    match
+                        bincode::deserialize(&entry)
+                        .context("cannot deserialize 'entry' from sled")
+                        .log_error()
+                    {
+                        Ok(v) => v,
+                        _ => { continue; },
+                    };
 
                 let cache_entry: DNSCacheEntry =
                     Arc::new(entry).into();
@@ -624,7 +591,7 @@ impl DNSCache {
             {
                 let mut x = vec![];
                 memory.scan(|k, v| {
-                    log::debug!("migrate {k:?} / {v:?}");
+                    log::trace!("migrate {k:?}");
                     x.push((k.clone(), v.clone()));
                 });
                 for (query, cache_entry) in x.iter() {
@@ -635,12 +602,12 @@ impl DNSCache {
                         bincode::serialize(&{
                             let entry: Arc<DNSEntry> =
                                 cache_entry.status()
-                                .await.try_into()
-                                .log_error()?;
-                            Arc::into_inner(entry)
+                                .await.try_into()?;
+                            entry.deref().clone()
                         })?;
 
-                    tree.insert(query, entry).context("cannot insert to sled tree")?;
+                    tree.insert(query, entry).context("cannot insert to sled tree").log_warn()?;
+                    tree.flush_async().await.log_error()?;
                 }
             }
         }
@@ -1018,8 +985,13 @@ impl<T: AsRef<DNSResolver> DNSResolver for &T
 */
 
 impl core::fmt::Debug for dyn DNSResolver {
-    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
-        Ok(())
+    fn fmt(&self, f: &mut core::fmt::Formatter)
+        -> Result<(), core::fmt::Error>
+    {
+        f.debug_struct("dyn DNSResolver")
+            .field("dns_upstream", &self.dns_upstream())
+            .field("dns_protocol", &self.dns_protocol())
+            .finish()
     }
 }
 
@@ -1106,7 +1078,7 @@ impl DNSDaemon {
             let mut buf = vec![0u8; 65535];
             let mut msg;
             loop {
-                let (len, peer) = udp.recv_from(&mut buf).await.log_error()?;
+                let (len, peer) = udp.recv_from(&mut buf).await.context("cannot recvfrom udp socket").log_error()?;
                 msg = buf[..len].to_vec();
                 let udp = udp.clone();
                 let cache = cache.clone();
@@ -1245,6 +1217,7 @@ async fn main_async() -> anyhow::Result<()> {
             opt.hosts = Some(filename);
         }
     }
+
     DNSDaemon::new(opt).await.log_error()?.run().await;
     Ok(())
 }

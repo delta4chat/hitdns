@@ -13,7 +13,6 @@ repository="https://github.com/delta4chat/hitdns"
 default = [ "sqlite" ]
 sqlite = [ "dep:sqlx" ]
 sled = [ "dep:sled" ]
-rocks = [ "dep:rocks" ]
 
 [dependencies]
 anyhow = "1.0.79"
@@ -41,7 +40,7 @@ smolscale = { package = "smolscale2", version = "0.4.6", features = ["preempt"] 
 
 sqlx = { optional = true, version = "0.7.3", features = ["runtime-async-std", "sqlite"], default-features = false }
 sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"], default-features = false }
-rocks = { optional = true, version = "0.1.10", features = ["static-link", "full"], default-features = false }
+#sled = { optional = true, version = "1.0.0-alpha.120" }
 
 [profile.dev]
 panic = "unwind"
