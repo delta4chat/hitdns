@@ -39,7 +39,7 @@ smol-timeout = "0.6.0"
 
 #smolscale = { version = "0.4.4", features = ["preempt"] }
 
-smolscale2 = { version = "0.4.8", features = ["preempt"] }
+smolscale2 = { version = "0.4.9", features = ["preempt"] }
 #smolscale2 = { path = "../smolscale", features = ["preempt"] }
 
 sqlx = { optional = true, version = "0.7.3", features = ["runtime-async-std", "sqlite"], default-features = false }
