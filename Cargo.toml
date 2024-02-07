@@ -1,6 +1,6 @@
 [package]
 name = "hitdns"
-version = "0.3.8"
+version = "0.3.9"
 edition = "2021"
 description = "hitdns is a DNS forward server optimized for cache hit ratio and query latency."
 license = "GPL-3.0"
@@ -32,15 +32,18 @@ reqwest = { version = "0.11.23", features = ["rustls-tls"], default-features = f
 scc = { version = "2.0.16", features = ["serde"] }
 serde = { version = "1.0.195", features = ["derive"] }
 
+fastrand = "2.0.1"
+
 smol = "2.0.0"
 smol-timeout = "0.6.0"
 
 #smolscale = { version = "0.4.4", features = ["preempt"] }
-smolscale = { package = "smolscale2", version = "0.4.6", features = ["preempt"] }
+
+smolscale2 = { version = "0.4.8", features = ["preempt"] }
+#smolscale2 = { path = "../smolscale", features = ["preempt"] }
 
 sqlx = { optional = true, version = "0.7.3", features = ["runtime-async-std", "sqlite"], default-features = false }
 sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"], default-features = false }
-fastrand = "2.0.1"
 #sled = { optional = true, version = "1.0.0-alpha.120" }
 
 [profile.dev]
@@ -56,7 +59,7 @@ incremental = false
 
 [profile.release]
 panic = "unwind"
-opt-level = 2
+opt-level = 3
 lto = true
 #strip = "none"
 codegen-units = 1

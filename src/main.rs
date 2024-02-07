@@ -432,7 +432,7 @@ impl DNSCacheEntry {
         let (update_tx, update_rx) =smol::channel::bounded(1);
         *self.update_notify.write().await = Some(update_rx);
         *self.update_task.write().await = Some(Arc::new(
-            smolscale::spawn(async move {
+            smolscale2::spawn(async move {
                 let upstream = resolver.dns_upstream();
                 let start = Instant::now();
                 let mut response = match timeout_helper(resolver.dns_resolve(&query), timeout).await {
@@ -1086,7 +1086,7 @@ impl DNSOverTLS {
         let _task = {
             let connector = connector.clone();
             let sessions = sessions.clone();
-            smol::spawn(async move {
+            smolscale2::spawn(async move {
                 let mut reconnecting: Vec<SocketAddr> = vec![];
                 let mut ret = vec![];
                 loop {
@@ -1166,6 +1166,10 @@ impl DNSOverTLS {
                         }
                     }
                     ret.clear();
+
+                    smol::Timer::after(
+                        Duration::from_secs(1)
+                    ).await;
                 }
             })
         };
@@ -1402,7 +1406,7 @@ impl DNSDaemon {
 
         let cache = cache_.clone();
         let udp = udp_.clone();
-        let udp_task = smolscale::spawn(async move {
+        let udp_task = smolscale2::spawn(async move {
             let mut buf = vec![0u8; 65535];
             let mut msg;
             loop {
@@ -1410,7 +1414,7 @@ impl DNSDaemon {
                 msg = buf[..len].to_vec();
                 let udp = udp.clone();
                 let cache = cache.clone();
-                smolscale::spawn(async move {
+                smolscale2::spawn(async move {
                     let req = dns::Message::from_vec(&msg).log_debug()?;
                     let res: dns::Message = cache.query(req).await.log_warn()?;
                     udp.send_to(res.to_vec().expect("bug: DNSCache.query returns invalid data").as_ref(), peer).await.log_error()?;
@@ -1424,12 +1428,12 @@ impl DNSDaemon {
 
         let cache = cache_.clone();
         let tcp = tcp_.clone();
-        let tcp_task = smolscale::spawn(async move {
+        let tcp_task = smolscale2::spawn(async move {
             loop {
                 let (mut conn, peer) = tcp.accept().await.log_error()?;
                 log::info!("DNS Daemon accepted new TCP connection from {peer:?}");
                 let cache = cache.clone();
-                smolscale::spawn(async move {
+                smolscale2::spawn(async move {
                     let mut buf = vec![0u8; 65535];
                     let mut buf2: Vec<u8> = vec![];
                     let mut len = [0u8; 2];
@@ -1479,13 +1483,13 @@ impl DNSDaemon {
 
     async fn run(self) {
         loop {
-            log::trace!("cache status: {:?}", self.cache.memory.len());
-            log::trace!("smolscale worker threads: {:?}", smolscale::running_threads());
-            log::trace!("tcp listener: {:?}\ntcp task: {:?}", &self.tcp, &self.tcp_task);
-            log::trace!("udp socket: {:?}\nudp task: {:?}", &self.udp, &self.udp_task);
+            log::debug!("cache status: {:?}", self.cache.memory.len());
+            log::debug!("smolscale2 worker threads: {:?}", smolscale2::running_threads());
+            log::debug!("tcp listener: {:?}\ntcp task: {:?}", &self.tcp, &self.tcp_task);
+            log::debug!("udp socket: {:?}\nudp task: {:?}", &self.udp, &self.udp_task);
 
             if self.tcp_task.is_finished() || self.udp_task.is_finished() {
-                log::error!("listener died");
+                log::error!("listener task died");
                 return;
             }
 
@@ -1495,6 +1499,7 @@ impl DNSDaemon {
 }
 
 #[derive(Debug, Clone, clap::Parser)]
+#[command(author, version, about, long_about)]
 struct HitdnsOpt {
     /// location of a hosts.txt file.
     /// examples of this file format, that can be found at /etc/hosts (Unix-like systems), or
@@ -1503,6 +1508,7 @@ struct HitdnsOpt {
     hosts: Option<PathBuf>,
 
     #[arg(long)]
+    /// Whether try to find system-side hosts.txt
     use_system_hosts: bool,
 
     /// Whether enable TLS SNI extension.
@@ -1527,7 +1533,6 @@ struct HitdnsOpt {
 }
 
 async fn main_async() -> anyhow::Result<()> {
-    env_logger::init();
     let mut opt = HitdnsOpt::parse();
     if opt.use_system_hosts {
         let filename =
@@ -1556,13 +1561,8 @@ async fn main_async() -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    /*
-    std::panic::set_hook(Box::new(|info| {
-        log::error!("panic! {info:?}");
-        //std::panic::default_hook(info);
-    }));*/
-    smolscale::permanently_single_threaded();
-    //smolscale::set_max_threads(2);
-    smolscale::block_on(main_async())
+    env_logger::init();
+    smolscale2::set_max_threads(4);
+    smolscale2::block_on(main_async())
 }
 

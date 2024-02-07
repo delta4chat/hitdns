@@ -455,12 +455,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2bd12c1caf447e69cd4528f47f94d203fd2582878ecb9e9465484c4148a8223"
 
 [[package]]
-name = "cache-padded"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "981520c98f422fcc584dc1a95c334e6953900b9106bc47a9839b81790009eb21"
-
-[[package]]
 name = "cc"
 version = "1.0.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,6 +524,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d16048cd947b08fa32c24458a22f5dc5e835264f689f4f5653210c69fd107363"
 dependencies = [
  "crossbeam-utils",
+ "portable-atomic",
 ]
 
 [[package]]
@@ -579,16 +574,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b540bd8bc810d3885c6ea91e2018302f68baba2129ab3e88f32389ee9370880d"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "crossbeam-deque"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "613f8cc01fe9cf1a3eb3d7f488fd2fa8388403e97039e2f73692932e291a770d"
-dependencies = [
- "crossbeam-epoch",
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -755,6 +740,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "event-listener"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b72557800024fabbaa2449dd4bf24e37b93702d457a4d4f2b0dd1f0f039f20c1"
+dependencies = [
+ "concurrent-queue",
+ "parking",
+ "pin-project-lite 0.2.13",
+ "portable-atomic",
+ "portable-atomic-util",
+]
+
+[[package]]
 name = "event-listener-strategy"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -778,19 +776,6 @@ name = "fastrand"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25cbce373ec4653f1a01a31e8a5e5ec0c622dc27ff9c4e6606eefef5cbbed4a5"
-
-[[package]]
-name = "flume"
-version = "0.10.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1657b4441c3403d9f7b3409e47575237dac27b1b5726df654a6ecbf92f0f7577"
-dependencies = [
- "futures-core",
- "futures-sink",
- "nanorand",
- "pin-project",
- "spin",
-]
 
 [[package]]
 name = "flume"
@@ -853,17 +838,6 @@ dependencies = [
  "futures-core",
  "futures-task",
  "futures-util",
-]
-
-[[package]]
-name = "futures-intrusive"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a604f7a68fbf8103337523b1fadc8ade7361ee3f112f7c680ad179651616aed5"
-dependencies = [
- "futures-core",
- "lock_api",
- "parking_lot 0.11.2",
 ]
 
 [[package]]
@@ -990,10 +964,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "190092ea657667030ac6a35e305e62fc4dd69fd98ac98631e5d3a2b1575a12b5"
 dependencies = [
  "cfg-if",
- "js-sys",
  "libc",
  "wasi",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -1098,7 +1070,7 @@ dependencies = [
 
 [[package]]
 name = "hitdns"
-version = "0.3.8"
+version = "0.3.9"
 dependencies = [
  "anyhow",
  "async-lock 3.3.0",
@@ -1426,15 +1398,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nanorand"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a51313c5820b0b02bd422f4b44776fbf47961755c74ce64afc73bfad10226c3"
-dependencies = [
- "getrandom",
-]
-
-[[package]]
 name = "nix"
 version = "0.27.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1578,26 +1541,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
 
 [[package]]
-name = "pin-project"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0302c4a0442c456bd56f841aee5c3bfd17967563f6fadc9ceb9f9c23cf3807e0"
-dependencies = [
- "pin-project-internal",
-]
-
-[[package]]
-name = "pin-project-internal"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "266c042b60c9c76b8d53061e52b2e0d1116abc57cefc8c5cd671619a56ac3690"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.48",
-]
-
-[[package]]
 name = "pin-project-lite"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1660,6 +1603,21 @@ dependencies = [
  "rustix 0.38.31",
  "tracing",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "portable-atomic"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7170ef9988bc169ba16dd36a7fa041e5c4cbeb6a35b76d4c03daded371eae7c0"
+
+[[package]]
+name = "portable-atomic-util"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1a7411625b38d51b41421c6333976adffd4674a925a978856734a2dc853449b"
+dependencies = [
+ "portable-atomic",
 ]
 
 [[package]]
@@ -2084,40 +2042,34 @@ dependencies = [
 
 [[package]]
 name = "smolscale2"
-version = "0.4.6"
+version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0c2c0d8a79f103dbf281b4a39b06e2f5d99cbbefa8dbd00b133e9d01dd41869"
+checksum = "7de7737e224c1d9b13ee92ba545d0cc547a3cd4d2cdb0b7cf929ea4c5b4e6153"
 dependencies = [
  "anyhow",
  "async-channel 1.9.0",
  "async-compat",
  "async-executor",
  "async-global-executor",
- "async-io 1.13.0",
+ "async-io 2.3.1",
  "async-task",
  "backtrace",
- "cache-padded",
- "crossbeam-deque",
- "crossbeam-queue",
- "crossbeam-utils",
- "event-listener 2.5.3",
- "fastrand 1.9.0",
- "flume 0.10.14",
- "futures-intrusive 0.4.2",
- "futures-lite 1.13.0",
+ "concurrent-queue",
+ "event-listener 5.0.0",
+ "fastrand 2.0.1",
+ "futures-intrusive",
+ "futures-lite 2.2.0",
  "futures-util",
  "log",
  "num_cpus",
  "once_cell",
  "parking_lot 0.12.1",
  "pin-project-lite 0.2.13",
+ "portable-atomic",
  "scc",
  "scopeguard",
- "slab",
  "st3",
  "tabwriter",
- "thread_local",
- "waker-fn",
 ]
 
 [[package]]
@@ -2190,7 +2142,7 @@ dependencies = [
  "event-listener 2.5.3",
  "futures-channel",
  "futures-core",
- "futures-intrusive 0.5.0",
+ "futures-intrusive",
  "futures-io",
  "futures-util",
  "hashlink",
@@ -2255,11 +2207,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "210976b7d948c7ba9fced8ca835b11cbb2d677c59c79de41ac0d397e14547490"
 dependencies = [
  "atoi",
- "flume 0.11.0",
+ "flume",
  "futures-channel",
  "futures-core",
  "futures-executor",
- "futures-intrusive 0.5.0",
+ "futures-intrusive",
  "futures-util",
  "libsqlite3-sys",
  "log",
@@ -2544,9 +2496,9 @@ dependencies = [
 
 [[package]]
 name = "unicode-segmentation"
-version = "1.10.1"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1dd624098567895118886609431a7c3b8f516e41d30e0643f03d94592a147e36"
+checksum = "d4c87d22b6e3f4a18d4d40ef354e97c90fcb14dd91d7dc0aa9d8a1172ebf7202"
 
 [[package]]
 name = "unicode-width"
