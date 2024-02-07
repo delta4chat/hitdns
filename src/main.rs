@@ -65,6 +65,36 @@ use clap::Parser;
 
 use core::fmt::Debug;
 
+use core::ops::{Add, Div};
+
+/*
+trait Average<T: Add + Div + Copy> {
+    fn average(&self: &[T]) -> T;
+}
+impl Average for &[Duration] {
+    fn average(&self) -> Duration {
+    }
+}*/
+
+fn average<T>(set: &[T]) -> f64
+where
+    T: Default + Copy + Add<Output=T> + Into<f64>
+{
+    let len = set.len();
+    if len > 0 {
+        let len: f64 = len as f64;
+        let mut sum: T = Default::default();
+        for n in set.iter() {
+            sum = sum + *n;
+        }
+        let sum: f64 = sum.into();
+
+        sum / len
+    } else {
+        0.0
+    }
+}
+
 trait LogResult: Debug + Sized {
     fn log_generic(self, level: log::Level) -> Self;
 
@@ -671,7 +701,9 @@ impl DNSCache {
 
 #[derive(Debug, Clone)]
 struct Hosts {
-    map: Arc<std::collections::HashMap<String, Vec<IpAddr>>>,
+    map: Arc<
+        std::collections::HashMap<  String, Vec<IpAddr>  >
+        >,
     filename: Arc<PathBuf>,
 }
 impl TryFrom<&PathBuf> for Hosts {
@@ -752,18 +784,25 @@ impl TryFrom<&PathBuf> for Hosts {
     }
 }
 
-impl reqwest::dns::Resolve for Hosts {
-    fn resolve(&self, domain: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
-        let mut domain: String = domain.as_str().to_string();
+impl Hosts {
+    fn lookup(&self, domain: &str)
+        -> Option<Vec<IpAddr>>
+    {
+        let mut domain: String = domain.to_string();
         if ! domain.ends_with(".") {
             domain.push('.');
         }
         let domain = domain.to_ascii_lowercase();
 
-        let maybe_ips:Option<Vec<IpAddr>> = match self.map.get(&domain) {
+        match self.map.get(&domain) {
             Some(v) => { Some(v.clone()) },
             None => { None },
-        };
+        }
+    }
+}
+impl reqwest::dns::Resolve for Hosts {
+    fn resolve(&self, domain: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
+        let maybe_ips = self.lookup(domain.as_str());
         let filename = self.filename.clone();
         Box::pin(async move {
             if let Some(ips) = maybe_ips {
@@ -799,6 +838,7 @@ impl reqwest::dns::Resolve for Hosts {
 struct DNSOverHTTPS {
     client: reqwest::Client,
     url: reqwest::Url,
+    metrics: Arc<RwLock<DNSMetrics>>,
 }
 
 impl<'a> DNSOverHTTPS {
@@ -883,12 +923,51 @@ impl<'a> DNSOverHTTPS {
 
         Ok(Self {
             client,
-            url,
+            url: url.clone(),
+            metrics:
+                Arc::new(RwLock::new(DNSMetrics {
+                    latency: Vec::new(),
+                    upstream: url.to_string(),
+                    reliability: 0,
+                    online: false,
+                    last_respond: SystemTime::UNIX_EPOCH,
+                }))
         })
     }
 
     // un-cached DNS Query
-    async fn _dns_resolve(&self, query: &DNSQuery) -> anyhow::Result<dns::Message> {
+    async fn _dns_resolve(&self, query: &DNSQuery)
+        -> anyhow::Result<dns::Message>
+    {
+        let start = Instant::now();
+        let result = self._orig_dns_resolve(query).await;
+        let latency = start.elapsed();
+
+        {
+            let mut metrics = self.metrics.write().await;
+            metrics.latency.push(latency);
+            metrics.last_respond = SystemTime::now();
+
+            if result.is_ok() {
+                metrics.online = true;
+
+                if metrics.reliability < 100 {
+                    metrics.reliability += 1;
+                }
+            } else {
+                metrics.online = false;
+
+                if metrics.reliability > 0 {
+                    metrics.reliability -= 1;
+                }
+            }
+        }
+
+        result
+    }
+    async fn _orig_dns_resolve(&self, query: &DNSQuery)
+        -> anyhow::Result<dns::Message>
+    {
         log::info!("DoH un-cached Query: {query:?}");
 
         let req: dns::Message = query.try_into().log_warn()?;
@@ -940,6 +1019,10 @@ impl DNSResolver for DNSOverHTTPS {
     fn dns_protocol(&self) -> &'static str {
         "DNS over HTTP/2 over TLS over TCP"
     }
+
+    fn dns_metrics(&self) -> DNSMetrics {
+        self.metrics.read_blocking().clone()
+    }
 }
 
 type TlsStream =async_tls::client::TlsStream<TcpStream>;
@@ -980,7 +1063,7 @@ impl DNSOverTLS {
                         };
                     let host: String = y.join(":");
 
-                    if let Some(ips) =hosts.map.get(&host){
+                    if let Some(ips) = hosts.lookup(&host){
                         for ip in ips.iter() {
                             x.push(
                                 SocketAddr::new(*ip, port)
@@ -1069,7 +1152,7 @@ impl DNSOverTLS {
                                 if let Err(err) =
                                     io.peek(&mut [0]).await
                                 {
-                                    log::warn!("session died {addr:?} / {io:?}");
+                                    log::warn!("session died: addr={addr:?} | io={io:?} | error={err:?}");
                                     reconnecting.push(*addr);
                                     // remove dead conn
                                     sessions.update_async(
@@ -1106,7 +1189,7 @@ impl DNSOverTLS {
         };
 
         let mut all_conns = vec![];
-        self.sessions.scan_async(|addr, conns| {
+        self.sessions.scan_async(|_, conns| {
             for conn in conns.iter() {
                 all_conns.push( conn.1.get_ref().clone() );
             }
@@ -1174,17 +1257,15 @@ impl DNSResolver for DNSOverTLS {
     fn dns_protocol(&self) -> &str {
         "DNS over TLS over TCP"
     }
-}
 
+    fn dns_metrics(&self) -> DNSMetrics {
+        // TODO
+        todo!()
+    }
+}
 
 struct DNSOverQUIC {
     addr: SocketAddr,
-}
-
-enum DNSUpstream {
-    DoH(DNSOverHTTPS),
-    DoT(DNSOverTLS),
-    DoQ(DNSOverQUIC),
 }
 
 type DNSResolving<'a> = Pin<Box<
@@ -1203,7 +1284,16 @@ trait DNSResolver: Send + Sync + 'static {
     /// a protocol type of upstream
     fn dns_protocol(&self) -> &str;
 
-    //fn dns_metrics(&self) -> DNSMetrics;
+    fn dns_metrics(&self) -> DNSMetrics;
+}
+
+#[derive(Debug, Clone)]
+struct DNSMetrics {
+    latency: Vec<Duration>,
+    reliability: u8, // 0% - 100%
+    online: bool,
+    last_respond: SystemTime,
+    upstream: String,
 }
 
 /*
