@@ -708,20 +708,32 @@ impl DNSCache {
     }
 }
 
-#[derive(Debug, Clone)]
+static HOSTS: Lazy<Hosts> = Lazy::new(||{ Hosts::new() });
+
+#[derive(Debug)]
 struct Hosts {
-    map: Arc<
-        std::collections::HashMap<  String, Vec<IpAddr>  >
-        >,
-    filename: Arc<PathBuf>,
+    map: scc::HashMap<  String, Vec<IpAddr>  >,
 }
-impl TryFrom<&PathBuf> for Hosts {
-    type Error = anyhow::Error;
-    fn try_from(filename: &PathBuf) -> anyhow::Result<Hosts> {
+impl Hosts {
+    fn new() -> Self {
+        if Lazy::get(&HOSTS).is_some() {
+            panic!("Hosts{{}} should not be constructed again");
+        }
+
+        Self {
+            map: scc::HashMap::new(),
+        }
+    }
+
+    async fn load(&self, filename: &PathBuf)
+        -> anyhow::Result<()>
+    {
         const HOSTS_EXAMPLE: &'static str = "   two examples of hosts.txt that is: 142.250.189.206 ipv4.google.com | 2607:f8b0:4005:814::200e ipv6.google.com   ";
-        use std::collections::HashMap;
-        let mut map: HashMap<String, Vec<IpAddr>> = HashMap::new();
-        let mut file: String = std::fs::read_to_string(filename).context("cannot read from hosts.txt file").log_warn()?;
+
+        let mut file: String =
+            smol::fs::read_to_string(filename).await
+            .context("cannot read from hosts.txt file")
+            .log_warn()?;
 
         // compatible Unix/Linux LF, Windows CR LF, and Mac CR
         // LF    = \n
@@ -780,21 +792,20 @@ impl TryFrom<&PathBuf> for Hosts {
                 log::debug!("Hosts: {filename:?}: ignore tailing words of line {lines}.");
             }
 
-            let ip_list = map.entry(domain).or_insert_with(|| { Vec::new() });
-            ip_list.push(ip);
+            // Entry
+            self.map.entry_async(domain).await
+            .or_insert_with(|| { Vec::new() })
+            .get_mut()
+            // Vec
+            .push(ip);
         }
 
-        log::info!("Hosts: total {lines} lines loaded, {} domain names loaded. mapping: {map:#?}", map.len());
+        log::info!("Hosts: total {lines} lines loaded, {} domain names loaded. mapping: {:#?}", self.map.len(), &self.map);
 
-        Ok(Self {
-            map: Arc::new(map),
-            filename: Arc::new(filename.clone()),
-        })
+        Ok(())
     }
-}
 
-impl Hosts {
-    fn lookup(&self, domain: &str)
+    async fn lookup(&self, domain: impl ToString)
         -> Option<Vec<IpAddr>>
     {
         let mut domain: String = domain.to_string();
@@ -803,17 +814,20 @@ impl Hosts {
         }
         let domain = domain.to_ascii_lowercase();
 
-        match self.map.get(&domain) {
-            Some(v) => { Some(v.clone()) },
+        match self.map.get_async(&domain).await {
+            Some(entry) => {
+                Some( entry.get().clone() )
+            },
             None => { None },
         }
     }
 }
 impl reqwest::dns::Resolve for Hosts {
     fn resolve(&self, domain: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
-        let maybe_ips = self.lookup(domain.as_str());
-        let filename = self.filename.clone();
         Box::pin(async move {
+            let maybe_ips =
+                HOSTS.lookup(domain.as_str()).await;
+
             if let Some(ips) = maybe_ips {
                 let addrs: Vec<SocketAddr> = {
                     // this is a stupid design by reqwest developers
@@ -833,7 +847,7 @@ impl reqwest::dns::Resolve for Hosts {
                 let ok: Box<dyn Iterator<Item=SocketAddr>+Send> = Box::new(addrs.into_iter());
                 Ok(ok)
             } else {
-                let msg = format!("DNS static resolve failed: unable to find a mapping from {domain:?} to IPv4/IPv6 addresses. provided hosts.txt = {:?}", filename);
+                let msg = format!("DNS static resolve failed: unable to find a mapping from {domain:?} to IPv4/IPv6 addresses.");
                 log::warn!("{}", &msg);
                 let err: Box<dyn std::error::Error + Send + Sync> = Box::new(std::io::Error::new(std::io::ErrorKind::Unsupported, msg));
                 Err(err)
@@ -848,12 +862,17 @@ struct DNSOverHTTPS {
     client: reqwest::Client,
     url: reqwest::Url,
     metrics: Arc<RwLock<DNSMetrics>>,
+    _task: Arc<smol::Task<()>>,
 }
 
 impl<'a> DNSOverHTTPS {
     const CONTENT_TYPE: &'static str = "application/dns-message";
 
-    fn new(url: impl ToString, maybe_hosts: &Option<Hosts>, mut tls_sni: bool) -> anyhow::Result<Self> {
+    fn new(
+        url: impl ToString,
+        use_hosts: bool,
+        mut tls_sni: bool
+    ) -> anyhow::Result<Self> {
         let url: String = url.to_string();
         let url = reqwest::Url::parse(&url).log_warn()?;
 
@@ -861,12 +880,12 @@ impl<'a> DNSOverHTTPS {
             anyhow::bail!("DoH server URL scheme invalid.");
         }
         
-        struct NoDNS(Option<Hosts>);
-        impl reqwest::dns::Resolve for NoDNS {
+        struct DummyDNS(bool);
+        impl reqwest::dns::Resolve for DummyDNS {
             // pub type Resolving = Pin<Box<dyn Future<Output = Result<Addrs, Box<dyn StdError + Send + Sync>>> + Send>>;
             fn resolve(&self, domain: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
-                if let Some(hosts) = &self.0 {
-                    return hosts.resolve(domain);
+                if self.0 {
+                    return HOSTS.resolve(domain);
                 }
                 let msg = format!("unexpected DNS resolve request ({domain:?}) from reqwest::Client in DoH client. this avoids infinity-recursive DNS resolving if hitdns itself as a system resolver. because TLS certificate Common Name or Alt Subject Name can be IP addresses, so you can use IP address instead of a domain name (need DoH server supports). or instead you can give a hosts.txt file by --hosts or --use-system-hosts");
                 log::warn!("{}", &msg);
@@ -877,14 +896,13 @@ impl<'a> DNSOverHTTPS {
            }
         }
 
-        if let Some(ref hosts) = maybe_hosts {
-            if ! hosts.map.is_empty() {
+        if use_hosts {
+            if ! HOSTS.map.is_empty() {
                 tls_sni = true;
             }
         }
 
-        // client builder
-        let mut cb =
+        let client =
             reqwest::Client::builder()
 
             // log::trace
@@ -912,36 +930,79 @@ impl<'a> DNSOverHTTPS {
             .pool_max_idle_per_host(5)
 
             // for all DNS resove from reqwest, should redirecting to static name mapping (hosts.txt), or just disable it if no hosts specified
-            .dns_resolver(Arc::new(NoDNS(maybe_hosts.clone())));
-            
+            .dns_resolver(
+                Arc::new(
+                    DummyDNS(use_hosts)
+                )
+            )
 
-        if let Some(hosts) = maybe_hosts {
-            for (domain, ips) in hosts.map.iter() {
-                let ips: Vec<SocketAddr> = {
-                    let mut x = vec![];
-                    for ip in ips.iter() {
-                        x.push(SocketAddr::new(*ip, 0));
-                    }
-                    x
-                };
-                cb = cb.resolve_to_addrs(domain, &ips);
-            }
-        }
             // build client
-        let client = cb.build().log_warn()?;
+            .build().log_warn()?;
+
+        let metrics =
+            Arc::new(RwLock::new(DNSMetrics {
+                latency: Vec::new(),
+                upstream: url.to_string(),
+                reliability: 50,
+                online: false,
+                last_respond: SystemTime::UNIX_EPOCH,
+            }));
 
         Ok(Self {
-            client,
+            client: client.clone(),
             url: url.clone(),
-            metrics:
-                Arc::new(RwLock::new(DNSMetrics {
-                    latency: Vec::new(),
-                    upstream: url.to_string(),
-                    reliability: 50,
-                    online: false,
-                    last_respond: SystemTime::UNIX_EPOCH,
-                }))
-        })
+            metrics: metrics.clone(),
+            _task: Arc::new(smolscale2::spawn(async move {
+                let mut start;
+                let mut latency;
+                let mut maybe_ret;
+                loop {
+                    smol::Timer::after(
+                        Duration::from_secs(10)
+                    ).await;
+
+                    start = Instant::now();
+                    maybe_ret =
+                        client.head( url.clone() )
+                        .send()
+                        .timeout(Duration::from_secs(10))
+                        .await;
+                    latency = start.elapsed();
+
+                    let mut m = metrics.write().await;
+                    if let Some(ret) = &maybe_ret {
+                        if ret.is_ok() {
+                            log::trace!("DoH server {url} working. latency={latency:?} ret={ret:?}");
+                            m.last_respond = SystemTime::now();
+                            m.online = true;
+                            m.latency.push(latency);
+                            if m.reliability < 100 {
+                                m.reliability += 1;
+                            }
+                            std::mem::drop(m);
+                            continue;
+                        } else {
+                            log::warn!("DoH server {url} down. used time: {latency:?}, ret={ret:?}");
+                        }
+                    }
+
+                    if maybe_ret.is_none() {
+                        log::warn!("DoH server {url} not working! timed out.");
+                    }
+
+                    m.online = false;
+                    m.latency.push(
+                        Duration::from_secs(999)
+                    );
+
+                    if m.reliability > 0 {
+                        m.reliability -= 1;
+                    }
+
+                    std::mem::drop(m);
+                }
+            })) // Arc::new(smolscale2::spawn(
+        }) // Ok(
     }
 
     // un-cached DNS Query
@@ -967,7 +1028,9 @@ impl<'a> DNSOverHTTPS {
                 }
             } else {
                 metrics.online = false;
-                metrics.latency.push(Duration::from_secs(999));
+                metrics.latency.push(
+                    Duration::from_secs(999)
+                );
 
                 if metrics.reliability > 0 {
                     metrics.reliability -= 1;
@@ -1051,7 +1114,7 @@ struct DNSOverTLS {
 impl DNSOverTLS {
     async fn new(
         upstream: impl ToString,
-        maybe_hosts: &Option<Hosts>,
+        use_hosts: bool,
     ) -> anyhow::Result<Self> {
         let connector = async_tls::TlsConnector::new();
         let sessions = Arc::new(scc::HashMap::new());
@@ -1065,7 +1128,7 @@ impl DNSOverTLS {
             if let Ok(addr) = upstream.parse() {
                 x.push(addr);
             } else {
-                if let Some(hosts) = maybe_hosts {
+                if use_hosts {
                     let mut y: Vec<&str> =
                         upstream.split(":").collect();
 
@@ -1077,7 +1140,9 @@ impl DNSOverTLS {
                         };
                     let host: String = y.join(":");
 
-                    if let Some(ips) = hosts.lookup(&host){
+                    if let Some(ips) =
+                        HOSTS.lookup(&host).await
+                    {
                         for ip in ips.iter() {
                             x.push(
                                 SocketAddr::new(*ip, port)
@@ -1303,7 +1368,7 @@ trait DNSResolver: Send + Sync + 'static {
     /// a protocol type of upstream
     fn dns_protocol(&self) -> &str;
 
-    /// get analysis for this Upstream
+    /// get analysis snapshot for this Upstream
     fn dns_metrics(&self) -> PinFut<DNSMetrics>;
 }
 
@@ -1470,12 +1535,12 @@ impl DNSDaemon {
         let udp_ = UdpSocket::bind(&opt.listen).await.log_error()?;
         let tcp_ = TcpListener::bind(&opt.listen).await.log_error()?;
 
-        let hosts =
-            if let Some(ref hosts_filename) = opt.hosts {
-                hosts_filename.try_into().log_warn().ok()
-            } else {
-                None
-            };
+        if let Some(ref hosts_filename) = opt.hosts {
+            let _ =
+                HOSTS.load(hosts_filename).await
+                .log_error();
+        }
+
         let resolvers = {
             let mut x: Vec<Arc<dyn DNSResolver>> = vec![];
             for doh_url in opt.doh_upstream.iter() {
@@ -1483,8 +1548,8 @@ impl DNSDaemon {
                     Arc::new(
                         DNSOverHTTPS::new(
                             doh_url,
-                            &hosts,
-                            opt.tls_sni
+                            opt.hosts.is_some(),
+                            opt.tls_sni,
                         )?
                     )
                 );
@@ -1494,11 +1559,16 @@ impl DNSDaemon {
                     Arc::new(
                         DNSOverTLS::new(
                             dot_addr,
-                            &hosts
+                            opt.hosts.is_some(),
                         ).await?
                     )
                 );
             }
+
+            if x.is_empty() {
+                x = default_servers();
+            }
+
             DNSResolverArray::from(x)
         };
         let cache_ = Arc::new(
@@ -1619,7 +1689,7 @@ struct HitdnsOpt {
     tls_sni: bool,
 
     /// Listen address of local plaintext DNS server.
-    #[arg(long, default_value="127.0.0.1:10053")]
+    #[arg(long)]
     listen: SocketAddr,
 
     /// upstream URL of DoH servers.
@@ -1632,6 +1702,43 @@ struct HitdnsOpt {
     /// DNS over TLS
     #[arg(long)]
     dot_upstream: Vec<String>,
+}
+
+fn default_servers() -> Vec<Arc<dyn DNSResolver>> {
+    let doh_server_urls = vec![
+        // Cloudflare DNS
+        "https://1.0.0.1/dns-query",
+        "https://1.1.1.1/dns-query",
+
+        // Quad9 DNS
+        "https://9.9.9.10/dns-query",
+
+        // TWNIC DNS 101 [DISABLED: fake positive flagged "ipfs.io" as malicious domain]
+        //"https://101.101.101.101/dns-query",
+
+        // dns.sb
+        "https://45.11.45.11/dns-query",
+        "https://185.222.222.222/dns-query",
+
+        // Adguard DNS Un-filtered
+        "https://94.140.14.140/dns-query"
+    ];
+
+    let mut list: Vec<Arc<dyn DNSResolver>> = vec![];
+
+    for doh_url in doh_server_urls.iter() {
+        list.push(
+            Arc::new(
+                DNSOverHTTPS::new(
+                    doh_url,
+                    false, // no hosts.txt
+                    false, // disable TLS SNI
+                ).unwrap()
+            )
+        );
+    }
+
+    list
 }
 
 async fn main_async() -> anyhow::Result<()> {

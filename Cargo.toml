@@ -61,10 +61,10 @@ incremental = false
 panic = "unwind"
 opt-level = 3
 lto = true
-#strip = "none"
+strip = "symbols"
 codegen-units = 1
 overflow-checks = true
 debug-assertions = false
-debug = "limited"
+debug = "line-tables-only"
 incremental = false
 
