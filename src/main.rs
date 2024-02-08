@@ -64,34 +64,42 @@ use anyhow::Context;
 use clap::Parser;
 
 use core::fmt::Debug;
-
+use core::iter::Sum;
 use core::ops::{Add, Div};
 
 /*
-trait Average<T: Add + Div + Copy> {
-    fn average(&self: &[T]) -> T;
+trait Average<T>: Sum<T> {
+    fn average(&self) -> T;
 }
-impl Average for &[Duration] {
+
+impl Average<Duration> for dyn Iterator<Item=Duration> {
     fn average(&self) -> Duration {
+        /*
+        let mut secs: Vec<f64> = vec![];
+        for dur in self.iter() {
+            secs.push(dur.as_secs_f64());
+        }*/
+        let len = self.count();
+        let avg = self.sum().as_secs_f64() / len as f64;
+        Duration::from_secs_f64(avg)
     }
 }*/
 
-fn average<T>(set: &[T]) -> f64
+fn average<T>(set: &[T]) -> T
 where
-    T: Default + Copy + Add<Output=T> + Into<f64>
+    T: Default + Copy + From<u64> +
+    Add<Output=T> + Div<Output=T>
 {
     let len = set.len();
     if len > 0 {
-        let len: f64 = len as f64;
+        let len: T = T::from(len as u64);
         let mut sum: T = Default::default();
         for n in set.iter() {
             sum = sum + *n;
         }
-        let sum: f64 = sum.into();
-
         sum / len
     } else {
-        0.0
+        Default::default()
     }
 }
 
@@ -382,6 +390,7 @@ impl DNSCacheEntry {
         }
 
     }
+
     async fn is_updating(&self) -> bool {
         // smol-timeout Option
         if let Some(maybe_task) = self.update_task.read().timeout(Duration::from_millis(20)).await {
@@ -444,7 +453,7 @@ impl DNSCacheEntry {
                 let elapsed = start.elapsed();
 
                 let expire_ttl: u32 = {
-                    const MIN_TTL: u32 = 60;
+                    const MIN_TTL: u32 = 180;
                     let ttl: u32 = response.all_sections().map(|x| { x.ttl() }).min().unwrap_or(MIN_TTL);
 
                     if ttl < MIN_TTL {
@@ -666,7 +675,7 @@ impl DNSCache {
             .get().clone();
 
         let entry = cache_entry.update(
-            self.resolvers.select_best()?,
+            self.resolvers.best().await?,
             //self.resolver.clone(),
             Duration::from_secs(10)
         ).await.log_warn()?;
@@ -928,7 +937,7 @@ impl<'a> DNSOverHTTPS {
                 Arc::new(RwLock::new(DNSMetrics {
                     latency: Vec::new(),
                     upstream: url.to_string(),
-                    reliability: 0,
+                    reliability: 50,
                     online: false,
                     last_respond: SystemTime::UNIX_EPOCH,
                 }))
@@ -943,25 +952,28 @@ impl<'a> DNSOverHTTPS {
         let result = self._orig_dns_resolve(query).await;
         let latency = start.elapsed();
 
-        {
-            let mut metrics = self.metrics.write().await;
-            metrics.latency.push(latency);
-            metrics.last_respond = SystemTime::now();
+        let ok = result.is_ok();
+        let metrics_lock = self.metrics.clone();
+        smolscale2::spawn(async move {
+            let mut metrics = metrics_lock.write().await;
 
-            if result.is_ok() {
+            if ok {
                 metrics.online = true;
+                metrics.latency.push(latency);
+                metrics.last_respond = SystemTime::now();
 
                 if metrics.reliability < 100 {
                     metrics.reliability += 1;
                 }
             } else {
                 metrics.online = false;
+                metrics.latency.push(Duration::from_secs(999));
 
                 if metrics.reliability > 0 {
                     metrics.reliability -= 1;
                 }
             }
-        }
+        }).detach();
 
         result
     }
@@ -1004,7 +1016,7 @@ impl<'a> DNSOverHTTPS {
 }
 impl DNSResolver for DNSOverHTTPS {
     fn dns_resolve(&self, query: &DNSQuery)
-        -> DNSResolving
+        -> PinFut<anyhow::Result<dns::Message>>
     {
         let query = query.clone();
         Box::pin(async move {
@@ -1020,8 +1032,10 @@ impl DNSResolver for DNSOverHTTPS {
         "DNS over HTTP/2 over TLS over TCP"
     }
 
-    fn dns_metrics(&self) -> DNSMetrics {
-        self.metrics.read_blocking().clone()
+    fn dns_metrics(&self) -> PinFut<DNSMetrics> {
+        Box::pin(async move {
+            self.metrics.read().await.clone()
+        })
     }
 }
 
@@ -1247,7 +1261,9 @@ impl DNSOverTLS {
     }
 }
 impl DNSResolver for DNSOverTLS {
-    fn dns_resolve(&self, query: &DNSQuery) ->DNSResolving{
+    fn dns_resolve(&self, query: &DNSQuery)
+        -> PinFut<anyhow::Result<dns::Message>>
+    {
         let query = query.clone();
         Box::pin(async move {
             self._dns_resolve(&query).await
@@ -1262,7 +1278,7 @@ impl DNSResolver for DNSOverTLS {
         "DNS over TLS over TCP"
     }
 
-    fn dns_metrics(&self) -> DNSMetrics {
+    fn dns_metrics(&self) -> PinFut<DNSMetrics> {
         // TODO
         todo!()
     }
@@ -1272,15 +1288,14 @@ struct DNSOverQUIC {
     addr: SocketAddr,
 }
 
-type DNSResolving<'a> = Pin<Box<
-    dyn Future<
-        Output=anyhow::Result<dns::Message>
-    > + Send + 'a
+type PinFut<'a, T> = Pin<Box<
+    dyn Future<Output=T> + Send + 'a
 >>;
 
 trait DNSResolver: Send + Sync + 'static {
     /// un-cached DNS query
-    fn dns_resolve(&self, query: &DNSQuery) ->DNSResolving;
+    fn dns_resolve(&self, query: &DNSQuery) ->
+        PinFut<anyhow::Result<dns::Message>>;
 
     /// a description for upstream, usually URL or any other.
     fn dns_upstream(&self) -> String;
@@ -1288,7 +1303,8 @@ trait DNSResolver: Send + Sync + 'static {
     /// a protocol type of upstream
     fn dns_protocol(&self) -> &str;
 
-    fn dns_metrics(&self) -> DNSMetrics;
+    /// get analysis for this Upstream
+    fn dns_metrics(&self) -> PinFut<DNSMetrics>;
 }
 
 #[derive(Debug, Clone)]
@@ -1323,22 +1339,107 @@ struct DNSResolverArray {
 }
 
 impl DNSResolverArray {
-    fn select_best(&self) -> anyhow::Result<Arc<dyn DNSResolver>> {
-        // TODO: select best resolver by latency and reliability
-        let resolver = self.list[0].clone();
-        Ok(resolver)
-    }
-
+    // constroctor
     fn from(
-        mut val: impl Iterator<Item=Arc<dyn DNSResolver>>
+        val: impl IntoIterator<Item=Arc<dyn DNSResolver>>
     ) -> DNSResolverArray {
         let mut list = Vec::new();
-        while let Some(resolver) = val.next() {
+        for resolver in val {
             list.push(resolver);
         }
 
         DNSResolverArray {
             list: Arc::new(list)
+        }
+    }
+
+    /// select best resolver by minimum latency
+    async fn best(&self)
+        -> anyhow::Result<Arc<dyn DNSResolver>>
+    {
+        let mut best = None;
+        let mut best_metrics = None;
+        for resolver in self.list.as_ref().iter() {
+            let my_metrics = resolver.dns_metrics().await;
+
+            // ignore any offline resolvers
+            if my_metrics.reliability <= 40 {
+                continue;
+            }
+
+            let resolver = resolver.clone();
+            if best.is_none() {
+                best = Some(resolver);
+                best_metrics = Some(my_metrics);
+                continue;
+            }
+
+            let bm = best_metrics.clone().unwrap();
+
+            let mut tmp: Vec<u128>;
+            let metrics_avg = {
+                tmp = my_metrics.latency.iter().map(
+                    |x| { x.as_millis() }
+                ).collect();
+
+                average(&tmp)
+            };   
+            let best_avg = {
+                tmp = bm.latency.iter().map(
+                    |x| { x.as_millis() }
+                ).collect();
+
+                average(&tmp)
+            };
+
+            if metrics_avg < best_avg {
+                best = Some( resolver.clone() );
+                best_metrics = Some( my_metrics.clone() );
+            }
+            // Reliability seems to be more important than Latency
+            if my_metrics.reliability > bm.reliability {
+                best = Some(resolver);
+                best_metrics = Some(my_metrics);
+            }
+        }
+
+        if let Some(resolver) = best {
+            log::info!("selected best resolver {:?} with metrics {best_metrics:?}", &resolver);
+            Ok(resolver)
+        } else {
+            anyhow::bail!("cannot select best resolver! maybe Internet offline, or empty list of resolvers")
+        }
+    }
+
+    fn random(&self)
+        -> anyhow::Result<Arc<dyn DNSResolver>>
+    {
+        if self.list.is_empty() {
+            anyhow::bail!("unexpected empty list of DNS Resolvers!");
+        }
+
+        for _ in 0..10 {
+            // get newest length
+            let len = self.list.len();
+
+            let n = fastrand::usize(0..len);
+
+            if let Some(resolver) = self.list.get(n) {
+                return Ok( resolver.clone() );
+            } else {
+                log::debug!("unexpected cannot get({n}) from resolver list: maybe self.list.len()=={len} changed before get?");
+            }
+        }
+
+        anyhow::bail!("cannot get resolver randomly")
+    }
+
+    fn fixed(&self) -> anyhow::Result<Arc<dyn DNSResolver>>
+    {
+        if let Some(resolver) = self.list.get(0) {
+            Ok( resolver.clone() )
+        } else {
+            anyhow::bail!("cannot select best resolver: empty list of resolvers!")
         }
     }
 }
@@ -1398,7 +1499,7 @@ impl DNSDaemon {
                     )
                 );
             }
-            DNSResolverArray::from(x.into_iter())
+            DNSResolverArray::from(x)
         };
         let cache_ = Arc::new(
             DNSCache::new(resolvers).await?
@@ -1526,9 +1627,10 @@ struct HitdnsOpt {
     #[arg(long, default_value="https://1.0.0.1/dns-query")]
     doh_upstream: Vec<String>,
 
+    /// *Experimental*
     /// upstream address of DoT servers.
     /// DNS over TLS
-    #[arg(long, default_value="1.0.0.1:853")]
+    #[arg(long)]
     dot_upstream: Vec<String>,
 }
 
