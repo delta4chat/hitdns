@@ -1,0 +1,3 @@
+struct DNSOverQUIC {
+    addr: SocketAddr,
+}
