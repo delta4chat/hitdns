@@ -77,7 +77,8 @@ impl TryFrom<&DNSQuery> for dns::Query {
 impl TryFrom<&DNSQuery> for dns::Message {
     type Error = anyhow::Error;
     fn try_from(val: &DNSQuery) -> anyhow::Result<dns::Message> {
-        Ok(dns::Message::new()
+        Ok(
+            dns::Message::new()
             .set_id(0)
             .set_message_type(dns::MessageType::Query)
             .set_op_code(dns::OpCode::Query)
@@ -131,6 +132,7 @@ impl DNSResolverArray {
         val: impl IntoIterator<Item=Arc<dyn DNSResolver>>
     ) -> DNSResolverArray {
         let mut list = Vec::new();
+
         for resolver in val {
             list.push(resolver);
         }
@@ -140,7 +142,18 @@ impl DNSResolverArray {
         }
     }
 
-    /// select best resolver by minimum latency
+    /// select best resolver if available, or fallback to random.
+    pub async fn best_or_random(&self)
+        -> anyhow::Result<Arc<dyn DNSResolver>>
+    {
+        if let Ok(v) = self.best().await {
+            return Ok(v);
+        }
+
+        self.random()
+    }
+
+    /// select best resolver by minimum latency / maximum reliability.
     pub async fn best(&self)
         -> anyhow::Result<Arc<dyn DNSResolver>>
     {
@@ -221,6 +234,7 @@ impl DNSResolverArray {
         anyhow::bail!("cannot get resolver randomly")
     }
 
+    /// select fixed one of all resolvers (often useless)
     pub fn fixed(&self) -> anyhow::Result<Arc<dyn DNSResolver>>
     {
         if let Some(resolver) = self.list.get(0) {

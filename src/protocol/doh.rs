@@ -193,28 +193,34 @@ impl<'a> DNSOverHTTPS {
         let client = self.client.clone();
         let url = self.url.clone();
 
-        let http_res = client.post(url)
+        let http_res = client.post(url.clone())
             .header("Content-Type", Self::CONTENT_TYPE)
             .header("Accept", Self::CONTENT_TYPE)
             .body(req.to_vec()?)
             .send().await.log_info()?;
 
         if http_res.status().as_u16() != 200 {
-            anyhow::bail!("DoH server returns non-200 HTTP status code: {http_res:?}");
+            anyhow::bail!("DoH server {url} returns non-200 HTTP status code: {http_res:?}");
         }
 
         if let Some(ct) = http_res.headers().get("Content-Type") {
             if ct.as_bytes().to_ascii_lowercase() != Self::CONTENT_TYPE.as_bytes() {
-                anyhow::bail!("DoH server returns invalid Content-Type header: {http_res:?}");
+                anyhow::bail!("DoH server {url} returns invalid Content-Type header: {http_res:?}");
             }
         } else {
-            anyhow::bail!("DoH server does not specify Content-Type header: {http_res:?}");
+            anyhow::bail!("DoH server {url} does not specify Content-Type header: {http_res:?}");
         }
 
-        let res: Bytes = http_res.bytes().await.log_warn()?;
-        let mut response =
+        let res: Bytes =
+            http_res.bytes().await
+            .log_warn()?;
+
+        if res.len() > 65535 {
+            anyhow::bail!("unexpected received too large response from DoH server {url}");
+        }
+
+        let response =
             dns::Message::from_vec(&res).log_warn()?;
-        response.set_id(0);
 
         log::info!("DoH un-cached response {response:?}");
         Ok(response)

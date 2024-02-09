@@ -166,6 +166,7 @@ impl DNSCacheEntry {
                 };
                 let expire = SystemTime::now() + Duration::from_secs(expire_ttl.into());
 
+                response.set_id(0);
                 *response.extensions_mut() = None;
 
                 let entry = Arc::new(DNSEntry {

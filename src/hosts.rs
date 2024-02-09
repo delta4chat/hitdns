@@ -1,6 +1,7 @@
 use crate::*;
 
-pub static HOSTS: Lazy<Hosts> = Lazy::new(||{ Hosts::new() });
+pub static HOSTS: Lazy<Hosts> =
+    Lazy::new(||{ Hosts::new() });
 
 #[derive(Debug)]
 pub struct Hosts {
