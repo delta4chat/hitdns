@@ -122,7 +122,7 @@ pub struct DNSMetrics {
 /* DNS Resolver Array */
 #[derive(Debug, Clone)]
 pub struct DNSResolverArray {
-    list: Arc<Vec<Arc<dyn DNSResolver>>>,
+    pub(crate) list: Arc<Vec<Arc<dyn DNSResolver>>>,
 }
 
 impl DNSResolverArray {

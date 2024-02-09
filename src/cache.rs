@@ -236,7 +236,7 @@ impl DNSCacheEntry {
 pub struct DNSCache {
     pub(crate) memory: Arc<scc::HashMap<DNSQuery, DNSCacheEntry>>,
     //disk: SqlitePool,
-    resolvers: Arc<DNSResolverArray>,
+    pub(crate) resolvers: Arc<DNSResolverArray>,
     //resolver: DNSOverHTTPS,
 }
 /// SAFETY: Async access, and backed a scc::HashMap (EBR)
@@ -244,7 +244,10 @@ unsafe impl Sync for DNSCache {}
 unsafe impl Send for DNSCache {}
 
 impl DNSCache {
-    pub async fn new(resolvers: DNSResolverArray) -> anyhow::Result<Self> {
+    pub async fn new(
+        resolvers: DNSResolverArray,
+        debug: bool
+    ) -> anyhow::Result<Self> {
         let memory = Arc::new(scc::HashMap::new());
 
         #[cfg(feature="sqlite")]
@@ -292,7 +295,9 @@ impl DNSCache {
                 .open_tree(b"hitdns_cache_v2").context("cannot open sled tree").log_warn()?;
 
             for ret in tree.iter() {
-                log::trace!("from sled tree: {ret:?}");
+                if debug {
+                    log::trace!("from sled tree: {ret:?}");
+                }
 
                 let (query, entry) = match ret {
                     Ok(v) => v,
@@ -333,7 +338,9 @@ impl DNSCache {
             {
                 let mut x = vec![];
                 memory.scan(|k, v| {
-                    log::trace!("migrate {k:?}");
+                    if debug {
+                        log::trace!("migrate {k:?}");
+                    }
                     x.push((k.clone(), v.clone()));
                 });
                 for (query, cache_entry) in x.iter() {

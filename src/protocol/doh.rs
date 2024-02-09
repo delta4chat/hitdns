@@ -115,7 +115,7 @@ impl<'a> DNSOverHTTPS {
                     let mut m = metrics.write().await;
                     if let Some(ret) = &maybe_ret {
                         if ret.is_ok() {
-                            log::trace!("DoH server {url} working. latency={latency:?} ret={ret:?}");
+                            log::debug!("DoH server {url} working. latency={latency:?} ret={ret:?}");
                             m.last_respond = SystemTime::now();
                             m.online = true;
                             m.latency.push(latency);

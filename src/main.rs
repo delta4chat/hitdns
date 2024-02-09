@@ -86,7 +86,6 @@ pub static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(||{
     let dir = directories::ProjectDirs::from("org", "delta4chat", "hitdns").expect("Cannot get platform-specified dir (via `directories::ProjectDirs`)").data_dir().to_owned();
     std::fs::create_dir_all(&dir).expect("cannot create project dir {dir:?}");
     dir
-
 });
 
 pub fn average<T>(set: &[T]) -> T
@@ -117,14 +116,16 @@ pub async fn timeout_helper<T>(
 }
 
 #[derive(Debug)]
-struct DNSDaemon {
+pub struct DNSDaemon {
     udp: Arc<UdpSocket>, udp_task: smol::Task<anyhow::Result<()>>,
     tcp: Arc<TcpListener>, tcp_task: smol::Task<anyhow::Result<()>>,
     cache: Arc<DNSCache>,
+
+    opt: HitdnsOpt,
 }
 
 impl DNSDaemon {
-    async fn new(opt: HitdnsOpt) -> anyhow::Result<Self> {
+    pub async fn new(opt: HitdnsOpt) -> anyhow::Result<Self> {
         let udp = Arc::new(
             UdpSocket::bind(&opt.listen).await.log_error()?
         );
@@ -164,13 +165,14 @@ impl DNSDaemon {
 
             if x.is_empty() {
                 x = default_servers();
+                log::info!("no upstream specified. use default servers: {x:#?}");
             }
 
             DNSResolverArray::from(x)
         };
 
         let cache = Arc::new(
-            DNSCache::new(resolvers).await?
+            DNSCache::new(resolvers, opt.debug).await?
         );
         
         Ok(Self {
@@ -183,6 +185,7 @@ impl DNSDaemon {
 
             udp, tcp,
             cache,
+            opt,
         })
     }
 
@@ -224,37 +227,90 @@ impl DNSDaemon {
                 let mut res_buf;
                 let mut res: dns::Message;
 
-                let mut buf: Vec<u8> = vec![];
+                //let mut buf: Vec<u8> = vec![];
 
                 let mut len_buf = [0u8; 2];
                 let mut len: usize;
 
                 loop {
                     // recv first 2 bytes as the length of request message
-                    conn.read_exact(&mut len_buf).await.log_debug().unwrap();
+                    if let Err(_) =
+                        conn.read_exact(&mut len_buf).await
+                        .context("cannot recv 'length of DNS query' from tcp. maybe connection closed by peer?")
+                        .log_debug()
+                    {
+                        break;
+                    }
                     len = u16::from_be_bytes(len_buf) as usize;
 
-                    // recv request message
-                    conn.read_exact(&mut req_buf[..len]).await.log_debug().unwrap();
-                    req = dns::Message::from_vec(&req_buf[..len]).log_debug().unwrap();
+                    // recv request message body
+                    if let Err(_) =
+                        conn.read_exact(
+                            &mut req_buf[..len]
+                        ).await
+                        .context("cannot recv 'DNS query body' from tcp...")
+                        .log_debug()
+                    {
+                        break;
+                    }
+                    req = match
+                        dns::Message::from_vec(&req_buf[..len])
+                        .context("received invalid DNS message from tcp client...")
+                        .log_debug()
+                    {
+                        Ok(v) => v,
+                        Err(_) => {
+                            break;
+                        }
+                    };
 
                     // handle...
-                    res = cache.query(req).await.unwrap();
-                    res_buf = res.to_vec().log_warn().unwrap();
+                    res = match
+                        cache.query(req).await
+                        .context("cannot handle incoming DNS query")
+                        .log_warn()
+                    {
+                        Ok(v) => v,
+                        Err(_) => {
+                            break;
+                        }
+                    };
+
+                    // convert response to 'wire format'
+                    res_buf = match
+                        res.to_vec()
+                        .context("Bug: unexpected DNSCache::query() returns invalid dns::Message")
+                        .log_error()
+                    {
+                        Ok(v) => v,
+                        Err(_) => {
+                            break;
+                        }
+                    };
 
                     len = res_buf.len();
                     if len > 65535 {
-                        panic!("response too long, it must less than 65536.");
+                        log::error!("Bug: DNS response length too long, it must less than 65536.");
+                        break;
                     }
                     len_buf = (len as u16).to_be_bytes();
 
-                    // concat response message
-                    buf.clear();
-                    buf.extend(len_buf);
-                    buf.extend(res_buf);
+                    // == concat final response message
+                    // i) 2 bytes of $len
+                    // ii) remaining $len bytes of body
+                    res_buf =
+                        len_buf.into_iter()
+                        .chain( res_buf.into_iter() )
+                        .collect();
 
                     // send response
-                    conn.write(&buf).await.log_debug().unwrap();
+                    if let Err(_) =
+                        conn.write_all(&res_buf).await
+                        .context("cannot send 'DNS response' to tcp. maybe connection closed by peer?")
+                        .log_debug()
+                    {
+                        break;
+                    }
                 } // tcp conn loop
             }).detach(); // smolscale2::spawn
         } // tcp accept loop
@@ -262,54 +318,77 @@ impl DNSDaemon {
 
     async fn run(&self) {
         loop {
-            log::debug!("cache status: {:?}", self.cache.memory.len());
+            if self.opt.debug {
+                log::trace!("cache status: {:#?}", &self.cache.memory);
+            }
+            log::debug!("cache length: {:?}", self.cache.memory.len());
+
             log::debug!("smolscale2 worker threads: {:?}", smolscale2::running_threads());
-            log::debug!("tcp listener: {:?}\ntcp task: {:?}", self.tcp.as_ref(), &self.tcp_task);
-            log::debug!("udp socket: {:?}\nudp task: {:?}", self.udp.as_ref(), &self.udp_task);
+            log::debug!("smolscale2 active tasks: {:?}", smolscale2::active_task_count());
+
+            log::trace!("tcp listener: {:?}\ntcp task: {:?}", self.tcp.as_ref(), &self.tcp_task);
+            log::trace!("udp socket: {:?}\nudp task: {:?}", self.udp.as_ref(), &self.udp_task);
+
+            if self.opt.debug {
+                let mut x = vec![];
+                for r in self.cache.resolvers.list.iter() {
+                    x.push(r.dns_metrics().await);
+                }
+
+                log::trace!(
+                    "DNSResolverArray metrics: {x:#?}"
+                );
+            }
 
             if self.tcp_task.is_finished() || self.udp_task.is_finished() {
                 log::error!("listener task died");
                 return;
             }
 
-            smol::Timer::after(Duration::from_secs(10)).await;
+            smol::Timer::after(
+                Duration::from_secs(10)
+            ).await;
         }
     }
 }
 
 #[derive(Debug, Clone, clap::Parser)]
 #[command(author, version, about, long_about)]
-struct HitdnsOpt {
+pub struct HitdnsOpt {
+    /// debug mode.
+    #[arg(long)]
+    pub debug: bool,
+
     /// location of a hosts.txt file.
     /// examples of this file format, that can be found at /etc/hosts (Unix-like systems), or
     /// C:\Windows\System32\drivers\etc\hosts (Windows)
     #[arg(long)]
-    hosts: Option<PathBuf>,
+    pub hosts: Option<PathBuf>,
 
-    #[arg(long)]
     /// Whether try to find system-side hosts.txt
-    use_system_hosts: bool,
+    #[arg(long)]
+    pub use_system_hosts: bool,
 
     /// Whether enable TLS SNI extension.
     /// if this is unspecified, default disable SNI (for bypass internet censorship in few totalitarian countries)
     /// if you specified --tls-sni or --hosts or --use-system-hosts, then TLS SNI will enabled by default.
     #[arg(long)]
-    tls_sni: bool,
+    pub tls_sni: bool,
 
     /// Listen address of local plaintext DNS server.
     #[arg(long)]
-    listen: SocketAddr,
+    pub listen: SocketAddr,
 
     /// upstream URL of DoH servers.
     /// DNS over HTTPS
-    #[arg(long, default_value="https://1.0.0.1/dns-query")]
-    doh_upstream: Vec<String>,
+    #[arg(long)]
+    pub doh_upstream: Vec<String>,
 
     /// *Experimental*
     /// upstream address of DoT servers.
     /// DNS over TLS
     #[arg(long)]
-    dot_upstream: Vec<String>,
+    pub dot_upstream: Vec<String>,
 }
 
 fn default_servers() -> Vec<Arc<dyn DNSResolver>> {
