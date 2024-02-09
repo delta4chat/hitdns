@@ -217,7 +217,7 @@ impl DNSDaemon {
     async fn handle_tcp(tcp: Arc<TcpListener>, cache: Arc<DNSCache>) -> anyhow::Result<()> {
         loop {
             let (mut conn, peer) = tcp.accept().await.log_error()?;
-            log::info!("DNS Daemon accepted new TCP connection from {peer:?}");
+            log::debug!("DNS Daemon accepted new TCP connection from {peer:?}");
 
             let cache = cache.clone();
             smolscale2::spawn(async move {

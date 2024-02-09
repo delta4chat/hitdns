@@ -113,11 +113,90 @@ impl TryFrom<&DNSEntry> for dns::Message {
 /* ========== DNS Metrics ========== */
 #[derive(Debug, Clone)]
 pub struct DNSMetrics {
-    pub latency: Vec<Duration>,
-    pub reliability: u8, // 0% - 100%
-    pub online: bool,
-    pub last_respond: SystemTime,
-    pub upstream: String,
+    latency: std::collections::VecDeque<Duration>,
+    reliability: u8, // 0% - 100%
+    online: bool,
+    last_respond: SystemTime,
+    upstream: String,
+}
+
+impl DNSMetrics {
+    pub(crate) fn new() -> Self {
+        Self {
+            latency: std::collections::VecDeque::new(),
+            reliability: 50,
+            online: false,
+            last_respond: SystemTime::UNIX_EPOCH,
+            upstream: String::new(),
+        }
+    }
+
+    /// record a server works normal (on DNS query success)
+    pub fn up(&mut self, elapsed: Duration) {
+        self.online = true;
+
+        if self.reliability < 100 {
+            self.reliability += 1;
+        }
+
+        self._add_latency(elapsed);
+        self.last_respond = SystemTime::now();
+    }
+
+    /// record a server down (on DNS query fails)
+    pub fn down(&mut self) {
+        self.online = false;
+
+        if self.reliability > 0 {
+            self.reliability -= 1;
+        }
+
+        self._add_latency(Duration::from_secs(999));
+    }
+
+    fn _add_latency(&mut self, elapsed: Duration) {
+        self.latency.push_back(elapsed);
+
+        while self.latency.len() > 100 {
+            self.latency.pop_front();
+        }
+    }
+
+    /* == Getters == */
+    /// rerurns Average Latency
+    pub fn latency(&self) -> Duration {
+        let nanos: Vec<u128> =
+            self.latency.iter()
+            .map(|x|{ x.as_nanos() })
+            .collect();
+
+        let avg: u128 = average(&nanos);
+
+        let avg: u64 = if avg > (u64::MAX as u128) {
+            log::error!("latency great-than u64::MAX !!!");
+            u64::MAX
+        } else {
+            avg as u64
+        };
+
+        Duration::from_nanos(avg)
+    }
+
+    pub fn reliability(&self) -> u8 {
+        self.reliability
+    }
+
+    pub fn online(&self) -> bool {
+        self.online
+    }
+
+    pub fn last_respond(&self) -> SystemTime {
+        self.last_respond
+    }
+
+    pub fn upstream(&self) -> String {
+        self.upstream.clone()
+    }
 }
 
 /* DNS Resolver Array */
@@ -163,7 +242,7 @@ impl DNSResolverArray {
             let my_metrics = resolver.dns_metrics().await;
 
             // ignore any offline resolvers
-            if my_metrics.reliability <= 40 {
+            if my_metrics.reliability() <= 40 {
                 continue;
             }
 
@@ -176,35 +255,23 @@ impl DNSResolverArray {
 
             let bm = best_metrics.clone().unwrap();
 
-            let mut tmp: Vec<u128>;
-            let metrics_avg = {
-                tmp = my_metrics.latency.iter().map(
-                    |x| { x.as_millis() }
-                ).collect();
+            let my_avg = my_metrics.latency();
+            let best_avg = bm.latency();
 
-                average(&tmp)
-            };   
-            let best_avg = {
-                tmp = bm.latency.iter().map(
-                    |x| { x.as_millis() }
-                ).collect();
-
-                average(&tmp)
-            };
-
-            if metrics_avg < best_avg {
+            if my_avg < best_avg {
                 best = Some( resolver.clone() );
                 best_metrics = Some( my_metrics.clone() );
             }
             // Reliability seems to be more important than Latency
-            if my_metrics.reliability > bm.reliability {
+            if my_metrics.reliability() > bm.reliability() {
                 best = Some(resolver);
                 best_metrics = Some(my_metrics);
             }
         }
 
         if let Some(resolver) = best {
-            log::info!("selected best resolver {:?} with metrics {best_metrics:?}", &resolver);
+            log::info!("selected best resolver {:?}", &resolver);
+            log::debug!("best_metrics: {best_metrics:?}");
             Ok(resolver)
         } else {
             anyhow::bail!("cannot select best resolver! maybe Internet offline, or empty list of resolvers")

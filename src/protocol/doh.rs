@@ -83,13 +83,9 @@ impl<'a> DNSOverHTTPS {
             .build().log_warn()?;
 
         let metrics =
-            Arc::new(RwLock::new(DNSMetrics {
-                latency: Vec::new(),
-                upstream: url.to_string(),
-                reliability: 50,
-                online: false,
-                last_respond: SystemTime::UNIX_EPOCH,
-            }));
+            Arc::new(RwLock::new(
+                DNSMetrics::new()
+            ));
 
         Ok(Self {
             client: client.clone(),
@@ -116,12 +112,7 @@ impl<'a> DNSOverHTTPS {
                     if let Some(ret) = &maybe_ret {
                         if ret.is_ok() {
                             log::debug!("DoH server {url} working. latency={latency:?} ret={ret:?}");
-                            m.last_respond = SystemTime::now();
-                            m.online = true;
-                            m.latency.push(latency);
-                            if m.reliability < 100 {
-                                m.reliability += 1;
-                            }
+                            m.up(latency);
                             std::mem::drop(m);
                             continue;
                         } else {
@@ -133,15 +124,7 @@ impl<'a> DNSOverHTTPS {
                         log::warn!("DoH server {url} not working! timed out.");
                     }
 
-                    m.online = false;
-                    m.latency.push(
-                        Duration::from_secs(999)
-                    );
-
-                    if m.reliability > 0 {
-                        m.reliability -= 1;
-                    }
-
+                    m.down();
                     std::mem::drop(m);
                 }
             })) // Arc::new(smolscale2::spawn(
@@ -162,22 +145,9 @@ impl<'a> DNSOverHTTPS {
             let mut metrics = metrics_lock.write().await;
 
             if ok {
-                metrics.online = true;
-                metrics.latency.push(latency);
-                metrics.last_respond = SystemTime::now();
-
-                if metrics.reliability < 100 {
-                    metrics.reliability += 1;
-                }
+                metrics.up(latency);
             } else {
-                metrics.online = false;
-                metrics.latency.push(
-                    Duration::from_secs(999)
-                );
-
-                if metrics.reliability > 0 {
-                    metrics.reliability -= 1;
-                }
+                metrics.down();
             }
         }).detach();
 
