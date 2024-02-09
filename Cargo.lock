@@ -1083,7 +1083,6 @@ name = "hitdns"
 version = "0.4.1"
 dependencies = [
  "anyhow",
- "async-lock 3.3.0",
  "async-tls",
  "bincode",
  "bytes",

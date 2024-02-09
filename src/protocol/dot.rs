@@ -1,11 +1,51 @@
 use crate::*;
 
-pub type TlsStream =async_tls::client::TlsStream<TcpStream>;
+pub type TlsStream =
+    async_tls::client::TlsStream<TcpStream>;
+
+pub type TlsSessions =
+    Arc<scc::HashMap<
+        SocketAddr,
+        VecDeque<
+            (u128, Arc<TlsStream>)
+        >
+    >>;
+
+/// a 'guard' for TlsStream. once this guard dropping, the inner TLS connection will be push back to shared session list (for reuse it again)
+/// Why this exists? because we need to prevent "two async tasks try sending two queries to a single connection at same time"... this often causes confusion
+struct TlsStreamGuard {
+    id: u128, conn: Arc<TlsStream>,
+    sess: TlsSessions,
+    addr: SocketAddr,
+}
+impl Drop for TlsStreamGuard {
+    fn drop(&mut self) {
+        if let Some(mut entry) =
+            self.sess.get(&self.addr)
+        {
+            entry.get_mut().push_front(
+                ( self.id, self.conn.clone() )
+            );
+        }
+    }
+}
+
+impl Deref for TlsStreamGuard {
+    type Target = TlsStream;
+    fn deref(&self) -> &TlsStream {
+        self.conn.as_ref()
+    }
+}
+impl DerefMut for TlsStreamGuard {
+    fn deref_mut(&mut self) -> &mut TlsStream {
+        Arc::get_mut(&mut self.conn)
+            .expect("this is impossible because only one mutable reference can exists at same time")
+    }
+}
+
 pub struct DNSOverTLS {
     connector: async_tls::TlsConnector,
-    sessions: Arc<scc::HashMap<
-                SocketAddr, Vec<(u128, TlsStream)>
-            >>,
+    sessions: TlsSessions,
     upstream: String,
     _task: smol::Task<()>,
 }
@@ -15,7 +55,7 @@ impl DNSOverTLS {
         use_hosts: bool,
     ) -> anyhow::Result<Self> {
         let connector = async_tls::TlsConnector::new();
-        let sessions = Arc::new(scc::HashMap::new());
+        let sessions = Arc::new( scc::HashMap::new() );
 
         let upstream: String = upstream.to_string();
         let addrs: Vec<SocketAddr> = {
@@ -57,15 +97,18 @@ impl DNSOverTLS {
         };
 
         for addr in addrs.iter() {
-            sessions.insert(*addr, vec![]).unwrap();
+            sessions.insert(
+                *addr, VecDeque::new()
+            ).unwrap();
         }
 
         let _task = {
             let connector = connector.clone();
             let sessions = sessions.clone();
+
+            let mut reconnecting: Vec<SocketAddr> = vec![];
+            let mut ret = vec![];
             smolscale2::spawn(async move {
-                let mut reconnecting: Vec<SocketAddr> = vec![];
-                let mut ret = vec![];
                 loop {
                     while let Some(addr) = reconnecting.pop() {
                         // connecting...
@@ -87,8 +130,18 @@ impl DNSOverTLS {
                             ).await
                         {
                             Ok(tls_conn) => {
-                                let id =
-                                    fastrand::u128(..);
+                                let id = {
+                                    let rand =
+                                        fastrand::u64(..);
+                                    let ptr =
+                                        core::ptr::addr_of!(tls_conn);
+
+                                    (rand as u128) + (ptr as u128)
+                                };
+
+                                let tls_conn =
+                                    Arc::new(tls_conn);
+
                                 log::info!("connected DoT {id}={tls_conn:?}");
                                 if let Some(mut entry) =
                                     sessions
@@ -96,7 +149,7 @@ impl DNSOverTLS {
                                         .await
                                 {
                                     entry.get_mut()
-                                        .push(
+                                        .push_back(
                                             (id, tls_conn)
                                         );
                                 }
@@ -115,13 +168,13 @@ impl DNSOverTLS {
                             let id = conn.0;
                             let io =
                                 conn.1.get_ref().clone();
-                            x.push((id, io));
+                            x.push( (id, io) );
                         }
                         ret.push( (*addr, x) );
                     }).await;
 
                     for (addr, io) in ret.iter_mut() {
-                        if io.is_empty() {
+                        if io.len() < 3 {
                             reconnecting.push(*addr);
                         } else {
                             for i in 0 .. io.len() {
@@ -158,71 +211,75 @@ impl DNSOverTLS {
         })
     }
 
-    async fn _dns_resolve(&self, query: &DNSQuery)
-        -> anyhow::Result<dns::Message>
+    async fn _get_conn(&self)
+        -> anyhow::Result<TlsStreamGuard>
     {
-        let msg = {
-            let msg: dns::Message = query.try_into()?;
-            let msg: Vec<u8> = msg.to_vec()?;
-            let mut buf = msg.len().to_be_bytes().to_vec();
-            buf.extend(msg);
-            buf
-        };
-
-        let mut all_conns = vec![];
-        self.sessions.scan_async(|_, conns| {
-            for conn in conns.iter() {
-                all_conns.push( conn.1.get_ref().clone() );
-            }
+        let mut addrs: Vec<SocketAddr> = vec![];
+        self.sessions.scan_async(|addr, _| {
+            addrs.push(*addr);
         }).await;
 
-        let mut res_len = [0u8; 2];
-        let mut res;
-        while ! all_conns.is_empty() {
-            let i = fastrand::usize(0 .. all_conns.len() );
-            let mut conn = all_conns.swap_remove(i);
-            if let Some(Ok(_)) =
-                conn.write_all(&msg)
-                .timeout(Duration::from_secs(2))
-                .await
-            {
-                if let Some(tmp) =
-                    conn.read_exact(&mut res_len)
-                    .timeout(Duration::from_secs(3))
-                    .await
-                {
-                    if tmp.is_err() {
-                        log::warn!("DoT upstream error: reading response length: {tmp:?}");
-                        continue;
-                    }
-                } else {
-                    continue;
-                }
+        while ! addrs.is_empty() {
+            let n = fastrand::usize( 0 .. addrs.len() );
+            let addr = addrs.swap_remove(n);
 
-                let res_len: usize =
-                    u16::from_be_bytes(res_len).into();
-                res = vec![0u8; res_len];
+            let idconn: Option<(u128, Arc<TlsStream>)> =
+                // Option<Entry>
+                self.sessions.get_async(&addr).await
+                .ok_or(anyhow::Error::msg("unexpected .sessions no key {addr:?}"))?
 
-                if let Some(tmp) =
-                    conn.read_exact(&mut res)
-                    .timeout(Duration::from_secs(5))
-                    .await
-                {
-                    if tmp.is_err() {
-                        log::warn!("DoT upstream error: reading response body: {tmp:?}");
-                        continue;
-                    }
-                } else {
-                    continue;
-                }
+                // Entry
+                .get_mut()
 
-                return Ok(dns::Message::from_vec(&res)?);
+                // VecDeque
+                .pop_back(); // gets newly established connection for more reliability
+
+            if let Some( (id, conn) ) = idconn {
+                return Ok(TlsStreamGuard {
+                    id,
+                    conn,
+                    sess: self.sessions.clone(),
+                    addr,
+                });
             }
         }
 
-        anyhow::bail!("all DoT upstream timed out!")
+        anyhow::bail!("cannot select DoT server randomly");
+    }
+
+    async fn _dns_resolve(&self, query: &DNSQuery)
+        -> anyhow::Result<dns::Message>
+    {
+        let req: dns::Message = query.try_into()?;
+
+        let req: Vec<u8> = req.to_vec()?;
+        let req_len: u16 = req.len() as u16;
+
+        let req_buf: Vec<u8> =
+            req_len.to_be_bytes()
+            .into_iter()
+            .chain( req.into_iter() )
+            .collect();
+
+        let mut conn = self._get_conn().await?;
+
+        conn.write_all(&req_buf).await?;
+
+        let mut res_len = [0u8; 2];
+        conn.read_exact(&mut res_len).await?;
+
+        let res_len: usize =
+            u16::from_be_bytes(res_len).into();
+
+        let mut res = vec![0u8; res_len];
+        conn.read_exact(&mut res).await?;
+
+        std::mem::drop(conn);
+
+        Ok(dns::Message::from_vec(&res)?)
     }
 }
+
 impl DNSResolver for DNSOverTLS {
     fn dns_resolve(&self, query: &DNSQuery)
         -> PinFut<anyhow::Result<dns::Message>>

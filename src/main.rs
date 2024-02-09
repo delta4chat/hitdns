@@ -24,12 +24,17 @@ pub use protocol::*;
 
 /* ==================== */
 
-pub use std::time::{Duration, Instant, SystemTime};
+pub use std::time::{Instant, SystemTime};
+pub use std::net::{SocketAddr, IpAddr};
+pub use std::path::PathBuf;
 
-pub use async_lock::RwLock;
-pub use std::sync::Arc;
-pub use std::pin::Pin;
-pub use std::ops::Deref;
+pub use core::time::Duration;
+pub use core::pin::Pin;
+pub use core::ops::{Deref, DerefMut};
+
+extern crate alloc;
+pub use alloc::collections::VecDeque;
+pub use alloc::sync::Arc;
 
 pub mod dns {
     pub use hickory_proto::op::*;
@@ -47,10 +52,11 @@ pub mod dns {
     pub use RecordType as RdType;
 }
 
+pub use smol::lock::RwLock;
+
 pub use serde::{Serialize, Deserialize};
 pub use bytes::Bytes;
 
-pub use std::net::{SocketAddr, IpAddr};
 pub use smol::net::AsyncToSocketAddrs;
 
 pub use smol::net::UdpSocket;
@@ -69,7 +75,6 @@ pub use sqlx::{
 };
 
 pub use once_cell::sync::Lazy;
-pub use std::path::PathBuf;
 
 pub use anyhow::Context;
 

@@ -113,7 +113,7 @@ impl TryFrom<&DNSEntry> for dns::Message {
 /* ========== DNS Metrics ========== */
 #[derive(Debug, Clone)]
 pub struct DNSMetrics {
-    latency: std::collections::VecDeque<Duration>,
+    latency: VecDeque<Duration>,
     reliability: u8, // 0% - 100%
     online: bool,
     last_respond: SystemTime,
@@ -123,7 +123,7 @@ pub struct DNSMetrics {
 impl DNSMetrics {
     pub(crate) fn from(upstream: impl ToString) -> Self {
         Self {
-            latency: std::collections::VecDeque::new(),
+            latency: VecDeque::new(),
             reliability: 50,
             online: false,
             last_respond: SystemTime::UNIX_EPOCH,
@@ -163,7 +163,7 @@ impl DNSMetrics {
     }
 
     /* == Getters == */
-    /// rerurns Average Latency
+    /// returns Average Latency
     pub fn latency(&self) -> Duration {
         let nanos: Vec<u128> =
             self.latency.iter()
