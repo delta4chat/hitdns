@@ -88,6 +88,14 @@ pub static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(||{
     dir
 });
 
+/*
+pub trait Average<  T: Default + Copy + From<u64>  > {
+    fn average(&self: &[T]) -> T {
+        average(self)
+    }
+}
+*/
+
 pub fn average<T>(set: &[T]) -> T
 where
     T: Default + Copy + From<u64> +
@@ -359,6 +367,16 @@ pub struct HitdnsOpt {
     #[arg(long)]
     pub debug: bool,
 
+    /// Minimum TTL of cached DNS entry.
+    /// default to 3 minutes.
+    #[arg(long, default_value="180")]
+    pub min_ttl: u32,
+
+    /// Maximum TTL of cached DNS entry.
+    /// default to 7 days.
+    #[arg(long, default_value="604800")]
+    pub max_ttl: u32,
+
     /// location of a hosts.txt file.
     /// examples of this file format, that can be found at /etc/hosts (Unix-like systems), or
     /// C:\Windows\System32\drivers\etc\hosts (Windows)
@@ -430,6 +448,7 @@ fn default_servers() -> Vec<Arc<dyn DNSResolver>> {
 
 async fn main_async() -> anyhow::Result<()> {
     let mut opt = HitdnsOpt::parse();
+
     if opt.use_system_hosts {
         let filename =
             if cfg!(target_vendor="apple") {
@@ -451,6 +470,9 @@ async fn main_async() -> anyhow::Result<()> {
             opt.hosts = Some(filename);
         }
     }
+
+    MIN_TTL.store(opt.min_ttl, Relaxed);
+    MAX_TTL.store(opt.max_ttl, Relaxed);
 
     DNSDaemon::new(opt).await.log_error()?.run().await;
     Ok(())

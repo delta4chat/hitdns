@@ -2,6 +2,12 @@
 
 use crate::*;
 
+pub use portable_atomic::AtomicU32;
+pub use portable_atomic::Ordering::Relaxed;
+
+pub static MIN_TTL: AtomicU32 = AtomicU32::new(0);
+pub static MAX_TTL: AtomicU32 = AtomicU32::new(u32::MAX);
+
 /* ========== DNS Cache Status ========== */
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,6 +151,7 @@ impl DNSCacheEntry {
         *self.update_task.write().await = Some(Arc::new(
             smolscale2::spawn(async move {
                 let upstream = resolver.dns_upstream();
+
                 let start = Instant::now();
                 let mut response = match timeout_helper(resolver.dns_resolve(&query), timeout).await {
                         Some(v) => v?,
@@ -155,14 +162,22 @@ impl DNSCacheEntry {
                 let elapsed = start.elapsed();
 
                 let expire_ttl: u32 = {
-                    const MIN_TTL: u32 = 180;
-                    let ttl: u32 = response.all_sections().map(|x| { x.ttl() }).min().unwrap_or(MIN_TTL);
+                    let min_ttl = MIN_TTL.load(Relaxed);
+                    let max_ttl = MAX_TTL.load(Relaxed);
 
-                    if ttl < MIN_TTL {
-                        MIN_TTL
-                    } else {
-                        ttl
+                    let mut ttl =
+                        response.all_sections()
+                        .map(|x| { x.ttl() })
+                        .min().unwrap_or(min_ttl);
+
+                    if ttl < min_ttl {
+                        ttl = min_ttl;
                     }
+                    if ttl > max_ttl {
+                        ttl = max_ttl;
+                    }
+
+                    ttl
                 };
                 let expire = SystemTime::now() + Duration::from_secs(expire_ttl.into());
 

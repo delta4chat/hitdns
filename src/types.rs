@@ -121,13 +121,13 @@ pub struct DNSMetrics {
 }
 
 impl DNSMetrics {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn from(upstream: impl ToString) -> Self {
         Self {
             latency: std::collections::VecDeque::new(),
             reliability: 50,
             online: false,
             last_respond: SystemTime::UNIX_EPOCH,
-            upstream: String::new(),
+            upstream: upstream.to_string(),
         }
     }
 
@@ -263,7 +263,8 @@ impl DNSResolverArray {
                 best_metrics = Some( my_metrics.clone() );
             }
             // Reliability seems to be more important than Latency
-            if my_metrics.reliability() > bm.reliability() {
+            if my_metrics.reliability() > bm.reliability()
+            {
                 best = Some(resolver);
                 best_metrics = Some(my_metrics);
             }

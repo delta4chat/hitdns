@@ -17,8 +17,13 @@ impl<'a> DNSOverHTTPS {
         mut tls_sni: bool
     ) -> anyhow::Result<Self> {
         let url: String = url.to_string();
-        let url = reqwest::Url::parse(&url).log_warn()?;
 
+        let metrics =
+            Arc::new(RwLock::new(
+                DNSMetrics::from(&url)
+            ));
+
+        let url = reqwest::Url::parse(&url).log_warn()?;
         if url.scheme() != "https" {
             anyhow::bail!("DoH server URL scheme invalid.");
         }
@@ -81,11 +86,6 @@ impl<'a> DNSOverHTTPS {
 
             // build client
             .build().log_warn()?;
-
-        let metrics =
-            Arc::new(RwLock::new(
-                DNSMetrics::new()
-            ));
 
         Ok(Self {
             client: client.clone(),
