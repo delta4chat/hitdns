@@ -75,11 +75,6 @@ impl<'a> DNSOverHTTPS {
     ) -> anyhow::Result<Self> {
         let url: String = url.to_string();
 
-        let metrics =
-            Arc::new(RwLock::new(
-                DNSMetrics::from(&url)
-            ));
-
         let url = reqwest::Url::parse(&url).log_warn()?;
         if url.scheme() != "https" {
             anyhow::bail!("DoH server URL scheme invalid.");
@@ -132,55 +127,76 @@ impl<'a> DNSOverHTTPS {
             .build().log_warn()?;
         */
 
+        let metrics =
+            Arc::new(RwLock::new(
+                DNSMetrics::from(&url)
+            ));
+
+        let _task = Arc::new(
+            smolscale2::spawn(
+                Self::_metrics_task(
+                    client.clone(),
+                    url.clone(),
+                    metrics.clone(),
+                )
+            )
+        );
+
         Ok(Self {
-            client: client.clone(),
-            url: url.clone(),
-            metrics: metrics.clone(),
-            _task: Arc::new(smolscale2::spawn(async move {
-                let mut start;
-                let mut latency;
-                let mut maybe_ret;
+            client,
+            url,
+            metrics,
+            _task,
+        })
+    }
+    async fn _metrics_task(
+        client: reqwest::Client,
+        url: reqwest::Url,
+        metrics: Arc<RwLock<DNSMetrics>>,
+    ) {
+        let mut start;
+        let mut latency;
+        let mut maybe_ret;
 
-                let mut zzz = false;
-                loop {
-                    if zzz {
-                        smol::Timer::after(
-                            Duration::from_secs(10)
-                        ).await;
-                    } else {
-                        zzz = true;
-                    }
+        let mut zzz = false;
+        loop {
+            if zzz {
+                smol::Timer::after(
+                    Duration::from_secs(10)
+                ).await;
+            } else {
+                zzz = true;
+            }
 
-                    start = Instant::now();
-                    maybe_ret =
-                        client.head( url.clone() )
-                        .send()
-                        .timeout(Duration::from_secs(10))
-                        .await;
-                    latency = start.elapsed();
+            start = Instant::now();
+            maybe_ret =
+                client.head( url.clone() )
+                .send()
+                .timeout(Duration::from_secs(10))
+                .await;
+            latency = start.elapsed();
 
-                    let mut m = metrics.write().await;
-                    if let Some(ret) = &maybe_ret {
-                        if ret.is_ok() {
-                            ret.log_trace();
-                            log::debug!("DoH server {url} working. latency={latency:?}");
-                            m.up(latency);
-                            std::mem::drop(m);
-                            continue;
-                        } else {
-                            log::warn!("DoH server {url} down. used time: {latency:?}, ret={ret:?}");
-                        }
-                    }
+            let mut m = metrics.write().await;
 
-                    if maybe_ret.is_none() {
-                        log::warn!("DoH server {url} not working! timed out.");
-                    }
-
-                    m.down();
+            if let Some(ret) = &maybe_ret {
+                if ret.is_ok() {
+                    ret.log_trace();
+                    log::debug!("DoH server {url} working. latency={latency:?}");
+                    m.up(latency);
                     std::mem::drop(m);
+                    continue;
+                } else {
+                    log::warn!("DoH server {url} down. used time: {latency:?}, ret={ret:?}");
                 }
-            })) // Arc::new(smolscale2::spawn(
-        }) // Ok(
+            }
+
+            if maybe_ret.is_none() {
+                log::warn!("DoH server {url} not working! timed out.");
+            }
+
+            m.down();
+            std::mem::drop(m);
+        }
     }
 
     // un-cached DNS Query
