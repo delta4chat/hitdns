@@ -16,7 +16,12 @@ pub struct DNSOverQUIC {
 }
 
 impl DNSOverQUIC {
-    pub fn new(addr: SocketAddr) -> anyhow::Result<Self> {
+    pub fn new(addr: impl ToString)
+        -> anyhow::Result<Self>
+    {
+        let addr: String = addr.to_string();
+        let addr: SocketAddr = addr.parse()?;
+
         let transport_config = {
             let mut tc: quinn::TransportConfig =
                 Default::default();
@@ -26,6 +31,10 @@ impl DNSOverQUIC {
             tc.keep_alive_interval(
                 Some(Duration::from_secs(10))
             );
+            tc.max_idle_timeout(
+                Some(Duration::from_secs(3600).try_into()?)
+            );
+            tc.max_tlps(15);
 
             Arc::new(tc)
         };
@@ -40,7 +49,32 @@ impl DNSOverQUIC {
         };
 
         let client_config =
-            quinn::ClientConfig::with_native_roots()
+            quinn::ClientConfig::with_root_certificates({
+                let roots: Vec<rustls::OwnedTrustAnchor> =
+                    webpki_roots::TLS_SERVER_ROOTS
+                    .iter()
+                    .map(|x|{
+                        let subject = x.subject.to_vec();
+                        let spki =
+                            x.subject_public_key_info
+                            .to_vec();
+                        let name_const =
+                            match &x.name_constraints {
+                                Some(v) => {
+                                    Some( v.to_vec() )
+                                },
+                                _ => None,
+                            };
+                        rustls::OwnedTrustAnchor::
+                        from_subject_spki_name_constraints(
+                            subject,
+                            spki,
+                            name_const,
+                        )
+                    })
+                    .collect();
+                rustls::RootCertStore { roots }
+            })
             .version(1)
             .transport_config(transport_config)
             .to_owned();
@@ -196,3 +230,25 @@ impl DNSOverQUIC {
     }
 }
 
+impl DNSResolver for DNSOverQUIC {
+    fn dns_resolve(&self, query: &DNSQuery)
+        -> PinFut<anyhow::Result<dns::Message>>
+    {
+        let query = query.clone();
+        Box::pin(async move {
+            self._dns_resolve(&query).await
+        })
+    }
+
+    fn dns_upstream(&self) -> String {
+        self.addr.to_string()
+    }
+
+    fn dns_protocol(&self) -> &str {
+        "DNS over QUIC(v1) over UDP"
+    }
+
+    fn dns_metrics(&self) -> PinFut<DNSMetrics> {
+        todo!()
+    }
+}

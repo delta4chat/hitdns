@@ -8,5 +8,5 @@ pub use dot::*;
 
 // doq.rs
 pub mod doq;
-//pub use doq::*;
+pub use doq::*;
 

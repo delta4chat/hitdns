@@ -181,7 +181,8 @@ impl DNSDaemon {
                 x.push(
                     Arc::new(
                         DNSOverQUIC::new(
-                        )
+                            doq_addr,
+                        )?
                     )
                 );
             }
