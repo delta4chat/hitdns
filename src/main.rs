@@ -177,6 +177,14 @@ impl DNSDaemon {
                     )
                 );
             }
+            for doq_addr in opt.doq_upstream.iter() {
+                x.push(
+                    Arc::new(
+                        DNSOverQUIC::new(
+                        )
+                    )
+                );
+            }
 
             if x.is_empty() {
                 x = default_servers();
@@ -405,15 +413,21 @@ pub struct HitdnsOpt {
     pub listen: SocketAddr,
 
     /// upstream URL of DoH servers.
-    /// DNS over HTTPS
+    /// DNS over HTTPS (RFC 8484)
     #[arg(long)]
     pub doh_upstream: Vec<String>,
 
     /// *Experimental*
     /// upstream address of DoT servers.
-    /// DNS over TLS
+    /// DNS over TLS (RFC 7858)
     #[arg(long)]
     pub dot_upstream: Vec<String>,
+
+    /// *Experimental*
+    /// upstream address of DoQ servers.
+    /// DNS over QUIC (RFC 9250)
+    #[arg(long)]
+    pub doq_upstream: Vec<String>,
 }
 
 fn default_servers() -> Vec<Arc<dyn DNSResolver>> {
@@ -425,8 +439,8 @@ fn default_servers() -> Vec<Arc<dyn DNSResolver>> {
         // Quad9 DNS
         "https://9.9.9.10/dns-query",
 
-        // TWNIC DNS 101 [DISABLED: fake positive flagged "ipfs.io" as malicious domain]
-        //"https://101.101.101.101/dns-query",
+        // TWNIC DNS 101
+        "https://101.101.101.101/dns-query",
 
         // dns.sb
         "https://45.11.45.11/dns-query",

@@ -27,7 +27,13 @@ hickory-proto = { version = "0.24.0", default-features = false }
 hyper = { version = "0.14.21", features = ["client"], default-features = false }
 log = "0.4.20"
 once_cell = "1.19.0"
+
+# HTTPS library for DoH client
 reqwest = { version = "0.11.24", features = ["rustls-tls"], default-features = false }
+
+# QUIC library for DoQ client
+quinn = { version = "0.10.2", features = ["rustls", "async-std", "tls-rustls", "runtime-async-std"] }
+
 scc = { version = "2.0.16", features = ["serde"] }
 serde = { version = "1.0.196", features = ["derive"] }
 fastrand = "2.0.1"
