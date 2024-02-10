@@ -1,5 +1,60 @@
 use crate::*;
 
+static DOH_CLIENT: Lazy<reqwest::Client> =
+    Lazy::new(||{
+        reqwest::Client::builder()
+
+        // log::trace
+        .connection_verbose(true)
+
+        // use HTTPS(rustls) only
+        .use_rustls_tls()
+        .min_tls_version(reqwest::tls::Version::TLS_1_2)
+        .https_only(true)
+        .tls_sni( HOSTS.map.len() > 0 )
+
+        // HTTP/2 setting
+        .http2_prior_knowledge() // use HTTP/2 only
+        .http2_adaptive_window(false)
+        .http2_max_frame_size(Some(65535))
+        .http2_keep_alive_interval(Some(Duration::from_secs(10)))
+        .http2_keep_alive_timeout(Duration::from_secs(10))
+        .http2_keep_alive_while_idle(true)
+        .referer(false)
+        .redirect(reqwest::redirect::Policy::none())
+
+        // connection settings
+        .tcp_nodelay(true)
+        .pool_idle_timeout(None)
+        .pool_max_idle_per_host(5)
+
+        // for all DNS resove from reqwest, should redirecting to static name mapping (hosts.txt)
+        .dns_resolver(Arc::new(&*HOSTS))
+
+        // build client
+        .build().unwrap()
+    });
+
+struct DummyDNS (
+    // if true, will use static domain name resolving
+    // if false, will complete disable DNS
+    bool
+);
+impl reqwest::dns::Resolve for DummyDNS {
+    // pub type Resolving = Pin<Box<dyn Future<Output = Result<Addrs, Box<dyn StdError + Send + Sync>>> + Send>>;
+    fn resolve(&self, domain: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
+        if self.0 {
+            return HOSTS.resolve(domain);
+        }
+        let msg = format!("unexpected DNS resolve request ({domain:?}) from reqwest::Client in DoH client. this avoids infinity-recursive DNS resolving if hitdns itself as a system resolver. because TLS certificate Common Name or Alt Subject Name can be IP addresses, so you can use IP address instead of a domain name (need DoH server supports). or instead you can give a hosts.txt file by --hosts or --use-system-hosts");
+        log::warn!("{}", &msg);
+        Box::pin(async move {
+            let err: Box<dyn std::error::Error + Send + Sync> = Box::new(std::io::Error::new(std::io::ErrorKind::Unsupported, msg));
+            Err(err)
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DNSOverHTTPS {
     client: reqwest::Client,
@@ -13,8 +68,10 @@ impl<'a> DNSOverHTTPS {
 
     pub fn new(
         url: impl ToString,
+        /*
         use_hosts: bool,
-        mut tls_sni: bool
+        mut tls_sni: bool,
+        */
     ) -> anyhow::Result<Self> {
         let url: String = url.to_string();
 
@@ -27,30 +84,17 @@ impl<'a> DNSOverHTTPS {
         if url.scheme() != "https" {
             anyhow::bail!("DoH server URL scheme invalid.");
         }
-        
-        struct DummyDNS(bool);
-        impl reqwest::dns::Resolve for DummyDNS {
-            // pub type Resolving = Pin<Box<dyn Future<Output = Result<Addrs, Box<dyn StdError + Send + Sync>>> + Send>>;
-            fn resolve(&self, domain: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
-                if self.0 {
-                    return HOSTS.resolve(domain);
-                }
-                let msg = format!("unexpected DNS resolve request ({domain:?}) from reqwest::Client in DoH client. this avoids infinity-recursive DNS resolving if hitdns itself as a system resolver. because TLS certificate Common Name or Alt Subject Name can be IP addresses, so you can use IP address instead of a domain name (need DoH server supports). or instead you can give a hosts.txt file by --hosts or --use-system-hosts");
-                log::warn!("{}", &msg);
-                Box::pin(async move {
-                    let err: Box<dyn std::error::Error + Send + Sync> = Box::new(std::io::Error::new(std::io::ErrorKind::Unsupported, msg));
-                    Err(err)
-                })
-           }
-        }
 
+        /*
         if use_hosts {
             if ! HOSTS.map.is_empty() {
                 tls_sni = true;
             }
         }
+        */
 
-        let client =
+        let client = DOH_CLIENT.clone();
+        /*
             reqwest::Client::builder()
 
             // log::trace
@@ -86,6 +130,7 @@ impl<'a> DNSOverHTTPS {
 
             // build client
             .build().log_warn()?;
+        */
 
         Ok(Self {
             client: client.clone(),
@@ -95,10 +140,16 @@ impl<'a> DNSOverHTTPS {
                 let mut start;
                 let mut latency;
                 let mut maybe_ret;
+
+                let mut zzz = false;
                 loop {
-                    smol::Timer::after(
-                        Duration::from_secs(10)
-                    ).await;
+                    if zzz {
+                        smol::Timer::after(
+                            Duration::from_secs(10)
+                        ).await;
+                    } else {
+                        zzz = true;
+                    }
 
                     start = Instant::now();
                     maybe_ret =
@@ -111,7 +162,8 @@ impl<'a> DNSOverHTTPS {
                     let mut m = metrics.write().await;
                     if let Some(ret) = &maybe_ret {
                         if ret.is_ok() {
-                            log::debug!("DoH server {url} working. latency={latency:?} ret={ret:?}");
+                            ret.log_trace();
+                            log::debug!("DoH server {url} working. latency={latency:?}");
                             m.up(latency);
                             std::mem::drop(m);
                             continue;

@@ -1,5 +1,7 @@
 use crate::*;
 
+pub use async_tls::TlsConnector;
+
 pub type TlsStream =
     async_tls::client::TlsStream<TcpStream>;
 
@@ -54,9 +56,6 @@ impl DNSOverTLS {
         upstream: impl ToString,
         use_hosts: bool,
     ) -> anyhow::Result<Self> {
-        let connector = async_tls::TlsConnector::new();
-        let sessions = Arc::new( scc::HashMap::new() );
-
         let upstream: String = upstream.to_string();
         let addrs: Vec<SocketAddr> = {
             let mut x = vec![];
@@ -96,119 +95,131 @@ impl DNSOverTLS {
             x
         };
 
+        let connector = async_tls::TlsConnector::new();
+        let sessions = Arc::new( scc::HashMap::new() );
+
         for addr in addrs.iter() {
             sessions.insert(
                 *addr, VecDeque::new()
             ).unwrap();
         }
 
-        let _task = {
-            let connector = connector.clone();
-            let sessions = sessions.clone();
+        // start connection keep-alive watchdog
+        let _task = smolscale2::spawn(
+            Self::_conn_watchdog(
+                connector.clone(),
+                sessions.clone()
+            )
+        );
 
-            let mut reconnecting: Vec<SocketAddr> = vec![];
-            let mut ret = vec![];
-            smolscale2::spawn(async move {
-                loop {
-                    while let Some(addr) = reconnecting.pop() {
-                        // connecting...
-                        let tcp_conn =
-                            match
-                            TcpStream::connect(addr).await
-                            {
-                                Ok(v) => v,
-                                Err(err) => {
-                                    log::warn!("unable connect to DoT upstream({addr:?}): cannot establish TCP connection: {err:?}");
-                                    continue;
-                                }
-                            };
-
-                        match
-                            connector.connect(
-                                addr.ip().to_string(),
-                                tcp_conn
-                            ).await
-                        {
-                            Ok(tls_conn) => {
-                                let id = {
-                                    let rand =
-                                        fastrand::u64(..);
-                                    let ptr =
-                                        core::ptr::addr_of!(tls_conn);
-
-                                    (rand as u128) + (ptr as u128)
-                                };
-
-                                let tls_conn =
-                                    Arc::new(tls_conn);
-
-                                log::info!("connected DoT {id}={tls_conn:?}");
-                                if let Some(mut entry) =
-                                    sessions
-                                        .get_async(&addr)
-                                        .await
-                                {
-                                    entry.get_mut()
-                                        .push_back(
-                                            (id, tls_conn)
-                                        );
-                                }
-                            },
-
-                            Err(err) => {
-                                log::warn!("unable connect to DoT upstream({addr:?}): TLS handshake failed: {err:?}");
-                            }
-                        }
-                    }
-
-                    ret.clear();
-                    sessions.scan_async(|addr, conns| {
-                        let mut x = vec![];
-                        for conn in conns.iter() {
-                            let id = conn.0;
-                            let io =
-                                conn.1.get_ref().clone();
-                            x.push( (id, io) );
-                        }
-                        ret.push( (*addr, x) );
-                    }).await;
-
-                    for (addr, io) in ret.iter_mut() {
-                        if io.len() < 3 {
-                            reconnecting.push(*addr);
-                        } else {
-                            for i in 0 .. io.len() {
-                                let (id, io) = &io[i];
-                                if let Err(err) =
-                                    io.peek(&mut [0]).await
-                                {
-                                    log::warn!("session died: addr={addr:?} | io={io:?} | error={err:?}");
-                                    reconnecting.push(*addr);
-                                    // remove dead conn
-                                    sessions.update_async(
-                                        addr,
-                                        |_, conns| {
-                                            conns.retain(|conn| { conn.0 != *id });
-                                        }
-                                    ).await;
-                                }
-                            }
-                        }
-                    }
-                    ret.clear();
-
-                    smol::Timer::after(
-                        Duration::from_secs(1)
-                    ).await;
-                }
-            })
-        };
         Ok(Self {
             connector,
             sessions,
             upstream,
             _task,
         })
+    }
+
+    async fn _conn_watchdog(
+        connector: TlsConnector,
+        sessions: TlsSessions,
+    ) {
+        let mut reconnecting: Vec<SocketAddr> = vec![];
+        let mut ret = vec![];
+        loop {
+            while let Some(addr) = reconnecting.pop() {
+                // connecting...
+                let tcp_conn =
+                    match TcpStream::connect(addr).await {
+                        Ok(v) => v,
+                        Err(err) => {
+                            log::warn!("unable connect to DoT upstream({addr:?}): cannot establish TCP connection: {err:?}");
+                            continue;
+                        }
+                    };
+
+                match
+                    connector.connect(
+                        addr.ip().to_string(),
+                        tcp_conn
+                    ).await
+                {
+                    Ok(tls_conn) => {
+                        let id = {
+                            let rand = fastrand::u64(..);
+                            let ptr =
+                                core::ptr::addr_of!(
+                                    tls_conn
+                                );
+
+                            (rand as u128) + (ptr as u128)
+                        };
+
+                        log::debug!("connected DoT {id}={tls_conn:?}");
+
+                        let tls_conn = Arc::new(tls_conn);
+
+                        if let Some(mut entry) =
+                            sessions.get_async(&addr).await
+                        {
+                            entry.get_mut()
+                                .push_back(
+                                    (id, tls_conn)
+                                );
+                        }
+                    },
+
+                    Err(err) => {
+                        log::warn!("unable connect to DoT upstream({addr:?}): TLS handshake failed: {err:?}");
+                    }
+                } // match connector.connnect
+            } // while let Some(addr)
+
+            ret.clear();
+            sessions.scan_async(|addr, conns| {
+                let mut x = vec![];
+                for conn in conns.iter() {
+                    let id = conn.0;
+                    let io = conn.1.get_ref().clone();
+                    x.push( (id, io) );
+                }
+                ret.push( (*addr, x) );
+            }).await;
+
+            for (addr, io) in ret.iter_mut() {
+                if io.len() < 3 {
+                    reconnecting.push(*addr);
+                    continue;
+                }
+                
+                for i in 0 .. io.len() {
+                    let (id, io) = &io[i];
+                    if let Err(err) =
+                        io.peek(&mut [0]).await
+                    {
+                        log::warn!("session died: addr={addr:?} | io={io:?} | error={err:?}");
+                        reconnecting.push(*addr);
+
+                        // remove dead conn
+                        sessions.update_async(
+                            addr,
+                            |_, conns| {
+                                conns.retain(
+                                    |conn| {
+                                        conn.0 != *id
+                                    }
+                                );
+                            }
+                        ).await;
+                    }
+                }
+            }
+            ret.clear();
+
+            smol::Timer::after(
+                Duration::from_secs(1)
+            ).await;
+        } // loop
     }
 
     async fn _get_conn(&self)

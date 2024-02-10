@@ -159,8 +159,10 @@ impl DNSDaemon {
                     Arc::new(
                         DNSOverHTTPS::new(
                             doh_url,
+                            /*
                             opt.hosts.is_some(),
                             opt.tls_sni,
+                            */
                         )?
                     )
                 );
@@ -441,8 +443,10 @@ fn default_servers() -> Vec<Arc<dyn DNSResolver>> {
             Arc::new(
                 DNSOverHTTPS::new(
                     doh_url,
+                    /*
                     false, // no hosts.txt
                     false, // disable TLS SNI
+                    */
                 ).unwrap()
             )
         );

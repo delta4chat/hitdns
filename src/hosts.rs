@@ -114,9 +114,8 @@ impl Hosts {
             None => { None },
         }
     }
-}
-impl reqwest::dns::Resolve for Hosts {
-    fn resolve(&self, domain: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
+
+    fn _reqwest_resolve(&self, domain: hyper::client::connect::dns::Name) -> reqwest::dns::Resolving {
         Box::pin(async move {
             let maybe_ips =
                 HOSTS.lookup(domain.as_str()).await;
@@ -146,5 +145,22 @@ impl reqwest::dns::Resolve for Hosts {
                 Err(err)
             }
         })
+    }
+}
+
+impl reqwest::dns::Resolve for Hosts {
+    fn resolve(
+        &self,
+        domain: hyper::client::connect::dns::Name
+    ) -> reqwest::dns::Resolving {
+        self._reqwest_resolve(domain)
+    }
+}
+impl reqwest::dns::Resolve for &Hosts {
+    fn resolve(
+        &self,
+        domain: hyper::client::connect::dns::Name
+    ) -> reqwest::dns::Resolving {
+        self._reqwest_resolve(domain)
     }
 }

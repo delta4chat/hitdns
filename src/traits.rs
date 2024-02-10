@@ -85,3 +85,11 @@ impl<T: Debug, E: Debug> LogResult for Result<T, E> {
         self
     }
 }
+impl<T: Debug, E: Debug> LogResult for &Result<T, E> {
+    fn log_generic(self, level: log::Level) -> Self {
+        if let Err(_) = self {
+            log::log!(level, "{:?}", self);
+        }
+        self
+    }
+}
