@@ -343,7 +343,7 @@ impl DNSDaemon {
     async fn run(&self) {
         loop {
             if self.opt.debug {
-                log::trace!("cache status: {:#?}", &self.cache.memory);
+                //log::trace!("cache status: {:?}", &self.cache.memory);
             }
             log::debug!("cache length: {:?}", self.cache.memory.len());
 
@@ -504,7 +504,7 @@ async fn main_async() -> anyhow::Result<()> {
 
 fn main() -> anyhow::Result<()> {
     env_logger::init();
-    smolscale2::set_max_threads(4);
+    //smolscale2::set_max_threads(4);
     smolscale2::block_on(main_async())
 }
 
