@@ -167,6 +167,8 @@ impl DNSDaemon {
                     )
                 );
             }
+
+            #[cfg(feature="dot")]
             for dot_addr in opt.dot_upstream.iter() {
                 x.push(
                     Arc::new(
@@ -177,6 +179,8 @@ impl DNSDaemon {
                     )
                 );
             }
+
+            #[cfg(feature="doq")]
             for doq_addr in opt.doq_upstream.iter() {
                 x.push(
                     Arc::new(
@@ -418,17 +422,21 @@ pub struct HitdnsOpt {
     #[arg(long)]
     pub doh_upstream: Vec<String>,
 
-    /// *Experimental*
-    /// upstream address of DoT servers.
-    /// DNS over TLS (RFC 7858)
-    #[arg(long)]
-    pub dot_upstream: Vec<String>,
 
-    /// *Experimental*
-    /// upstream address of DoQ servers.
-    /// DNS over QUIC (RFC 9250)
-    #[arg(long)]
-    pub doq_upstream: Vec<String>,
+    #[cfg(feature="dot")]
+        /// *Experimental*
+        /// upstream address of DoT servers.
+        /// DNS over TLS (RFC 7858)
+        #[arg(long)]
+        pub dot_upstream: Vec<String>,
+
+
+    #[cfg(feature="doq")]
+        /// *Experimental*
+        /// upstream address of DoQ servers.
+        /// DNS over QUIC (RFC 9250)
+        #[arg(long)]
+        pub doq_upstream: Vec<String>,
 }
 
 fn default_servers() -> Vec<Arc<dyn DNSResolver>> {
