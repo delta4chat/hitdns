@@ -502,8 +502,133 @@ async fn main_async() -> anyhow::Result<()> {
     Ok(())
 }
 
+static ENV_FILTER: Lazy<Option<env_filter::Filter>> =
+    Lazy::new(||{
+        if let Ok(ref env) = std::env::var("RUST_LOG") {
+            Some(
+                env_filter::Builder::new()
+                .parse(env)
+                .build()
+            )
+        } else {
+            None
+        }
+    });
+
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
+    #[cfg(not(feature = "ftlog"))]
+    {
+        let ret =
+            env_logger::builder()
+            .try_init();
+
+        eprintln!("env_logger: try init = {ret:?}");
+    }
+
+    #[cfg(feature = "ftlog")]
+    {
+        use alloc::borrow::Cow;
+        use core::fmt::Display;
+
+        struct MyFmt;
+        impl ftlog::FtLogFormat for MyFmt {
+            #[inline]
+            fn msg(&self, record: &log::Record)
+                -> Box<dyn Send + Sync + Display>
+            {
+                if let Some(ef) = &*ENV_FILTER {
+                    if ! ef.matches(record) {
+                        return Box::new("");
+                    }
+                }
+
+                use anstyle::AnsiColor::*;
+                use anstyle::Effects;
+                use log::Level::*;
+
+                let level = record.level();
+                let level_style =
+                    match level {
+                        Trace => Cyan.on_default(),
+                        Debug => Blue.on_default(),
+                        Info  => Green.on_default(),
+                        Warn  => Yellow.on_default(),
+                        Error => {
+                            Red.on_default()
+                                .effects(Effects::BOLD)
+                        },
+                    };
+                let level =
+                    format!(
+                        "{}{}{}",
+                        level_style.render(),
+                        level.as_str(),
+                        level_style.render_reset(),
+                    );
+
+                let thread =
+                    std::thread::current()
+                    .name().unwrap_or("(N/A)")
+                    .to_owned();
+
+                let line =
+                    record.line()
+                    .map(|n| { format!(":{n}") })
+                    .unwrap_or_else(String::new);
+
+                let args = {
+                    let a = record.args();
+
+                    a.as_str()
+                    .map(|s| { Cow::Borrowed(s) })
+                    .unwrap_or_else(
+                        ||{ Cow::Owned(a.to_string()) }
+                    )
+                };
+
+                let file =
+                    record.file_static()
+                    .or_else(||{ record.file() })
+                    .unwrap_or("???");
+
+                let out = format!(
+                "{level} {thread} [{file}{line}] {args}"
+                );
+                Box::new(out)
+            }
+        }
+
+        let mut flb = ftlog::builder();
+
+        if let Some(ref ef) = &*ENV_FILTER {
+            let filter_lv: log::LevelFilter = ef.filter();
+            flb = flb.max_log_level(filter_lv);
+        }
+
+        let ret =
+            flb
+            .utc()
+            .time_format(
+                time::format_description::parse_owned::<1>(
+                // ISO format with 3 digits of sub-seconds
+                // (aka. JavaScript 'Date' Format)
+"[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
+                ).unwrap()
+            )
+
+            // prevent to spam terminal
+            .bounded(2048, false)
+            .print_omitted_count(true)
+
+            .format(MyFmt{})
+            .try_init();
+
+        eprintln!(
+            "ftlog_logger: try init = {}",
+            if ret.is_ok() { "Ok" } else { "Err" }
+        );
+    }
+
     //smolscale2::set_max_threads(4);
     smolscale2::block_on(main_async())
 }

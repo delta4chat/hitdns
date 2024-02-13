@@ -5,14 +5,15 @@ edition = "2021"
 description = "hitdns is a DNS forward server optimized for cache hit ratio and query latency."
 license = "GPL-3.0"
 authors = ["Delta4 <delta4chat@gmx.com>", "Your Name <you@example.com>"]
-repository="https://github.com/delta4chat/hitdns"
+repository = "https://github.com/delta4chat/hitdns"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = [ "sqlite" ]
+default = [ "sqlite", "ftlog" ]
 sqlite = [ "dep:sqlx" ]
 sled = [ "dep:sled" ]
+ftlog = [ "dep:ftlog", "dep:anstyle", "dep:time" ]
 
 [dependencies]
 anyhow = "1.0.79"
@@ -25,7 +26,13 @@ directories = "5.0.1"
 env_logger = "0.11.1"
 hickory-proto = { version = "0.24.0", default-features = false }
 hyper = { version = "0.14.21", features = ["client"], default-features = false }
+
 log = "0.4.20"
+
+ftlog   = { optional = true, version = "0.2.12", features = ["tsc", "once_cell"], default-features = false }
+anstyle = { optional = true, version = "1.0.6" }
+time    = { optional = true, version = "0.3.34", features = ["alloc", "formatting"] }
+
 once_cell = "1.19.0"
 
 # HTTPS library for DoH client
@@ -45,13 +52,15 @@ smol-timeout = "0.6.0"
 
 #smolscale = { version = "0.4.4", features = ["preempt"] }
 
-smolscale2 = { version = "0.5.1", features = ["preempt"] }
+smolscale2 = { version = "0.5.2", features = ["preempt"] }
 #smolscale2 = { path = "../smolscale", features = ["preempt"] }
 
 portable-atomic = "1.6.0"
 
 sqlx = { optional = true, version = "0.7.3", features = ["runtime-async-std", "sqlite"], default-features = false }
+
 sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"], default-features = false }
+env_filter = "0.1.0"
 #sled = { optional = true, version = "1.0.0-alpha.120" }
 
 [profile.dev]
