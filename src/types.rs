@@ -21,8 +21,8 @@ impl core::fmt::Display for DNSQuery {
             format!(
                 "{} {} {}",
                 query.name().to_ascii(),
-                query.query_type(),
                 query.query_class(),
+                query.query_type(),
             ).as_str()
         )
     }

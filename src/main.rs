@@ -383,6 +383,16 @@ impl DNSDaemon {
 #[derive(Debug, Clone, clap::Parser)]
 #[command(author, version, about, long_about)]
 pub struct HitdnsOpt {
+    /// Dumps all cache entry from disk database file.
+    /// if filename is "-", prints to standard output.
+    #[arg(long)]
+    pub dump: Option<PathBuf>,
+
+    /// Loads from specified JSON dump file, and saves it to in-disk database.
+    /// if filename is "-", read from standard input.
+    #[arg(long)]
+    pub load: Option<PathBuf>,
+
     /// debug mode.
     #[arg(long)]
     pub debug: bool,
@@ -414,7 +424,7 @@ pub struct HitdnsOpt {
     pub tls_sni: bool,
 
     /// Listen address of local plaintext DNS server.
-    #[arg(long)]
+    #[arg(long, default_value="127.0.0.1:1053")]
     pub listen: SocketAddr,
 
     /// upstream URL of DoH servers.
@@ -480,6 +490,20 @@ fn default_servers() -> Vec<Arc<dyn DNSResolver>> {
 
 async fn main_async() -> anyhow::Result<()> {
     let mut opt = HitdnsOpt::parse();
+
+    if opt.dump.is_some() && opt.load.is_some() {
+        return Err(anyhow::anyhow!("arguments --dump and --load is exclusive and should not specified both.")).log_error();
+    }
+
+    if let Some(ref path) = opt.dump {
+        let snap = DatabaseSnapshot::export().await?;
+        let json = format!("{:#}", snap.to_json());
+        if path == &PathBuf::from("-") {
+            println!("{json}");
+        } else {
+            smol::fs::write(path, json).await?;
+        }
+    }
 
     if opt.use_system_hosts {
         let filename =

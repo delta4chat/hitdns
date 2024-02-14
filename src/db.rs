@@ -59,7 +59,7 @@ pub static HITDNS_SLED_DB: Lazy<sled::Db> = Lazy::new(||{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseSnapshot {
     cache_v1:
-        std::collections::HashMap<DNSQuery, DNSEntry>,
+        std::collections::HashMap<DNSQuery, Arc<DNSEntry>>,
 
     // other database tables may added in future
 }
@@ -76,17 +76,13 @@ impl DatabaseSnapshot {
 
         dc.memory.scan(
             |query, cache_entry|{
-                let arc_entry =
+                let entry =
                     // Option< Arc<DNSEntry> >
                     cache_entry.entry.read_blocking()
                     .clone()
 
                     // Arc<DNSEntry>
                     .expect("unexpected got NULL value of DNS Entry from database!");
-
-                let entry =
-                    Arc::into_inner(arc_entry)
-                    .expect("cannot unwrap Arc<DNSEntry>");
 
                 this.cache_v1.insert(query.clone(), entry);
             }
