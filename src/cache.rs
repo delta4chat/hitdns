@@ -43,7 +43,7 @@ impl TryInto<Arc<DNSEntry>> for DNSCacheStatus {
 #[derive(Debug, Clone)]
 pub struct DNSCacheEntry {
     query: Arc<DNSQuery>,
-    entry: Arc<RwLock<
+    pub(crate) entry: Arc<RwLock<
                Option<Arc<DNSEntry>>
            >>,
     update_task: Arc<RwLock<
@@ -251,25 +251,49 @@ impl DNSCacheEntry {
 #[derive(Debug, Clone)]
 pub struct DNSCache {
     pub(crate) memory: Arc<scc::HashMap<DNSQuery, DNSCacheEntry>>,
-    //disk: SqlitePool,
     pub(crate) resolvers: Arc<DNSResolverArray>,
-    //resolver: DNSOverHTTPS,
+
+    debug: bool,
 }
 /// SAFETY: Async access, and backed a scc::HashMap (EBR)
 unsafe impl Sync for DNSCache {}
 unsafe impl Send for DNSCache {}
 
 impl DNSCache {
+    pub(crate) fn init() -> Self {
+        let memory = Arc::new( scc::HashMap::new() );
+        let debug = false;
+
+        let resolvers =
+            Arc::new( DNSResolverArray::from([]) );
+
+        Self {
+            memory,
+            resolvers,
+            debug,
+        }
+    }
+
     pub async fn new(
         resolvers: DNSResolverArray,
-        debug: bool
+        debug: bool,
     ) -> anyhow::Result<Self> {
-        let memory = Arc::new(scc::HashMap::new());
+        let mut this = Self::init();
 
+        this.resolvers = Arc::new(resolvers);
+        this.debug = debug;
+
+        this.load().await?;
+        Ok(this)
+    }
+
+    pub(crate) async fn load(&self)
+        -> anyhow::Result<()>
+    {
         #[cfg(feature="sqlite")]
         {
             let mut ret = sqlx::query("SELECT * FROM hitdns_cache_v1").fetch(&*HITDNS_SQLITE_POOL);
-            while let Ok(Some(line)) = ret.try_next().await {
+            while let Ok(Some(line)) =ret.try_next().await{
                 assert_eq!(line.columns().len(), 2);
                 let query: Vec<u8> =
                     line.try_get_raw(0)?.to_owned()
@@ -300,7 +324,8 @@ impl DNSCache {
                 let cache_entry: DNSCacheEntry =
                     Arc::new(entry).into();
 
-                let _ = memory.insert(query, cache_entry);
+                let _ =
+                    self.memory.insert(query, cache_entry);
             }
         }
 
@@ -311,7 +336,7 @@ impl DNSCache {
                 .open_tree(b"hitdns_cache_v2").context("cannot open sled tree").log_warn()?;
 
             for ret in tree.iter() {
-                if debug {
+                if self.debug {
                     log::trace!("from sled tree: {ret:?}");
                 }
 
@@ -345,7 +370,8 @@ impl DNSCache {
                 let cache_entry: DNSCacheEntry =
                     Arc::new(entry).into();
 
-                let _ = memory.insert(query, cache_entry);
+                let _ =
+                    self.memory.insert(query, cache_entry);
             }
 
             // if enabled both 'sqlite' and 'sled' feature,
@@ -353,8 +379,8 @@ impl DNSCache {
             #[cfg(all(feature="sqlite", feature="sled"))]
             {
                 let mut x = vec![];
-                memory.scan(|k, v| {
-                    if debug {
+                self.memory.scan(|k, v| {
+                    if self.debug {
                         log::trace!("migrate {k:?}");
                     }
                     x.push((k.clone(), v.clone()));
@@ -372,17 +398,13 @@ impl DNSCache {
                         })?;
 
                     tree.insert(query, entry).context("cannot insert to sled tree").log_warn()?;
-                    tree.flush_async().await.log_error()?;
                 }
-            }
-        }
+                tree.flush_async().await.log_error()?;
+            } // cfg all features=[sqlite,sled]
+        } // cfg feature=sled
 
-        Ok(Self {
-            memory,
-            //disk,
-            resolvers: Arc::new(resolvers),
-        })
-    }
+        Ok(())
+    } // pub(crate) async fn load()
 
     // cached query
     pub async fn query(&self, req: dns::Message) -> anyhow::Result<dns::Message> {

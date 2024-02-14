@@ -539,7 +539,7 @@ fn main() -> anyhow::Result<()> {
         use core::fmt::Display;
 
         struct MyFmt;
-        impl ftlog::FtLogFormat for MyFmt {
+        impl ftlog2::FtLogFormat for MyFmt {
             #[inline]
             fn msg(&self, record: &log::Record)
                 -> Box<dyn Send + Sync + Display>
@@ -594,19 +594,55 @@ fn main() -> anyhow::Result<()> {
                     )
                 };
 
-                let file =
+                let mut file =
                     record.file_static()
                     .or_else(||{ record.file() })
-                    .unwrap_or("???");
+                    .unwrap_or("???")
+                    .to_string();
+
+                // compatible directory separator of Unix-style ("/") and Windows-style ("\")
+                while file.contains("\\") {
+                    file = file.replace("\\", "/");
+                }
+                while file.contains("//") {
+                    file = file.replace("//", "/");
+                }
+
+                // remove prefix for all external library.
+                // `cargo/registry/src/index.crates.io-6f17d22bba15001f/`
+                if file.contains("cargo") && file.contains("registry") {
+
+                    // (for example)
+                    // if original filename is "/home/test/.cargo/registry/src/index.crates.io-6f17d22bba15001f/h2-0.3.24/src/frame/settings.rs"
+
+                    let short_file =
+                    file.split_once("cargo/registry/src/")
+                    .map(|v| { v.1 })
+                    // Some("index.crates.io-6f17d22bba15001f/h2-0.3.24/src/frame/settings.rs")
+
+                    .map(|v| { v.split_once("/") })
+                    .flatten()
+                    // Some(("index.crates.io-6f17d22bba15001f", "h2-0.3.24/src/frame/settings.rs"))
+
+                    .map(|v| { v.1 })
+                    .unwrap_or(&file);
+                    // "h2-0.3.24/src/frame/settings.rs"
+
+                    if file.len() > short_file.len() {
+                        if file.ends_with(short_file) {
+                            file = format!("@{short_file}")
+                        }
+                    }
+                }
 
                 let out = format!(
-                "{level} {thread} [{file}{line}] {args}"
+                "[{level}] |{thread}| ({file}{line}): {args}"
                 );
                 Box::new(out)
             }
         }
 
-        let mut flb = ftlog::builder();
+        let mut flb = ftlog2::builder();
 
         if let Some(ref ef) = &*ENV_FILTER {
             let filter_lv: log::LevelFilter = ef.filter();

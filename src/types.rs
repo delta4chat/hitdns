@@ -9,6 +9,25 @@ pub struct DNSQuery {
     pub rdtype: u16,
 }
 
+impl core::fmt::Display for DNSQuery {
+    fn fmt(&self, f: &mut core::fmt::Formatter)
+        -> Result<(), core::fmt::Error>
+    {
+        let query: dns::Query =
+            self.try_into()
+            .expect("cannot convert to hickory Query");
+
+        f.write_str(
+            format!(
+                "{} {} {}",
+                query.name().to_ascii(),
+                query.query_type(),
+                query.query_class(),
+            ).as_str()
+        )
+    }
+}
+
 impl TryFrom<dns::Message> for DNSQuery {
     type Error = anyhow::Error;
     fn try_from(msg: dns::Message) -> anyhow::Result<Self> {
@@ -65,7 +84,8 @@ impl TryFrom<&DNSQuery> for dns::Query {
             name.push('.');
         }
 
-        Ok(dns::Query::new()
+        Ok(
+            dns::Query::new()
             .set_name(name.into_name()?)
             .set_query_class(val.rdclass.into())
             .set_query_type(val.rdtype.into())
