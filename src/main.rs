@@ -41,7 +41,7 @@ pub mod dns {
     pub use hickory_proto::rr::IntoName;
 
     pub use hickory_proto::rr::LowerName;
-    pub use LowerName as Name;
+    pub use hickory_proto::rr::domain::Name;
 
     pub use hickory_proto::rr::dns_class::DNSClass;
     pub use DNSClass as Class;
@@ -497,12 +497,30 @@ async fn main_async() -> anyhow::Result<()> {
 
     if let Some(ref path) = opt.dump {
         let snap = DatabaseSnapshot::export().await?;
-        let json = format!("{:#}", snap.to_json());
+        let json_str = format!("{:#}", snap.to_json());
         if path == &PathBuf::from("-") {
-            println!("{json}");
+            println!("{json_str}");
         } else {
-            smol::fs::write(path, json).await?;
+            smol::fs::write(path, json_str).await?;
         }
+    }
+
+    if let Some(ref path) = opt.load {
+        let json: serde_json::Value =
+            if path == &PathBuf::from("-") {
+                let f = std::io::stdin().lock();
+                serde_json::from_reader(f)?
+            } else {
+                let f = std::fs::File::open(path)?;
+                serde_json::from_reader(f)?
+            };
+
+        let snap = DatabaseSnapshot::from_json(&json)?;
+        log::info!("from_json() == to_json() ? {:?}", snap.to_json() == json);
+
+        log::info!("length = {}", snap.cache_v1.len());
+        log::info!("first = {:?}", snap.cache_v1.iter().next());
+        let _ = snap.import().await.log_error();
     }
 
     if opt.use_system_hosts {

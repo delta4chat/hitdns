@@ -2,11 +2,26 @@ use crate::*;
 
 /* ========== DNS Query ========= */
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DNSQuery {
+    /// raw query domain name, String encoded by UTF-8
     pub name: String,
+
+    /// raw query dns class, unsigned 16-bit integer
     pub rdclass: u16,
+
+    /// raw query record type, unsigned 16-bit integer
     pub rdtype: u16,
+}
+
+impl core::fmt::Debug for DNSQuery {
+    fn fmt(&self, f: &mut core::fmt::Formatter)
+        -> Result<(), core::fmt::Error>
+    {
+        f.write_str(
+            format!("DNS-Query( {self} )").as_str()
+        )
+    }
 }
 
 impl core::fmt::Display for DNSQuery {
@@ -19,12 +34,49 @@ impl core::fmt::Display for DNSQuery {
 
         f.write_str(
             format!(
-                "{} {} {}",
+                "{} {}({}) {}({})",
                 query.name().to_ascii(),
-                query.query_class(),
-                query.query_type(),
+                query.query_class(), self.rdclass,
+                query.query_type(), self.rdtype,
             ).as_str()
         )
+    }
+}
+impl TryFrom<&str> for DNSQuery {
+    type Error = anyhow::Error;
+    fn try_from(val: &str) -> anyhow::Result<DNSQuery> {
+        let mut val = val.to_string();
+        while val.contains("  ") {
+            val = val.replace("  ", " ");
+        }
+
+        let arr: Vec<&str> = val.split(" ").collect();
+        if arr.len() != 3 {
+            anyhow::bail!("malformed text format of dns query");
+        }
+
+        let mut name = arr[0].to_lowercase();
+        if ! name.ends_with(".") {
+            name.push('.');
+        }
+        let name: String =
+            dns::Name::from_ascii(&name)?.to_utf8();
+
+        let rdclass: u16 =
+            arr[1]
+            .replace(")", "")
+            .split("(").last()
+            .ok_or(anyhow::anyhow!("malformed rdclass field of dns query"))?
+            .parse()?;
+
+        let rdtype: u16 =
+            arr[2]
+            .replace(")", "")
+            .split("(").last()
+            .ok_or(anyhow::anyhow!("malformed rdtype field of dns query"))?
+            .parse()?;
+
+        Ok(DNSQuery { name, rdclass, rdtype })
     }
 }
 
@@ -58,7 +110,7 @@ impl TryFrom<dns::Message> for DNSQuery {
 impl From<dns::Query> for DNSQuery {
     fn from(val: dns::Query) -> DNSQuery {
         let mut name =
-            val.name().to_string().to_ascii_lowercase();
+            val.name().to_string().to_lowercase();
 
         // de-duplicate by convert all domain to "ends with dot"
         if ! name.ends_with(".") {
@@ -77,16 +129,14 @@ impl TryFrom<&DNSQuery> for dns::Query {
     fn try_from(val: &DNSQuery)
         -> anyhow::Result<dns::Query>
     {
-        use dns::IntoName;
-
-        let mut name = val.name.to_string().to_ascii_lowercase();
+        let mut name = val.name.to_string().to_lowercase();
         if ! name.ends_with(".") {
             name.push('.');
         }
 
         Ok(
             dns::Query::new()
-            .set_name(name.into_name()?)
+            .set_name(dns::Name::from_utf8(name)?)
             .set_query_class(val.rdclass.into())
             .set_query_type(val.rdtype.into())
             .to_owned()
@@ -114,13 +164,148 @@ impl TryFrom<&DNSQuery> for dns::Message {
 
 /* ========== DNS Entry ========== */
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DNSEntry {
     pub query: DNSQuery,
     pub response: Vec<u8>,
     pub expire: SystemTime,
     pub upstream: String,
     pub elapsed: Duration,
+}
+impl DNSEntry {
+    fn _quoted_printable_opt() -> quoted_printable::Options
+    {
+        quoted_printable::Options::default()
+        // do not split lines for each 76 characters 
+        .line_length_limit(usize::MAX)
+
+        // encodes CR LF as \r\n (not =0D=0A)
+        .input_mode(quoted_printable::InputMode::Text)
+
+        // report any malformed errors
+        .parse_mode(quoted_printable::ParseMode::Strict)
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        let resp_quoted: String =
+            quoted_printable::encode_with_options(
+                &self.response,
+                Self::_quoted_printable_opt()
+            );
+
+        let expire_unix: String =
+            self.expire
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_secs().to_string();
+
+        let upstream_str: String =
+            self.upstream.clone();
+
+        let elapsed_secs: String =
+            self.elapsed.as_secs_f64().to_string();
+
+        serde_json::json!({
+            "query": format!("{}", &self.query),
+            "response": resp_quoted,
+            "expire": expire_unix,
+            "upstream": upstream_str,
+            "elapsed": elapsed_secs,
+        })
+    }
+
+    pub fn from_json(json: &serde_json::Value)
+        -> anyhow::Result<Self>
+    {
+        let map =
+            match json.as_object() {
+                Some(v) => v,
+                None => {
+                    anyhow::bail!("DNSEntry::from_json() unexpected non-Object type of JSON data");
+                }
+            };
+
+        macro_rules! map_get_str {
+            ( $x:expr ) => {
+                match map.get($x) {
+                    Some(v) => {
+                        if let Some(s) = v.as_str() {
+                            s.to_string()
+                        } else {
+                            anyhow::bail!("DNSEntry::from_json() unexpected JSON field '.{}' is not String", $x);
+                        }
+                    },
+                    None => {
+                        anyhow::bail!("DNSEntry::from_json() unexpected JSON data without '.{}' field", $x);
+                    }
+                } // match map.get
+            }
+        }
+
+        let query_text: String = map_get_str!("query");
+        let resp_quoted: String = map_get_str!("response");
+        let expire_unix: String = map_get_str!("expire");
+        let upstream: String = map_get_str!("upstream");
+        let elapsed_str: String = map_get_str!("elapsed");
+
+        let query: DNSQuery =
+            query_text.as_str()
+            .try_into()?;
+
+        let response: Vec<u8> =
+            quoted_printable::decode_with_options(
+                resp_quoted,
+                Self::_quoted_printable_opt()
+            )?;
+
+        let expire: SystemTime = {
+            let since = 
+                if expire_unix.contains(".") {
+                    let ts: f64 =
+                        expire_unix.parse().unwrap_or(0.0);
+
+                    Duration::from_secs_f64(ts)
+                } else {
+                    let ts: u64 =
+                        expire_unix.parse().unwrap_or(0);
+
+                    Duration::from_secs(ts)
+                };
+
+            SystemTime::UNIX_EPOCH
+                .checked_add(since)
+                .unwrap_or(SystemTime::UNIX_EPOCH)
+        };
+
+        let elapsed: Duration = {
+            let secs: f64 =
+                elapsed_str.parse().unwrap_or(0.0);
+
+            Duration::from_secs_f64(secs)
+        };
+
+        Ok(Self {
+            query, response,
+            expire,
+            upstream, elapsed,
+        })
+    }
+}
+
+impl core::fmt::Debug for DNSEntry {
+    fn fmt(&self, f: &mut core::fmt::Formatter)
+        -> Result<(), core::fmt::Error>
+    {
+        f.debug_struct("DNS-Entry")
+            .field("query", &self.query)
+            .field("response",
+                &Bytes::copy_from_slice(&self.response)
+            )
+            .field("expire", &self.expire)
+            .field("upstream", &self.upstream)
+            .field("elapsed", &self.elapsed)
+            .finish()
+    }
 }
 
 impl TryFrom<&DNSEntry> for dns::Message {

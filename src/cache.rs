@@ -373,35 +373,7 @@ impl DNSCache {
                 let _ =
                     self.memory.insert(query, cache_entry);
             }
-
-            // if enabled both 'sqlite' and 'sled' feature,
-            // this will doing a migration that copying original DNS entry from sqlite to sled.
-            #[cfg(all(feature="sqlite", feature="sled"))]
-            {
-                let mut x = vec![];
-                self.memory.scan(|k, v| {
-                    if self.debug {
-                        log::trace!("migrate {k:?}");
-                    }
-                    x.push((k.clone(), v.clone()));
-                });
-                for (query, cache_entry) in x.iter() {
-                    let query: Vec<u8> =
-                        bincode::serialize(&query)
-                        .log_error()?;
-                    let entry: Vec<u8> =
-                        bincode::serialize(&{
-                            let entry: Arc<DNSEntry> =
-                                cache_entry.status()
-                                .await.try_into()?;
-                            entry.deref().clone()
-                        })?;
-
-                    tree.insert(query, entry).context("cannot insert to sled tree").log_warn()?;
-                }
-                tree.flush_async().await.log_error()?;
-            } // cfg all features=[sqlite,sled]
-        } // cfg feature=sled
+        }
 
         Ok(())
     } // pub(crate) async fn load()

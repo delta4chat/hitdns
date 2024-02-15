@@ -28,7 +28,7 @@ serde_json = "1.0.113"
 bincode = "1.3.3"
 bytes = "1.5.0"
 
-clap = { version = "4.4.18", features = ["derive", "debug"] }
+clap = { version = "4.4.18", features = ["derive"] }
 directories = "5.0.1"
 hickory-proto = { version = "0.24.0", default-features = false }
 
@@ -70,7 +70,7 @@ portable-atomic = "1.6.0"
 sqlx = { optional = true, version = "0.7.3", features = ["runtime-async-std", "sqlite"], default-features = false }
 
 sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"], default-features = false }
-escape-bytes = "0.1.1"
+quoted_printable = "0.5.0"
 #sled = { optional = true, version = "1.0.0-alpha.120" }
 
 [profile.dev]
