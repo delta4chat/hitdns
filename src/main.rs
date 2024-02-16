@@ -22,6 +22,10 @@ pub use hosts::*;
 pub mod protocol;
 pub use protocol::*;
 
+// api.rs
+pub mod api;
+pub use api::*;
+
 /* ==================== */
 
 pub use std::time::{Instant, SystemTime};
@@ -441,6 +445,10 @@ pub struct HitdnsOpt {
     #[arg(long)]
     pub listen: Option<SocketAddr>,
 
+    /// Listen address of local HTTP API.
+    #[arg(long)]
+    pub api_listen: Option<SocketAddr>,
+
     /// upstream URL of DoH servers.
     /// DNS over HTTPS (RFC 8484)
     #[arg(long)]
@@ -609,6 +617,15 @@ async fn main_async() -> anyhow::Result<()> {
 
     MIN_TTL.store(opt.min_ttl, Relaxed);
     MAX_TTL.store(opt.max_ttl, Relaxed);
+
+    if let Some(api_listen) = opt.api_listen {
+        smolscale2::spawn(async move {
+            let api =
+                HitdnsAPI::new(api_listen)
+                .await.unwrap();
+            api.run().await.unwrap();
+        }).detach();
+    }
 
     let daemon = DNSDaemon::new(opt).await.unwrap();
     daemon.run().await;
