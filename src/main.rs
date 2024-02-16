@@ -139,11 +139,19 @@ pub struct DNSDaemon {
 
 impl DNSDaemon {
     pub async fn new(opt: HitdnsOpt) -> anyhow::Result<Self> {
+        let listen =
+            match opt.listen {
+                Some(v) => v,
+                None => {
+                    anyhow::bail!("no listen address specified!");
+                }
+            };
+
         let udp = Arc::new(
-            UdpSocket::bind(&opt.listen).await.log_error()?
+            UdpSocket::bind(&listen).await.log_error()?
         );
         let tcp = Arc::new(
-            TcpListener::bind(&opt.listen).await.log_error()?
+            TcpListener::bind(&listen).await.log_error()?
         );
 
         if let Some(ref hosts_filename) = opt.hosts {
@@ -192,8 +200,14 @@ impl DNSDaemon {
             }
 
             if x.is_empty() {
-                x = default_servers();
-                log::info!("no upstream specified. use default servers: {x:#?}");
+                if opt.default_servers {
+                    x = DefaultServers::global();
+                    log::info!("no upstream specified. use default servers: {x:#?}");
+                }
+            }
+
+            if x.is_empty() {
+                anyhow::bail!("No DNS Upstream provided.");
             }
 
             DNSResolverArray::from(x)
@@ -424,14 +438,17 @@ pub struct HitdnsOpt {
     pub tls_sni: bool,
 
     /// Listen address of local plaintext DNS server.
-    #[arg(long, default_value="127.0.0.1:1053")]
-    pub listen: SocketAddr,
+    #[arg(long)]
+    pub listen: Option<SocketAddr>,
 
     /// upstream URL of DoH servers.
     /// DNS over HTTPS (RFC 8484)
     #[arg(long)]
     pub doh_upstream: Vec<String>,
 
+    /// uses default list of global DNS resolvers.
+    #[arg(long, default_value="true")]
+    pub default_servers: bool,
 
     #[cfg(feature="dot")]
         /// *Experimental*
@@ -449,62 +466,103 @@ pub struct HitdnsOpt {
         pub doq_upstream: Vec<String>,
 }
 
-fn default_servers() -> Vec<Arc<dyn DNSResolver>> {
-    let doh_server_urls = vec![
-        // Cloudflare DNS
-        "https://1.0.0.1/dns-query",
-        "https://1.1.1.1/dns-query",
+pub struct DefaultServers;
+impl DefaultServers {
+    /// Global servers.
+    pub fn global() -> Vec<Arc<dyn DNSResolver>> {
+        let doh_server_urls = vec![
+            // [Anycast] Cloudflare DNS
+            "https://1.0.0.1/dns-query",
+            "https://1.1.1.1/dns-query",
+            "https://[2606:4700:4700::1001]/dns-query",
+            "https://[2606:4700:4700::1111]/dns-query",
 
-        // Quad9 DNS
-        "https://9.9.9.10/dns-query",
+            // [Anycast] Quad9 DNS (No filter)
+            "https://9.9.9.10/dns-query",
+            "https://149.112.112.10/dns-query",
+            "https://[2620:fe::10]/dns-query",
+            "https://[2620:fe::fe:10]/dns-query",
 
-        // TWNIC DNS 101
-        "https://101.101.101.101/dns-query",
+            // [TW] TWNIC DNS 101
+            "https://101.101.101.101/dns-query",
 
-        // dns.sb
-        "https://45.11.45.11/dns-query",
-        "https://185.222.222.222/dns-query",
+            // [DE] dns.sb
+            "https://45.11.45.11/dns-query",
+            "https://185.222.222.222/dns-query",
 
-        // Adguard DNS Un-filtered
-        "https://94.140.14.140/dns-query"
-    ];
+            // Adguard DNS Un-filtered
+            "https://94.140.14.140/dns-query",
 
-    let mut list: Vec<Arc<dyn DNSResolver>> = vec![];
+            // [CH] dns.switch.ch
+            //"https://130.59.31.248/dns-query",
+        ];
 
-    for doh_url in doh_server_urls.iter() {
-        list.push(
-            Arc::new(
-                DNSOverHTTPS::new(
-                    doh_url,
-                    /*
-                    false, // no hosts.txt
-                    false, // disable TLS SNI
-                    */
-                ).unwrap()
-            )
-        );
+        let mut list: Vec<Arc<dyn DNSResolver>> = vec![];
+
+        for doh_url in doh_server_urls.iter() {
+            list.push(
+                Arc::new(
+                    DNSOverHTTPS::new(doh_url).unwrap()
+                )
+            );
+        }
+
+        list
     }
 
-    list
+
+    /* ========== Regional-specified resolvers ==========
+     * WARNING: All of these servers, located in some countries that under very strict Internet Censorship, such as (non-exhaustive):
+     * 1. DNS-hijacking/poisoning/spoofing,
+     * 2. TLS SNI-based TCP connection reset,
+     * 3. IP address blocked by ACL or routing blockhole.
+     */
+    /// Mainland China, or RPC, aka Communist Totalitarian Dictatorship Authorities of Mainland China
+    unsafe fn mainland_china() -> Vec<Arc<dyn DNSResolver>> {
+        let doh_server_urls = vec![
+            // [CN] Alibaba DNS
+            "https://223.5.5.5/dns-query",
+            "https://223.6.6.6/dns-query",
+
+            // [CN] Qihu 360 DNS
+            "https://180.163.249.75/dns-query",
+        ];
+
+        let mut list: Vec<Arc<dyn DNSResolver>> = vec![];
+
+        for doh_url in doh_server_urls.iter() {
+            list.push(
+                Arc::new(
+                    DNSOverHTTPS::new(doh_url).unwrap()
+                )
+            );
+        }
+
+        list
+    }
 }
 
 async fn main_async() -> anyhow::Result<()> {
     let mut opt = HitdnsOpt::parse();
 
     if opt.dump.is_some() && opt.load.is_some() {
-        return Err(anyhow::anyhow!("arguments --dump and --load is exclusive and should not specified both.")).log_error();
+        return Err(anyhow::anyhow!("arguments '--dump' and '--load' is exclusive and should not specified both.")).log_error();
     }
 
     if let Some(ref path) = opt.dump {
         let snap = DatabaseSnapshot::export().await?;
         let json_str = format!("{:#}", snap.to_json());
+
         if path == &PathBuf::from("-") {
             println!("{json_str}");
         } else {
             smol::fs::write(path, json_str).await?;
         }
-    }
+        log::info!("DatabaseSnapshot dumped.");
 
+        smol::Timer::after(Duration::from_secs(3)).await;
+        std::process::exit(0);
+    }
     if let Some(ref path) = opt.load {
         let json: serde_json::Value =
             if path == &PathBuf::from("-") {
@@ -520,7 +578,11 @@ async fn main_async() -> anyhow::Result<()> {
 
         log::info!("length = {}", snap.cache_v1.len());
         log::info!("first = {:?}", snap.cache_v1.iter().next());
-        let _ = snap.import().await.log_error();
+        snap.import().await.log_error()?;
+        log::info!("DatabaseSnapshot loaded.");
+
+        smol::Timer::after(Duration::from_secs(3)).await;
+        std::process::exit(0);
     }
 
     if opt.use_system_hosts {
@@ -548,7 +610,9 @@ async fn main_async() -> anyhow::Result<()> {
     MIN_TTL.store(opt.min_ttl, Relaxed);
     MAX_TTL.store(opt.max_ttl, Relaxed);
 
-    DNSDaemon::new(opt).await.log_error()?.run().await;
+    let daemon = DNSDaemon::new(opt).await.unwrap();
+    daemon.run().await;
+
     Ok(())
 }
 
@@ -709,10 +773,7 @@ fn main() -> anyhow::Result<()> {
             .format(MyFmt{})
             .try_init();
 
-        eprintln!(
-            "ftlog_logger: try init = {}",
-            if ret.is_ok() { "Ok" } else { "Err" }
-        );
+        eprintln!("ftlog_logger: try init = {ret:?}");
     }
 
     //smolscale2::set_max_threads(4);

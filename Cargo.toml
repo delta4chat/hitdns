@@ -37,7 +37,9 @@ env_filter = "0.1.0"
 env_logger = "0.11.1"
 
 #ftlog  = { optional = true, version = "0.2.12", features = ["tsc"], default-features = false }
-ftlog2 = { optional = true, version = "0.3.0", features = ["tsc"] }
+
+ftlog2 = { optional = true, version = "0.3.1", features = ["tsc"] }
+#ftlog2 = { optional = true, version = "0.3.1", path = "../ftlog", features = ["tsc"] }
 
 anstyle = { optional = true, version = "1.0.6" }
 time    = { optional = true, version = "0.3.34", features = ["alloc", "formatting"] }
