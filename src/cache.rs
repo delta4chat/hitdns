@@ -114,11 +114,20 @@ impl DNSCacheEntry {
         }
     }
 
+    /// (if caller does not provide a resolver, this method just query cached DNSEntry and any Cache Miss will cause Error.)
+    ///
     /// if DNSEntry does not exipre, return immediately.
     /// if DNSEntry exists and expired, starting a background task for updating that, then return expired result.
     /// if DNSEntry does not exists, start a foreground task, waiting until it successfully or timed out.
     /// this method promises never starting multi task for cache miss.
-    pub async fn update(&self, resolver: Arc<dyn DNSResolver>, timeout: Duration) -> anyhow::Result<Arc<DNSEntry>> {
+    pub async fn update(
+        &self,
+        maybe_resolver:
+            Option<
+                Arc<dyn DNSResolver>
+            >,
+        timeout: Duration
+    ) -> anyhow::Result<Arc<DNSEntry>> {
         let status = self.status().await;
         // no need update a un-expired DNSRecord.
         // cache hit.
@@ -141,97 +150,109 @@ impl DNSCacheEntry {
         }
 
         // starting update task for updating expired result
+        if let Some(ref resolver) = maybe_resolver {
+            let resolver = resolver.clone();
 
-        //let resolver = get_resolver.await?;
+            let entry_lock = self.entry.clone();
+            let query = self.query.clone();
 
-        let entry_lock = self.entry.clone();
-        let query = self.query.clone();
-        let (update_tx, update_rx) =smol::channel::bounded(1);
-        *self.update_notify.write().await = Some(update_rx);
-        *self.update_task.write().await = Some(Arc::new(
-            smolscale2::spawn(async move {
-                let upstream = resolver.dns_upstream();
+            let (update_tx, update_rx) =
+                smol::channel::bounded(1);
 
-                let start = Instant::now();
-                let mut response = match timeout_helper(resolver.dns_resolve(&query), timeout).await {
-                        Some(v) => v?,
-                        None => {
-                            anyhow::bail!("resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}", &query);
+            *self.update_notify.write().await=Some(update_rx);
+            *self.update_task.write().await = Some(Arc::new(
+                smolscale2::spawn(async move {
+                    let upstream = resolver.dns_upstream();
+
+                    let start = Instant::now();
+                    let mut response =
+                        match
+                        timeout_helper(
+                            resolver.dns_resolve(&query),
+                            timeout
+                        ).await {
+                            Some(v) => v?,
+                            None => {
+                                anyhow::bail!("resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}", &query);
+                            }
+                        };
+                    let elapsed = start.elapsed();
+
+                    let expire_ttl: u32 = {
+                        let min_ttl = MIN_TTL.load(Relaxed);
+                        let max_ttl = MAX_TTL.load(Relaxed);
+
+                        let mut ttl =
+                            response.all_sections()
+                            .map(|x| { x.ttl() })
+                            .min().unwrap_or(min_ttl);
+
+                        if ttl < min_ttl {
+                            ttl = min_ttl;
                         }
+                        if ttl > max_ttl {
+                            ttl = max_ttl;
+                        }
+
+                        ttl
                     };
-                let elapsed = start.elapsed();
+                    let expire = SystemTime::now() + Duration::from_secs(expire_ttl as u64);
 
-                let expire_ttl: u32 = {
-                    let min_ttl = MIN_TTL.load(Relaxed);
-                    let max_ttl = MAX_TTL.load(Relaxed);
+                    response.set_id(0);
+                    *response.extensions_mut() = None;
 
-                    let mut ttl =
-                        response.all_sections()
-                        .map(|x| { x.ttl() })
-                        .min().unwrap_or(min_ttl);
+                    let entry = Arc::new(DNSEntry {
+                        query: query.deref().clone(),
+                        response: response.to_vec()?,
+                        elapsed,
+                        upstream,
+                        expire,
+                    });
+                    *entry_lock.write().await = Some(entry.clone());
+                    update_tx.send(()).await.log_error()?;
 
-                    if ttl < min_ttl {
-                        ttl = min_ttl;
+                    #[cfg(feature="sqlite")]
+                    {
+                        let query: Vec<u8> =
+                            bincode::serialize(&query)
+                            .log_error()?;
+                        let entry: Vec<u8> =
+                            bincode::serialize(&entry)
+                            .log_error()?;
+
+                        sqlx::query("INSERT OR IGNORE INTO hitdns_cache_v1 VALUES (?1, ?2); UPDATE hitdns_cache_v1 SET entry = ?2 WHERE query = ?1")
+                            .bind(query).bind(entry)
+                            .execute(&*HITDNS_SQLITE_POOL)
+                            .await.log_warn()?;
                     }
-                    if ttl > max_ttl {
-                        ttl = max_ttl;
+
+                    #[cfg(feature="sled")]
+                    {
+                        let query: Vec<u8> =
+                            bincode::serialize(&query)
+                            .log_error()?;
+                        let entry: Vec<u8> =
+                            bincode::serialize(&entry)
+                            .log_error()?;
+
+                        let tree =
+                            HITDNS_SLED_DB
+                            .open_tree(b"hitdns_cache_v2")
+                            .log_warn()?;
+
+                        tree.insert(query, entry).log_warn()?;
+                        tree.flush_async().await.log_error()?;
                     }
 
-                    ttl
-                };
-                let expire = SystemTime::now() + Duration::from_secs(expire_ttl.into());
-
-                response.set_id(0);
-                *response.extensions_mut() = None;
-
-                let entry = Arc::new(DNSEntry {
-                    query: query.deref().clone(),
-                    response: response.to_vec()?,
-                    elapsed,
-                    upstream,
-                    expire,
-                });
-                *entry_lock.write().await = Some(entry.clone());
-                update_tx.send(()).await.log_error()?;
-
-                #[cfg(feature="sqlite")]
-                {
-                    let query: Vec<u8> =
-                        bincode::serialize(&query)
-                        .log_error()?;
-                    let entry: Vec<u8> =
-                        bincode::serialize(&entry)
-                        .log_error()?;
-
-                    sqlx::query("INSERT OR IGNORE INTO hitdns_cache_v1 VALUES (?1, ?2); UPDATE hitdns_cache_v1 SET entry = ?2 WHERE query = ?1")
-                        .bind(query).bind(entry)
-                        .execute(&*HITDNS_SQLITE_POOL)
-                        .await.log_warn()?;
-                }
-
-                #[cfg(feature="sled")]
-                {
-                    let query: Vec<u8> =
-                        bincode::serialize(&query)
-                        .log_error()?;
-                    let entry: Vec<u8> =
-                        bincode::serialize(&entry)
-                        .log_error()?;
-
-                    let tree =
-                        HITDNS_SLED_DB
-                        .open_tree(b"hitdns_cache_v2")
-                        .log_warn()?;
-
-                    tree.insert(query, entry).log_warn()?;
-                    tree.flush_async().await.log_error()?;
-                }
-
-                Ok(())
-            })
-        ));
+                    Ok(())
+                })
+            ));
+        }
 
         if let DNSCacheStatus::Miss = status {
+            if maybe_resolver.is_none() {
+                anyhow::bail!("DNSCacheEntry: Cache Miss but without resolver provided!");
+            }
             // this is first query (or previous queries never success).
             // so must wait until finished.
 
@@ -394,8 +415,7 @@ impl DNSCache {
             .get().clone();
 
         let entry = cache_entry.update(
-            self.resolvers.best().await?,
-            //self.resolver.clone(),
+            self.resolvers.best().await.log_warn().ok(),
             Duration::from_secs(10)
         ).await.log_warn()?;
 
