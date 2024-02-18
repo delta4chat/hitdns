@@ -1,6 +1,6 @@
 [package]
 name = "hitdns"
-version = "0.4.7"
+version = "0.4.8"
 edition = "2021"
 description = "hitdns is a DNS forward server optimized for cache hit ratio and query latency."
 license = "GPL-3.0"
