@@ -349,6 +349,26 @@ impl DNSMetrics {
         }
     }
 
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "latency":
+                self.latency()
+                .as_secs_f64()
+                .to_string(),
+
+            "reliability": self.reliability,
+            "online": self.online,
+            "last_respond":
+                self.last_respond
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap_or(Duration::from_secs(0))
+                .as_secs_f64()
+                .to_string(),
+
+            "upstream": self.upstream.clone(),
+        })
+    }
+
     /// record a server works normal (on DNS query success)
     pub fn up(&mut self, elapsed: Duration) {
         self.online = true;

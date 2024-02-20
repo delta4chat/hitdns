@@ -235,7 +235,10 @@ impl DNSDaemon {
         })
     }
 
-    async fn handle_udp(udp: Arc<UdpSocket>, cache: Arc<DNSCache>) -> anyhow::Result<()> {
+    async fn handle_udp(
+        udp: Arc<UdpSocket>,
+        cache: Arc<DNSCache>
+    ) -> anyhow::Result<()> {
         let mut buf = vec![0u8; 65535];
         let mut msg: Vec<u8>;
 
@@ -260,7 +263,10 @@ impl DNSDaemon {
         }
     }
 
-    async fn handle_tcp(tcp: Arc<TcpListener>, cache: Arc<DNSCache>) -> anyhow::Result<()> {
+    async fn handle_tcp(
+        tcp: Arc<TcpListener>,
+        cache: Arc<DNSCache>
+    ) -> anyhow::Result<()> {
         loop {
             let (mut conn, peer) = tcp.accept().await.log_error()?;
             log::debug!("DNS Daemon accepted new TCP connection from {peer:?}");
@@ -362,22 +368,39 @@ impl DNSDaemon {
         } // tcp accept loop
     }
 
-    async fn run(&self) {
-        loop {
-            if self.opt.debug {
-                //log::trace!("cache status: {:?}", &self.cache.memory);
+    async fn run(self) {
+        let this = Arc::new(self);
+
+        if let Some(api_listen) = this.opt.api_listen {
+            if let Ok(api) =
+                HitdnsAPI::new(
+                    api_listen,
+                    this.clone()
+                ).await.log_error()
+            {
+                smolscale2::spawn(
+                    async move {
+                        api.run().await.unwrap();
+                    }
+                ).detach();
             }
-            log::debug!("cache length: {:?}", self.cache.memory.len());
+        }
+
+        loop {
+            if this.opt.debug {
+                log::trace!("cache status: {:?}", &this.cache.memory);
+            }
+            log::debug!("cache length: {:?}", this.cache.memory.len());
 
             log::debug!("smolscale2 worker threads: {:?}", smolscale2::running_threads());
             log::debug!("smolscale2 active tasks: {:?}", smolscale2::active_task_count());
 
-            log::trace!("tcp listener: {:?}\ntcp task: {:?}", self.tcp.as_ref(), &self.tcp_task);
-            log::trace!("udp socket: {:?}\nudp task: {:?}", self.udp.as_ref(), &self.udp_task);
+            log::trace!("tcp listener: {:?}\ntcp task: {:?}", this.tcp.as_ref(), &this.tcp_task);
+            log::trace!("udp socket: {:?}\nudp task: {:?}", this.udp.as_ref(), &this.udp_task);
 
-            if self.opt.debug {
+            if this.opt.debug {
                 let mut x = vec![];
-                for r in self.cache.resolvers.list.iter() {
+                for r in this.cache.resolvers.list.iter() {
                     x.push(r.dns_metrics().await);
                 }
 
@@ -386,7 +409,7 @@ impl DNSDaemon {
                 );
             }
 
-            if self.tcp_task.is_finished() || self.udp_task.is_finished() {
+            if this.tcp_task.is_finished() || this.udp_task.is_finished() {
                 log::error!("listener task died");
                 return;
             }
@@ -617,15 +640,6 @@ async fn main_async() -> anyhow::Result<()> {
 
     MIN_TTL.store(opt.min_ttl, Relaxed);
     MAX_TTL.store(opt.max_ttl, Relaxed);
-
-    if let Some(api_listen) = opt.api_listen {
-        smolscale2::spawn(async move {
-            let api =
-                HitdnsAPI::new(api_listen)
-                .await.unwrap();
-            api.run().await.unwrap();
-        }).detach();
-    }
 
     let daemon = DNSDaemon::new(opt).await.unwrap();
     daemon.run().await;
