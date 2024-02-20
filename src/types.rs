@@ -316,13 +316,26 @@ impl TryFrom<&DNSEntry> for dns::Message {
 }
 
 /* ========== DNS Metrics ========== */
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DNSMetrics {
     latency: VecDeque<Duration>,
     reliability: u8, // 0% - 100%
     online: bool,
     last_respond: SystemTime,
     upstream: String,
+}
+impl core::fmt::Debug for DNSMetrics {
+    fn fmt(&self, f: &mut core::fmt::Formatter)
+        -> Result<(), core::fmt::Error>
+    {
+        f.debug_struct("DNS-Metrics")
+            .field("latency", &self.latency())
+            .field("reliability", &self.reliability)
+            .field("online", &self.online)
+            .field("last_respond", &self.last_respond)
+            .field("upstream", &self.upstream)
+            .finish()
+    }
 }
 
 impl DNSMetrics {
@@ -446,10 +459,12 @@ impl DNSResolverArray {
         for resolver in self.list.as_ref().iter() {
             let my_metrics = resolver.dns_metrics().await;
 
+            /*
             // ignore any offline resolvers
             if my_metrics.reliability() <= 40 {
                 continue;
             }
+            */
 
             let resolver = resolver.clone();
             if best.is_none() {
@@ -476,8 +491,9 @@ impl DNSResolverArray {
         }
 
         if let Some(resolver) = best {
-            log::info!("selected best resolver {:?}", &resolver);
-            log::debug!("best_metrics: {best_metrics:?}");
+            log::debug!("selected best resolver {:?}", &resolver);
+
+            log::trace!("best_metrics: {best_metrics:?}");
             Ok(resolver)
         } else {
             anyhow::bail!("cannot select best resolver! maybe Internet offline, or empty list of resolvers")

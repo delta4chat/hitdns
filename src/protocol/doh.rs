@@ -159,6 +159,7 @@ impl<'a> DNSOverHTTPS {
         let mut maybe_ret;
 
         let mut zzz = false;
+
         loop {
             if zzz {
                 smol::Timer::after(
@@ -168,34 +169,36 @@ impl<'a> DNSOverHTTPS {
                 zzz = true;
             }
 
+            let url_ = url.clone();
+
             start = Instant::now();
             maybe_ret =
-                client.head( url.clone() )
+                client.head(url_)
                 .send()
                 .timeout(Duration::from_secs(10))
                 .await;
             latency = start.elapsed();
 
-            let mut m = metrics.write().await;
+            let metrics = metrics.clone();
+            let url_ = url.clone();
+            smolscale2::spawn(async move {
+                let mut m = metrics.write().await;
 
-            if let Some(ret) = &maybe_ret {
-                if ret.is_ok() {
-                    ret.log_trace();
-                    log::debug!("DoH server {url} working. latency={latency:?}");
-                    m.up(latency);
-                    std::mem::drop(m);
-                    continue;
+                if let Some(ret) = &maybe_ret {
+                    if ret.is_ok() {
+                        ret.log_trace();
+                        log::debug!("DoH server {url_} working. latency={latency:?}");
+                        m.up(latency);
+                    } else {
+                        log::warn!("DoH server {url_} down. used time: {latency:?}, ret={ret:?}");
+                        m.down();
+                    }
                 } else {
-                    log::warn!("DoH server {url} down. used time: {latency:?}, ret={ret:?}");
+                    log::warn!("DoH server {url_} not working! timed out.");
+                    m.down();
                 }
-            }
 
-            if maybe_ret.is_none() {
-                log::warn!("DoH server {url} not working! timed out.");
-            }
-
-            m.down();
-            std::mem::drop(m);
+            }).detach();
         }
     }
 
@@ -203,9 +206,11 @@ impl<'a> DNSOverHTTPS {
     async fn _dns_resolve(&self, query: &DNSQuery)
         -> anyhow::Result<dns::Message>
     {
+        log::info!("DoH un-cached Query: {query:?}");
         let start = Instant::now();
         let result = self._orig_dns_resolve(query).await;
         let latency = start.elapsed();
+        log::info!("DoH un-cached Result: (elapsed={latency:?}) {result:?}");
 
         let ok = result.is_ok();
         let metrics_lock = self.metrics.clone();
@@ -224,8 +229,6 @@ impl<'a> DNSOverHTTPS {
     async fn _orig_dns_resolve(&self, query: &DNSQuery)
         -> anyhow::Result<dns::Message>
     {
-        log::info!("DoH un-cached Query: {query:?}");
-
         let req: dns::Message = query.try_into().log_warn()?;
 
         let client = self.client.clone();
@@ -260,7 +263,6 @@ impl<'a> DNSOverHTTPS {
         let response =
             dns::Message::from_vec(&res).log_warn()?;
 
-        log::info!("DoH un-cached response {response:?}");
         Ok(response)
     }
 }

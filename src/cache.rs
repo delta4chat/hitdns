@@ -414,8 +414,12 @@ impl DNSCache {
             })
             .get().clone();
 
+
+        let resolver =
+            self.resolvers.best_or_random().await
+            .log_warn().ok();
         let entry = cache_entry.update(
-            self.resolvers.best().await.log_warn().ok(),
+            resolver,
             Duration::from_secs(10)
         ).await.log_warn()?;
 
