@@ -444,7 +444,7 @@ pub struct DNSResolverArray {
 }
 
 impl DNSResolverArray {
-    // constroctor
+    // constructor
     pub fn from(
         val: impl IntoIterator<Item=Arc<dyn DNSResolver>>
     ) -> DNSResolverArray {

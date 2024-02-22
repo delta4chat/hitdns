@@ -26,6 +26,7 @@ impl core::fmt::Debug for dyn DNSResolver {
         f.debug_struct("dyn DNSResolver")
             .field("dns_upstream", &self.dns_upstream())
             .field("dns_protocol", &self.dns_protocol())
+            //.field("dns_metrics", &self.dns_metrics())
             .finish()
     }
 }

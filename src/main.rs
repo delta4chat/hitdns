@@ -590,9 +590,7 @@ async fn main_async() -> anyhow::Result<()> {
             smol::fs::write(path, json_str).await?;
         }
         log::info!("DatabaseSnapshot dumped.");
-
-        smol::Timer::after(Duration::from_secs(3)).await;
-        std::process::exit(0);
+        return Ok(());
     }
     if let Some(ref path) = opt.load {
         let json: serde_json::Value =
@@ -612,8 +610,7 @@ async fn main_async() -> anyhow::Result<()> {
         snap.import().await.log_error()?;
         log::info!("DatabaseSnapshot loaded.");
 
-        smol::Timer::after(Duration::from_secs(3)).await;
-        std::process::exit(0);
+        return Ok(());
     }
 
     if opt.use_system_hosts {

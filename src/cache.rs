@@ -5,8 +5,8 @@ use crate::*;
 pub use portable_atomic::AtomicU32;
 pub use portable_atomic::Ordering::Relaxed;
 
-pub static MIN_TTL: AtomicU32 = AtomicU32::new(0);
-pub static MAX_TTL: AtomicU32 = AtomicU32::new(u32::MAX);
+pub static MIN_TTL: AtomicU32 =AtomicU32::new(0);
+pub static MAX_TTL: AtomicU32 =AtomicU32::new(u32::MAX);
 
 /* ========== DNS Cache Status ========== */
 
@@ -43,15 +43,23 @@ impl TryInto<Arc<DNSEntry>> for DNSCacheStatus {
 #[derive(Debug, Clone)]
 pub struct DNSCacheEntry {
     query: Arc<DNSQuery>,
-    pub(crate) entry: Arc<RwLock<
-               Option<Arc<DNSEntry>>
-           >>,
-    update_task: Arc<RwLock<
-                Option<Arc< smol::Task<anyhow::Result<()>> >>
-                  >>,
-    update_notify: Arc<RwLock<
-                Option< Receiver<()> >
-                >>,
+
+    pub(crate) entry:
+        Arc<RwLock<
+            Option<Arc<DNSEntry>>
+        >>,
+
+    update_task:
+        Arc<RwLock<
+            Option<Arc<
+                smol::Task< anyhow::Result<()> >
+            >>
+        >>,
+
+    update_notify:
+        Arc<RwLock<
+            Option< Receiver<()> >
+        >>,
 }
 impl From<Arc<DNSQuery>> for DNSCacheEntry {
     fn from(query: Arc<DNSQuery>) -> DNSCacheEntry {
@@ -66,8 +74,12 @@ impl From<Arc<DNSQuery>> for DNSCacheEntry {
 impl From<Arc<DNSEntry>> for DNSCacheEntry {
     fn from(entry: Arc<DNSEntry>) -> DNSCacheEntry {
         let query = entry.query.clone();
-        let mut this: DNSCacheEntry =Arc::new(query).into();
+
+        let mut this: DNSCacheEntry =
+            Arc::new(query).into();
+
         this.entry = Arc::new(RwLock::new(Some(entry)));
+
         this
     }
 }
@@ -86,7 +98,7 @@ impl DNSCacheEntry {
         while self.is_updating().await {
             log::debug!("{:?} still in updating...", self.query);
             smol::Timer::after(Duration::from_millis(50)).await;
-            if let Some(maybe_rx) = self.update_notify.read().timeout(Duration::from_millis(20)).await {
+            if let Some(maybe_rx) = self.update_notify.read().timeout(Duration::from_millis(50)).await {
                 if let Some(rx) = maybe_rx.as_ref() {
                     let _ = rx.recv().await;
                 } else {
@@ -101,7 +113,7 @@ impl DNSCacheEntry {
 
     pub async fn is_updating(&self) -> bool {
         // smol-timeout Option
-        if let Some(maybe_task) = self.update_task.read().timeout(Duration::from_millis(20)).await {
+        if let Some(maybe_task) = self.update_task.read().timeout(Duration::from_millis(50)).await {
             // Option<smol::Task>
             if let Some(task) = maybe_task.deref().clone() {
                 task.is_finished() == false
@@ -159,100 +171,113 @@ impl DNSCacheEntry {
             let (update_tx, update_rx) =
                 smol::channel::bounded(1);
 
-            *self.update_notify.write().await=Some(update_rx);
-            *self.update_task.write().await = Some(Arc::new(
-                smolscale2::spawn(async move {
-                    let upstream = resolver.dns_upstream();
+            *self.update_notify.write().await =
+                Some(update_rx);
 
-                    let start = Instant::now();
-                    let mut response =
-                        match
-                        timeout_helper(
-                            resolver.dns_resolve(&query),
-                            timeout
-                        ).await {
-                            Some(v) => v?,
-                            None => {
-                                anyhow::bail!("resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}", &query);
-                            }
-                        };
-                    let elapsed = start.elapsed();
+            let task = smolscale2::spawn(async move {
+                let upstream = resolver.dns_upstream();
 
-                    let expire_ttl: u32 = {
-                        let min_ttl = MIN_TTL.load(Relaxed);
-                        let max_ttl = MAX_TTL.load(Relaxed);
-
-                        let mut ttl =
-                            response.all_sections()
-                            .map(|x| { x.ttl() })
-                            .min().unwrap_or(min_ttl);
-
-                        if ttl < min_ttl {
-                            ttl = min_ttl;
+                let start = Instant::now();
+                let mut response =
+                    match
+                    timeout_helper(
+                        resolver.dns_resolve(&query),
+                        timeout
+                    ).await
+                    {
+                        Some(v) => v?,
+                        None => {
+                            anyhow::bail!("resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}", &query);
                         }
-                        if ttl > max_ttl {
-                            ttl = max_ttl;
-                        }
-
-                        ttl
                     };
-                    let expire = SystemTime::now() + Duration::from_secs(expire_ttl as u64);
+                let elapsed = start.elapsed();
 
-                    response.set_id(0);
-                    *response.extensions_mut() = None;
+                let expire_ttl: u32 = {
+                    let min_ttl = MIN_TTL.load(Relaxed);
+                    let max_ttl = MAX_TTL.load(Relaxed);
 
-                    let entry = Arc::new(DNSEntry {
-                        query: query.deref().clone(),
-                        response: response.to_vec()?,
-                        elapsed,
-                        upstream,
-                        expire,
-                    });
-                    *entry_lock.write().await = Some(entry.clone());
-                    update_tx.send(()).await.log_error()?;
+                    let mut ttl =
+                        response.all_sections()
+                        .map(|x| { x.ttl() })
+                        .min().unwrap_or(min_ttl);
 
-                    #[cfg(feature="sqlite")]
-                    {
-                        let query: Vec<u8> =
-                            bincode::serialize(&query)
-                            .log_error()?;
-                        let entry: Vec<u8> =
-                            bincode::serialize(&entry)
-                            .log_error()?;
+                    if ttl < min_ttl {
+                        ttl = min_ttl;
+                    }
+                    if ttl > max_ttl {
+                        ttl = max_ttl;
+                    }
 
+                    ttl
+                };
+                let expire = SystemTime::now() + Duration::from_secs(expire_ttl as u64);
+
+                response.set_id(0);
+                *response.extensions_mut() = None;
+
+                let entry = Arc::new(DNSEntry {
+                    query: query.deref().clone(),
+                    response: response.to_vec()?,
+                    elapsed,
+                    upstream,
+                    expire,
+                });
+
+                *entry_lock.write().await =
+                    Some(entry.clone());
+
+                let _ =
+                update_tx.send(()).await.log_error();
+
+                #[cfg(feature="sqlite")]
+                {
+                    let query: Vec<u8> =
+                        bincode::serialize(&query)
+                        .log_error()?;
+                    let entry: Vec<u8> =
+                        bincode::serialize(&entry)
+                        .log_error()?;
+
+                    let _ =
                         sqlx::query("INSERT OR IGNORE INTO hitdns_cache_v1 VALUES (?1, ?2); UPDATE hitdns_cache_v1 SET entry = ?2 WHERE query = ?1")
-                            .bind(query).bind(entry)
-                            .execute(&*HITDNS_SQLITE_POOL)
-                            .await.log_warn()?;
-                    }
+                        .bind(query).bind(entry)
+                        .execute(&*HITDNS_SQLITE_POOL)
+                        .await.log_warn();
+                }
 
-                    #[cfg(feature="sled")]
-                    {
-                        let query: Vec<u8> =
-                            bincode::serialize(&query)
-                            .log_error()?;
-                        let entry: Vec<u8> =
-                            bincode::serialize(&entry)
-                            .log_error()?;
+                #[cfg(feature="sled")]
+                {
+                    let query: Vec<u8> =
+                        bincode::serialize(&query)
+                        .log_error()?;
+                    let entry: Vec<u8> =
+                        bincode::serialize(&entry)
+                        .log_error()?;
 
-                        let tree =
-                            HITDNS_SLED_DB
-                            .open_tree(b"hitdns_cache_v2")
-                            .log_warn()?;
+                    let tree =
+                        HITDNS_SLED_DB
+                        .open_tree(b"hitdns_cache_v2")
+                        .log_warn()?;
 
-                        tree.insert(query, entry).log_warn()?;
-                        tree.flush_async().await.log_error()?;
-                    }
+                    tree.insert(query, entry)
+                        .log_warn()?;
 
-                    Ok(())
-                })
-            ));
+                    tree.flush_async().await
+                        .log_error()?;
+                }
+
+                Ok(())
+            });
+
+            *self.update_task.write().await =
+                Some(Arc::new(task));
         }
 
         if let DNSCacheStatus::Miss = status {
             if maybe_resolver.is_none() {
-                anyhow::bail!("DNSCacheEntry: Cache Miss but without resolver provided!");
+                anyhow::bail!("DNSCacheEntry: Cache Miss but no resolver provided!");
             }
+
             // this is first query (or previous queries never success).
             // so must wait until finished.
 
@@ -271,7 +296,11 @@ impl DNSCacheEntry {
 /* ========== DNS Cache ========== */
 #[derive(Debug, Clone)]
 pub struct DNSCache {
-    pub(crate) memory: Arc<scc::HashMap<DNSQuery, DNSCacheEntry>>,
+    pub(crate) memory:
+        Arc<
+            scc::HashMap<DNSQuery, DNSCacheEntry>
+        >,
+
     pub(crate) resolvers: Arc<DNSResolverArray>,
 
     debug: bool,
