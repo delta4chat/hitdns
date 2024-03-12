@@ -140,15 +140,125 @@ pub async fn timeout_helper<T>(
   fut.timeout(time).await
 }
 
+#[derive(Debug, Clone)]
+pub struct DNSQueryInfo {
+    peer: String,
+    query: dns::Message,
+    time: SystemTime,
+    delta: Duration,
+}
+impl From<dns::Message> for DNSQueryInfo {
+    fn from(val: dns::Message) -> Self {
+        Self {
+            peer: String::new(),
+            query: val,
+            time: SystemTime::now(),
+            delta: Default::default()
+        }
+    }
+}
+
+fn dns_stats_hook(info: &DNSQueryInfo) -> PinFut<Option<dns::Message>> {
+    Box::pin(async move {
+        log::warn!("TODO this! {info:?}");
+        None
+    })
+}
+
+pub type DNSHook =
+    fn(&DNSQueryInfo) -> PinFut<Option<dns::Message>>;
+
+#[derive(Debug, Clone)]
+pub struct DNSHookArray {
+                    // id -> (nice, hook)
+    hooks: scc::HashMap<usize, (i8, Arc<DNSHook>)>,
+}
+impl DNSHookArray {
+    pub fn new() -> Self {
+        Self {
+            hooks: scc::HashMap::new(),
+        }
+    }
+
+    pub async fn add(&self, nice: i8, hook: Arc<DNSHook>)
+        -> usize
+    {
+        let mut id = self.hooks.len();
+        let val = (nice, hook);
+        while
+            self.hooks
+            .insert_async(id, val.clone())
+            .await
+            .is_err()
+        {
+            id += 1;
+        }
+
+        id
+    }
+
+    /// if there is needs to overwrite this DNS Query message,
+    /// it will return Some with override result.
+    ///
+    /// anyway, this function will calls ALL associated middleware,
+    /// but only the first valid response will be return.
+    pub async fn via(&self, info: &DNSQueryInfo) -> Option<dns::Message> {
+        if self.hooks.is_empty() {
+            return None;
+        }
+
+        let mut maybe_res: Option<(usize, i8, dns::Message)> = None;
+
+        let mut hooks = vec![];
+        self.hooks.scan_async(
+            |k, v| {
+                hooks.push((*k, v.clone()));
+            }
+        ).await;
+
+        for (cur_id, val) in hooks.iter() {
+            let (cur_nice, hook) = val;
+
+            if let Some(cur_res) = (hook)(info).await {
+                if let Some((prev_id, prev_nice, _))
+                    = maybe_res
+                {
+                    if *cur_nice > prev_nice && prev_id < *cur_id {
+                        continue;
+                    }
+                }
+
+                maybe_res =
+                    Some((*cur_id, *cur_nice, cur_res));
+            }
+        }
+
+        if let Some((id, nice, res)) = maybe_res {
+            log::info!("selected hook: (id={id}) | (nice={nice}) | (res) = {res}");
+            Some(res)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DNSDaemonSocket {
+    udp: Arc<UdpSocket>,
+    tcp: Arc<TcpListener>,
+    //http: 
+}
+
+#[derive(Debug)]
+pub struct DNSDaemonTask {
+  udp: smol::Task<anyhow::Result<()>>,
+  tcp: smol::Task<anyhow::Result<()>>,
+}
+
 #[derive(Debug)]
 pub struct DNSDaemon {
-  udp: Arc<UdpSocket>,
-  udp_task: smol::Task<anyhow::Result<()>>,
-  tcp: Arc<TcpListener>,
-  tcp_task: smol::Task<anyhow::Result<()>>,
-  cache: Arc<DNSCache>,
-
-  opt: HitdnsOpt,
+    context: DNSDaemonContext,
+    task: Arc<DNSDaemonTask>,
 }
 
 impl DNSDaemon {
@@ -163,10 +273,10 @@ impl DNSDaemon {
     };
 
     let udp = Arc::new(
-      UdpSocket::bind(&listen).await.log_error()?,
+      UdpSocket::bind(&listen).await.log_error()?
     );
     let tcp = Arc::new(
-      TcpListener::bind(&listen).await.log_error()?,
+      TcpListener::bind(&listen).await.log_error()?
     );
 
     if let Some(ref hosts_filename) = opt.hosts {
@@ -200,7 +310,7 @@ impl DNSDaemon {
       }
 
       if x.is_empty() {
-        if opt.default_servers {
+        if ! opt.no_default_servers {
           x = DefaultServers::global();
           log::info!("no upstream specified. use default servers: {x:#?}");
         }
@@ -214,65 +324,187 @@ impl DNSDaemon {
     };
 
     let cache = Arc::new(
-      DNSCache::new(resolvers, opt.debug).await?,
+      DNSCache::new(resolvers, opt.debug).await?
     );
 
-    Ok(Self {
-      udp_task: smolscale2::spawn(Self::handle_udp(
-        udp.clone(),
-        cache.clone(),
-      )),
-      tcp_task: smolscale2::spawn(Self::handle_tcp(
-        tcp.clone(),
-        cache.clone(),
-      )),
+    let hooks = Arc::new(
+      DNSHookArray::new()
+    );
+    hooks.add(0, Arc::new(dns_stats_hook)).await;
 
-      udp,
-      tcp,
-      cache,
-      opt,
-    })
+    let context =
+        DNSDaemonContext {
+            socket: DNSDaemonSocket { udp, tcp },
+            cache,
+            opt,
+            hooks
+        };
+
+    let task = {
+        let udp_fut = context.clone().handle_udp();
+        let tcp_fut = context.clone().handle_tcp();
+        Arc::new(DNSDaemonTask {
+            udp: smolscale2::spawn(udp_fut),
+            tcp: smolscale2::spawn(tcp_fut),
+        })
+    };
+
+    Ok(Self { context, task })
   }
 
-  async fn handle_udp(
-    udp: Arc<UdpSocket>,
+  async fn run(self) {
+    let this = Arc::new(self);
+
+    let task = &this.task;
+
+    let ctx = &this.context;
+    let socket = &ctx.socket;
+    let cache = &ctx.cache;
+    let opt = &ctx.opt;
+
+    if let Some(api_listen) = opt.api_listen {
+      if let Ok(api) =
+        HitdnsAPI::new(api_listen, this.clone())
+          .await
+          .log_error()
+      {
+        smolscale2::spawn(async move {
+          api.run().await.unwrap();
+        })
+        .detach();
+      }
+    }
+
+
+    loop {
+      if opt.debug {
+        log::trace!(
+          "cache status: {:?}",
+          &cache.memory
+        );
+      }
+      log::debug!(
+        "cache length: {:?}",
+        cache.memory.len()
+      );
+
+      log::debug!(
+        "smolscale2 worker threads: {:?}",
+        smolscale2::running_threads()
+      );
+      log::debug!(
+        "smolscale2 active tasks: {:?}",
+        smolscale2::active_task_count()
+      );
+
+      log::trace!(
+        "tcp listener: {:?}\ntcp task: {:?}",
+        socket.tcp.as_ref(),
+        task.tcp
+      );
+      log::trace!(
+        "udp socket: {:?}\nudp task: {:?}",
+        socket.udp.as_ref(),
+        task.udp
+      );
+
+
+      if opt.debug {
+        let mut x = vec![];
+        for r in cache.resolvers.list.iter() {
+          x.push(r.dns_metrics().await);
+        }
+
+        log::trace!("DNSResolverArray metrics: {x:#?}");
+      }
+
+      if this.task.udp.is_finished()
+        || this.task.tcp.is_finished()
+      {
+        log::error!("listener task died");
+        return;
+      }
+
+      smol::Timer::after(Duration::from_secs(10)).await;
+    }
+  }
+
+}
+
+#[derive(Debug, Clone)]
+pub struct DNSDaemonContext {
+    socket: DNSDaemonSocket,
     cache: Arc<DNSCache>,
-  ) -> anyhow::Result<()> {
+    opt: HitdnsOpt,
+    hooks: Arc<DNSHookArray>,
+}
+unsafe impl Send for DNSDaemonContext {}
+unsafe impl Send for DNSDaemonSocket {}
+unsafe impl Send for DNSHookArray {}
+
+unsafe impl Sync for DNSDaemonContext {}
+unsafe impl Sync for DNSDaemonSocket {}
+unsafe impl Sync for DNSHookArray {}
+
+impl DNSDaemonContext {
+  async fn handle_query(&self, info: &DNSQueryInfo)
+      -> anyhow::Result<dns::Message> {
+
+    if let Some(res) = self.hooks.via(&info).await {
+        return Ok(res);
+    }
+
+    self.cache.query(info.query.clone()).await
+  }
+
+  async fn handle_udp(self) -> anyhow::Result<()> {
     let mut buf = vec![0u8; 65535];
     let mut msg: Vec<u8>;
 
+    let this = self.clone();
+
+    let udp = this.socket.udp.clone();
     loop {
+        let t = Instant::now();
       let (len, peer) = udp
         .recv_from(&mut buf)
         .await
         .context("cannot recvfrom udp socket")
         .log_error()?;
+      let delta = t.elapsed();
 
       msg = buf[..len].to_vec();
 
+      let this = this.clone();
       let udp = udp.clone();
-      let cache = cache.clone();
       smolscale2::spawn(async move {
-                let req = dns::Message::from_vec(&msg).log_debug().unwrap();
-                let res: dns::Message = cache.query(req).await.log_warn().unwrap();
-                udp.send_to(
-                    res.to_vec().expect("bug: DNSCache.query returns invalid data").as_ref(),
-                    peer
-                ).await.log_error().unwrap();
-            }).detach();
+        let req = dns::Message::from_vec(&msg).log_debug().unwrap();
+        let id = req.id();
+
+        let mut info: DNSQueryInfo = req.into();
+        info.peer = format!("udp://{peer}/?id={id}");
+        info.delta = delta;
+
+        let res = this.handle_query(&info).await.log_info().unwrap();
+        udp.send_to(
+          res.to_vec()
+          .expect("bug: DNSCache.query returns invalid data").as_ref(),
+          peer
+        ).await.log_error().unwrap();
+      }).detach();
     }
   }
 
-  async fn handle_tcp(
-    tcp: Arc<TcpListener>,
-    cache: Arc<DNSCache>,
-  ) -> anyhow::Result<()> {
+  async fn handle_tcp(self) -> anyhow::Result<()> {
+      let this = self.clone();
+
+      let tcp = this.socket.tcp.clone();
     loop {
       let (mut conn, peer) =
         tcp.accept().await.log_error()?;
       log::debug!("DNS Daemon accepted new TCP connection from {peer:?}");
 
-      let cache = cache.clone();
+      let this = this.clone();
       smolscale2::spawn(async move {
                 let mut req_buf = vec![0u8; 65535];
                 let mut req: dns::Message;
@@ -286,9 +518,12 @@ impl DNSDaemon {
                 let mut len: usize;
 
                 loop {
+                    let t = Instant::now();
+
                     // recv first 2 bytes as the length of request message
                     if let Err(_) =
-                        conn.read_exact(&mut len_buf).await
+                        conn.read_exact(&mut len_buf)
+                        .await
                         .context("cannot recv 'length of DNS query' from tcp. maybe connection closed by peer?")
                         .log_debug()
                     {
@@ -316,10 +551,18 @@ impl DNSDaemon {
                             break;
                         }
                     };
+                    let id = req.id();
+
+                    let mut info: DNSQueryInfo =
+                        req.into();
+
+                    info.peer = format!("tcp://{peer}/?id={id}");
+                    info.delta = t.elapsed();
 
                     // handle...
                     res = match
-                        cache.query(req).await
+                        this.handle_query(&info)
+                        .await
                         .context("cannot handle incoming DNS query")
                         .log_warn()
                     {
@@ -364,83 +607,18 @@ impl DNSDaemon {
                     {
                         break;
                     }
-                } // tcp conn loop
+                } // tcp connection loop
             }).detach(); // smolscale2::spawn
     } // tcp accept loop
   }
 
-  async fn run(self) {
-    let this = Arc::new(self);
-
-    if let Some(api_listen) = this.opt.api_listen {
-      if let Ok(api) =
-        HitdnsAPI::new(api_listen, this.clone())
-          .await
-          .log_error()
-      {
-        smolscale2::spawn(async move {
-          api.run().await.unwrap();
-        })
-        .detach();
-      }
-    }
-
-    loop {
-      if this.opt.debug {
-        log::trace!(
-          "cache status: {:?}",
-          &this.cache.memory
-        );
-      }
-      log::debug!(
-        "cache length: {:?}",
-        this.cache.memory.len()
-      );
-
-      log::debug!(
-        "smolscale2 worker threads: {:?}",
-        smolscale2::running_threads()
-      );
-      log::debug!(
-        "smolscale2 active tasks: {:?}",
-        smolscale2::active_task_count()
-      );
-
-      log::trace!(
-        "tcp listener: {:?}\ntcp task: {:?}",
-        this.tcp.as_ref(),
-        &this.tcp_task
-      );
-      log::trace!(
-        "udp socket: {:?}\nudp task: {:?}",
-        this.udp.as_ref(),
-        &this.udp_task
-      );
-
-      if this.opt.debug {
-        let mut x = vec![];
-        for r in this.cache.resolvers.list.iter() {
-          x.push(r.dns_metrics().await);
-        }
-
-        log::trace!("DNSResolverArray metrics: {x:#?}");
-      }
-
-      if this.tcp_task.is_finished()
-        || this.udp_task.is_finished()
-      {
-        log::error!("listener task died");
-        return;
-      }
-
-      smol::Timer::after(Duration::from_secs(10)).await;
-    }
-  }
 }
 
 #[derive(Debug, Clone, clap::Parser)]
 #[command(author, version, about, long_about)]
 pub struct HitdnsOpt {
+  pub info: bool,
+
   /// Dumps all cache entry from disk database file.
   /// if filename is "-", prints to standard output.
   #[arg(long)]
@@ -494,9 +672,9 @@ pub struct HitdnsOpt {
   #[arg(long)]
   pub doh_upstream: Vec<String>,
 
-  /// uses default list of global DNS resolvers.
-  #[arg(long, default_value = "true")]
-  pub default_servers: bool,
+  /// without built-in default list of global DNS resolvers.
+  #[arg(long)]
+  pub no_default_servers: bool,
 
   #[cfg(feature = "dot")]
   /// *Experimental*
@@ -581,6 +759,12 @@ impl DefaultServers {
 
 async fn main_async() -> anyhow::Result<()> {
   let mut opt = HitdnsOpt::parse();
+
+  if opt.info {
+      let info = rsinfo::all_info();
+      println!("{info:?}");
+      return Ok(());
+  }
 
   if opt.dump.is_some() && opt.load.is_some() {
     return Err(anyhow::anyhow!("arguments '--dump' and '--load' is exclusive and should not specified both.")).log_error();
