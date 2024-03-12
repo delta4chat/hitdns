@@ -6,38 +6,43 @@ use smol::net::TcpListener;
 
 #[derive(Debug)]
 pub struct HitdnsAPI {
-  listener: TcpListener,
-  daemon: Arc<DNSDaemon>,
+    listener: TcpListener,
+    daemon: Arc<DNSDaemon>,
 }
 
 impl HitdnsAPI {
-  pub async fn new(
-    listen: SocketAddr,
-    daemon: Arc<DNSDaemon>,
-  ) -> anyhow::Result<Self> {
-    if !listen.ip().is_loopback() {
-      anyhow::bail!("currently API does not support external access. you can specify a loopback IP such as 127.0.0.0/8 or [::1]");
+    pub async fn new(
+        listen: SocketAddr,
+        daemon: Arc<DNSDaemon>,
+    ) -> anyhow::Result<Self> {
+        if !listen.ip().is_loopback() {
+            anyhow::bail!("currently API does not support external access. you can specify a loopback IP such as 127.0.0.0/8 or [::1]");
+        }
+
+        let listener = TcpListener::bind(listen).await?;
+
+        Ok(Self { listener, daemon })
     }
 
-    let listener = TcpListener::bind(listen).await?;
+    fn mime_json() -> Mime {
+        Mime::from_str("text/json; charset=utf-8")
+            .unwrap()
+    }
+    fn mime_txt() -> Mime {
+        Mime::from_str("text/plain; charset=utf-8")
+            .unwrap()
+    }
 
-    Ok(Self { listener, daemon })
-  }
+    pub async fn run(&self) -> anyhow::Result<()> {
+        loop {
+            let (conn, peer) = self
+                .listener
+                .accept()
+                .await
+                .log_warn()?;
 
-  fn mime_json() -> Mime {
-    Mime::from_str("text/json; charset=utf-8").unwrap()
-  }
-  fn mime_txt() -> Mime {
-    Mime::from_str("text/plain; charset=utf-8").unwrap()
-  }
-
-  pub async fn run(&self) -> anyhow::Result<()> {
-    loop {
-      let (conn, peer) =
-        self.listener.accept().await.log_warn()?;
-
-      let daemon = self.daemon.clone();
-      smolscale2::spawn(async_h1::accept(
+            let daemon = self.daemon.clone();
+            smolscale2::spawn(async_h1::accept(
         conn,
         move |req| {
           let daemon = daemon.clone();
@@ -111,6 +116,6 @@ List of avaliable commands:
         },
       ))
       .detach();
+        }
     }
-  }
 }
