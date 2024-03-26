@@ -51,7 +51,7 @@ impl HitdnsAPI {
               "API accept HTTP request from {peer:?}"
             );
             let url = req.url();
-            match url.path() {
+            match url.path().to_lowercase().as_str(){
               "/snap" => {
                 let json = DatabaseSnapshot::export()
                   .await?
@@ -95,6 +95,49 @@ impl HitdnsAPI {
                 Ok(res)
               },
 
+              "/reload" => {
+                  let mut res =
+                      Response::new(StatusCode::Ok);
+                  res.set_content_type(Self::mime_txt());
+
+                  let t = Instant::now();
+                  let ret = daemon.context
+                            .cache.load().await;
+                  let t = t.elapsed();
+                  match ret {
+                      Ok(_) => {
+                          res.set_body(format!("DNS Cache reloaded from disk db. (used time: {t:?})"));
+                      },
+                      Err(e) => {
+                          res.set_status(StatusCode::InternalServerError);
+                          res.set_body(format!("Failed to reload dns cache (used time: {t:?}): Error={e:?}"));
+                      }
+                  }
+
+                  Ok(res)
+              },
+
+              "/info" => {
+                  let mut res = Response::new(StatusCode::Ok);
+                  res.set_content_type(Self::mime_json());
+                  res.set_body(
+                      format!(
+                          "{:#}",
+                          rsinfo::ALL_INFO.to_json()
+                      )
+                  );
+                  Ok(res)
+
+              },
+
+              "/version" => {
+                  let mut res =
+                      Response::new(StatusCode::Ok);
+                  res.set_content_type(Self::mime_txt());
+                  res.set_body(option_env!("CARGO_PKG_VERSION").unwrap_or("N/A"));
+                  Ok(res)
+              },
+
               _ => {
                 let mut res =
                   Response::new(StatusCode::NotFound);
@@ -102,9 +145,10 @@ impl HitdnsAPI {
                   "
 List of avaliable commands:
 /snap      ->  take a snapshot of database.
-/metrics   ->  get all metrics for each resolvers
-/version   (TODO)
-/info      (TODO)
+/metrics   ->  get all metrics for each resolvers.
+/reload    ->  reload DNS cache entries from disk database.
+/version   ->  current version 
+/info      ->  get build info
 /stat      (TODO)
 ",
                 );

@@ -42,18 +42,22 @@ pub use alloc::sync::Arc;
 
 pub mod dns {
     pub use hickory_proto::op::*;
-    pub use hickory_proto::rr::IntoName;
+    pub use hickory_proto::rr::{
+        IntoName,
+        domain::Name,
+        LowerName,
+        dns_class::DNSClass,
+        record_type::RecordType,
+        record_data::RData,
+        rdata,
+        Record,
+    };
 
-    pub use hickory_proto::rr::domain::Name;
-    pub use hickory_proto::rr::LowerName;
-
-    pub use hickory_proto::rr::dns_class::DNSClass;
     pub use DNSClass as Class;
     pub use DNSClass as RdClass;
-
-    pub use hickory_proto::rr::record_type::RecordType;
     pub use RecordType as Type;
     pub use RecordType as RdType;
+
 }
 
 pub use smol::lock::RwLock;
@@ -143,7 +147,7 @@ pub async fn timeout_helper<T>(
 #[derive(Debug, Clone)]
 pub struct DNSQueryInfo {
     peer: String,
-    query: dns::Message,
+    query_msg: dns::Message,
     time: SystemTime,
     delta: Duration,
 }
@@ -151,7 +155,7 @@ impl From<dns::Message> for DNSQueryInfo {
     fn from(val: dns::Message) -> Self {
         Self {
             peer: String::new(),
-            query: val,
+            query_msg: val,
             time: SystemTime::now(),
             delta: Default::default(),
         }
@@ -162,8 +166,46 @@ fn dns_stats_hook(
     info: &DNSQueryInfo,
 ) -> PinFut<Option<dns::Message>> {
     Box::pin(async move {
-        log::warn!("TODO this! {info:?}");
-        None
+        let mut resp = None;
+
+        let queries = info.query_msg.queries();
+        if let Some(query) = queries.get(0) {
+            if query.query_class() == dns::Class::HS{
+                let mut res = info.query_msg.clone();
+                res.set_op_code(dns::OpCode::Query);
+                res.set_message_type(dns::MessageType::Response);
+
+                res.additionals_mut().clear();
+                res.name_servers_mut().clear();
+                res.extensions_mut().take();
+
+                let answers = res.answers_mut();
+                answers.clear();
+
+
+                let name = query.name().to_string();
+                if name.ends_with(".hitdns.") {
+                    let mut answer = dns::Record::new();
+                    answer.set_dns_class(dns::Class::HS);
+                    answer.set_ttl(0);
+                    answer.set_rr_type(dns::RdType::TXT);
+
+                    let mut texts = vec![];
+                    if name.contains("random") {
+                        texts.push(format!("{}", fastrand::u128(..)));
+                    } else if name.contains("relo") {
+                    }
+
+                    answer.set_data(
+                        Some(dns::RData::TXT(dns::rdata::TXT::new(texts)))
+                    );
+                    answers.push(answer);
+                }
+                resp = Some(res);
+            }
+        }
+
+        resp
     })
 }
 
@@ -478,7 +520,7 @@ impl DNSDaemonContext {
             return Ok(res);
         }
 
-        self.cache.query(info.query.clone()).await
+        self.cache.query(info.query_msg.clone()).await
     }
 
     async fn handle_udp(self) -> anyhow::Result<()> {
