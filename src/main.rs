@@ -26,6 +26,9 @@ pub use protocol::*;
 pub mod api;
 pub use api::*;
 
+// stats.rs
+pub mod stats;
+
 /* ==================== */
 
 pub use std::net::{IpAddr, SocketAddr};
@@ -164,6 +167,7 @@ impl From<dns::Message> for DNSQueryInfo {
 
 fn dns_stats_hook(
     info: &DNSQueryInfo,
+    opt: HitdnsOpt,
 ) -> PinFut<Option<dns::Message>> {
     Box::pin(async move {
         let mut resp = None;
@@ -193,7 +197,9 @@ fn dns_stats_hook(
                     let mut texts = vec![];
                     if name.contains("random") {
                         texts.push(format!("{}", fastrand::u128(..)));
-                    } else if name.contains("relo") {
+                    } else if name.contains("api") {
+                        let port = opt.api_listen.port();
+                        texts.push(format!("http://127.0.0.1:{port}/"));
                     }
 
                     answer.set_data(
@@ -210,17 +216,19 @@ fn dns_stats_hook(
 }
 
 pub type DNSHook =
-    fn(&DNSQueryInfo) -> PinFut<Option<dns::Message>>;
+    fn(&DNSQueryInfo, HitdnsOpt) -> PinFut<Option<dns::Message>>;
 
 #[derive(Debug, Clone)]
 pub struct DNSHookArray {
     // id -> (nice, hook)
     hooks: scc::HashMap<usize, (i8, Arc<DNSHook>)>,
+    opt: HitdnsOpt,
 }
 impl DNSHookArray {
-    pub fn new() -> Self {
+    pub fn new(opt: HitdnsOpt) -> Self {
         Self {
             hooks: scc::HashMap::new(),
+            opt
         }
     }
 
@@ -272,7 +280,7 @@ impl DNSHookArray {
         for (cur_id, val) in hooks.iter() {
             let (cur_nice, hook) = val;
 
-            if let Some(cur_res) = (hook)(info).await {
+            if let Some(cur_res) = (hook)(info, self.opt.clone()).await {
                 if let Some((prev_id, prev_nice, _)) =
                     maybe_res
                 {
@@ -395,7 +403,7 @@ impl DNSDaemon {
             DNSCache::new(resolvers, opt.debug).await?,
         );
 
-        let hooks = Arc::new(DNSHookArray::new());
+        let hooks = Arc::new(DNSHookArray::new(opt.clone()));
         hooks.add(0, Arc::new(dns_stats_hook)).await;
 
         let context = DNSDaemonContext {
@@ -427,9 +435,9 @@ impl DNSDaemon {
         let cache = &ctx.cache;
         let opt = &ctx.opt;
 
-        if let Some(api_listen) = opt.api_listen {
+        if true { //let Some(api_listen) = opt.api_listen {
             if let Ok(api) =
-                HitdnsAPI::new(api_listen, this.clone())
+                HitdnsAPI::new(opt.api_listen, this.clone())
                     .await
                     .log_error()
             {
@@ -731,8 +739,8 @@ pub struct HitdnsOpt {
     pub listen: Option<SocketAddr>,
 
     /// Listen address of local HTTP API.
-    #[arg(long)]
-    pub api_listen: Option<SocketAddr>,
+    #[arg(long, default_value="127.0.0.1:18053")]
+    pub api_listen: SocketAddr,
 
     /// upstream URL of DoH servers.
     /// DNS over HTTPS (RFC 8484)
