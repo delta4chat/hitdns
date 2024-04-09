@@ -1,6 +1,6 @@
 [package]
 name = "hitdns"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2021"
 description = "hitdns is a DNS forward server optimized for cache hit ratio and query latency."
 license = "GPL-3.0"
@@ -68,7 +68,7 @@ smol-timeout = "0.6.0"
 
 #smolscale = { version = "0.4.4", features = ["preempt"] }
 
-smolscale2 = { version = "0.5.5", features = ["preempt"] }
+smolscale2 = { version = "0.5.6", features = ["preempt"] }
 #smolscale2 = { path = "../smolscale", features = ["preempt"] }
 
 portable-atomic = { version = "1.6.0", features = ["float"] }
