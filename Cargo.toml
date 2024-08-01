@@ -46,7 +46,7 @@ ftlog2 = { optional = true, version = "0.3.1", features = ["tsc"] }
 #ftlog2 = { optional = true, version = "0.3.1", path = "../ftlog", features = ["tsc"] }
 
 anstyle = { optional = true, version = "1.0.6" }
-time    = { optional = true, version = "0.3.34", features = ["alloc", "formatting"] }
+time    = { optional = true, version = "0.3.36", features = ["alloc", "formatting"] }
 
 once_cell = "1.19.0"
 
@@ -57,6 +57,7 @@ hyper = { version = "0.14.21", features = ["client"], default-features = false }
 # QUIC library for DoQ client
 quinn  = { optional = true, version = "0.10.2", features = ["tls-rustls", "runtime-async-std"], default-features = false }
 rustls = { optional = true, version = "0.21.10", default-features = false }
+
 # builtin Root CA list
 webpki-roots = { optional = true, version = "0.26.1" }
 
