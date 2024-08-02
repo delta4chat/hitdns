@@ -183,6 +183,7 @@ impl<'a> DNSOverHTTPS {
             start = Instant::now();
             maybe_ret = client
                 .head(url_)
+                .header("Padding", randstr(fastrand::usize(1..=50)))
                 .send()
                 .timeout(Duration::from_secs(10))
                 .await;
@@ -251,6 +252,7 @@ impl<'a> DNSOverHTTPS {
             .post(url.clone())
             .header("Content-Type", Self::CONTENT_TYPE)
             .header("Accept", Self::CONTENT_TYPE)
+            .header("Padding", randstr(fastrand::usize(1..50)))
             .body(req.to_vec()?)
             .send()
             .await
@@ -284,6 +286,21 @@ impl<'a> DNSOverHTTPS {
 
         Ok(response)
     }
+}
+
+fn randchr() -> char {
+    const TEMPLATE: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const TEMPLATE_LEN: usize = TEMPLATE.len();
+
+    return TEMPLATE.chars().skip(fastrand::usize(0..TEMPLATE_LEN)).next().unwrap();
+}
+
+fn randstr(len: usize) -> String {
+    let mut out = String::new();
+    for _ in 0..len {
+        out.push(randchr());
+    }
+    out
 }
 
 impl DNSResolver for DNSOverHTTPS {
