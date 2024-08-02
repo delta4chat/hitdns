@@ -117,6 +117,7 @@ impl HitdnsAPI {
                   Ok(res)
               },
 
+              #[cfg(feature = "rsinfo")]
               "/info" => {
                   let mut res = Response::new(StatusCode::Ok);
                   res.set_content_type(Self::mime_json());

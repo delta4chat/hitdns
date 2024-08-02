@@ -690,6 +690,7 @@ impl DNSDaemonContext {
 #[derive(Debug, Clone, clap::Parser)]
 #[command(author, version, about, long_about)]
 pub struct HitdnsOpt {
+    #[cfg(feature = "rsinfo")]
     /// show build information then quit program.
     #[arg(long)]
     pub info: bool,
@@ -835,6 +836,7 @@ impl DefaultServers {
 async fn main_async() -> anyhow::Result<()> {
     let mut opt = HitdnsOpt::parse();
 
+    #[cfg(feature = "rsinfo")]
     if opt.info {
         let info = rsinfo::all_info();
         println!("{info:#?}");

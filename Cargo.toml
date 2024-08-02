@@ -1,6 +1,6 @@
 [package]
 name = "hitdns"
-version = "0.5.2"
+version = "0.5.3-beta"
 edition = "2021"
 description = "hitdns is a DNS forward server optimized for cache hit ratio and query latency."
 license = "GPL-3.0"
@@ -18,6 +18,8 @@ dot = [ "dep:async-tls" ]
 sqlite = [ "dep:sqlx" ]
 sled = [ "dep:sled" ]
 ftlog = [ "dep:ftlog2", "dep:anstyle", "dep:time" ]
+
+rsinfo = [ "dep:rsinfo" ]
 
 [dependencies]
 anyhow = "1.0.79"
@@ -79,7 +81,7 @@ sqlx = { optional = true, version = "0.7.3", features = ["runtime-async-std", "s
 sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"], default-features = false }
 #sled = { optional = true, version = "1.0.0-alpha.120" }
 
-rsinfo = "0.1.3"
+rsinfo = { optional = true, version = "0.1.3" }
 
 [profile.dev]
 panic = "unwind"
