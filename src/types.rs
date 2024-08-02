@@ -69,7 +69,7 @@ impl TryFrom<&str> for DNSQuery {
             name.push('.');
         }
         let name: String =
-            dns::Name::from_ascii(&name)?.to_utf8();
+            dns::Name::from_str_relaxed(&name)?.to_utf8();
 
         let rdclass: u16 = arr[1]
             .replace(")", "")
@@ -157,7 +157,7 @@ impl TryFrom<&DNSQuery> for dns::Query {
         }
 
         Ok(dns::Query::new()
-            .set_name(dns::Name::from_utf8(name)?)
+            .set_name(dns::Name::from_str_relaxed(name)?)
             .set_query_class(val.rdclass.into())
             .set_query_type(val.rdtype.into())
             .to_owned())

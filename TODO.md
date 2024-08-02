@@ -1,5 +1,5 @@
 ## fix domain `foo_bar.com` resolve fails:
-* [ ] fixed?
+* [x] fixed?
 1. this is not our problems, it cause by upstream library `hickory-proto` (for dns message parse)
 ```
 thread 'sscale-wkr-c-7' panicked at src/types.rs:37:14:
