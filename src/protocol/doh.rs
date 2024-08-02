@@ -13,6 +13,14 @@ static DOH_CLIENT: Lazy<reqwest::Client> = Lazy::new(
         .https_only(true)
         .tls_sni( HOSTS.map.len() > 0 )
 
+        // User-Agent
+        .user_agent(
+            format!(
+                "hitdns/{}",
+                env!("CARGO_PKG_VERSION")
+            )
+        )
+
         // HTTP/2 setting
         .http2_prior_knowledge() // use HTTP/2 only
         .http2_adaptive_window(false)
@@ -101,43 +109,6 @@ impl<'a> DNSOverHTTPS {
         */
 
         let client = DOH_CLIENT.clone();
-        /*
-            reqwest::Client::builder()
-
-            // log::trace
-            .connection_verbose(true)
-
-            // use HTTPS(rustls) only
-            .use_rustls_tls()
-            .min_tls_version(reqwest::tls::Version::TLS_1_2)
-            .https_only(true)
-            .tls_sni(tls_sni)
-
-            // HTTP/2 setting
-            .http2_prior_knowledge() // use HTTP/2 only
-            .http2_adaptive_window(false)
-            .http2_max_frame_size(Some(65535))
-            .http2_keep_alive_interval(Some(Duration::from_secs(10)))
-            .http2_keep_alive_timeout(Duration::from_secs(10))
-            .http2_keep_alive_while_idle(true)
-            .referer(false)
-            .redirect(reqwest::redirect::Policy::none())
-
-            // connection settings
-            .tcp_nodelay(true)
-            .pool_idle_timeout(None)
-            .pool_max_idle_per_host(5)
-
-            // for all DNS resove from reqwest, should redirecting to static name mapping (hosts.txt), or just disable it if no hosts specified
-            .dns_resolver(
-                Arc::new(
-                    DummyDNS(use_hosts)
-                )
-            )
-
-            // build client
-            .build().log_warn()?;
-        */
 
         let metrics =
             Arc::new(RwLock::new(DNSMetrics::from(&url)));
@@ -170,10 +141,9 @@ impl<'a> DNSOverHTTPS {
 
         loop {
             if zzz {
-                smol::Timer::after(Duration::from_secs(
-                    10,
-                ))
-                .await;
+                smol::Timer::after(
+                    Duration::from_secs(10)
+                ).await;
             } else {
                 zzz = true;
             }
@@ -181,8 +151,8 @@ impl<'a> DNSOverHTTPS {
             let url_ = url.clone();
 
             start = Instant::now();
-            maybe_ret = client
-                .head(url_)
+            maybe_ret =
+                client.head(url_)
                 .header("Padding", randstr(fastrand::usize(1..=50)))
                 .send()
                 .timeout(Duration::from_secs(10))
