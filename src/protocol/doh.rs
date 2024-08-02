@@ -252,7 +252,7 @@ impl<'a> DNSOverHTTPS {
             .post(url.clone())
             .header("Content-Type", Self::CONTENT_TYPE)
             .header("Accept", Self::CONTENT_TYPE)
-            .header("Padding", randstr(fastrand::usize(1..50)))
+            .header("Padding", randstr(fastrand::usize(1..=50)))
             .body(req.to_vec()?)
             .send()
             .await
