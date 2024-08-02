@@ -1,14 +1,33 @@
 #!/bin/bash
 
-# a warpper for "post-run" build scripts
+# a wrapper for "post-run" build scripts
 # see also https://github.com/rust-lang/cargo/issues/545
 
 tmp=$(mktemp || exit)
 
 tee $tmp <<"EOF"
+if type sudo
+then
+    if type apt
+    then
+    	sudo apt install upx
+    fi
+
+    if type brew
+    then
+    	brew install upx
+    fi
+
+    if type port
+    then
+    	sudo port install upx
+    fi
+
+fi
+
 if type upx
 then
-	upx $1 && exit
+	upx -9 $1 && exit
 fi
 
 exit
@@ -28,6 +47,6 @@ EOF
 
 command $*
 status_code="$?"
-find ./target/ \( -name hitdns -or -name hitdns.exe \) -exec sh $tmp '{}' \;
+find ./target/ \( -name hitdns -or -name hitdns.exe \) -exec bash $tmp '{}' \;
 exit "$status_code"
 
