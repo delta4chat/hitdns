@@ -174,7 +174,7 @@ fn dns_stats_hook(
 
         let queries = info.query_msg.queries();
         if let Some(query) = queries.get(0) {
-            if query.query_class() == dns::Class::HS{
+            if query.query_class() == dns::Class::CH {
                 let mut res = info.query_msg.clone();
                 res.set_op_code(dns::OpCode::Query);
                 res.set_message_type(dns::MessageType::Response);
@@ -190,7 +190,7 @@ fn dns_stats_hook(
                 let name = query.name().to_string();
                 if name.ends_with(".hitdns.") {
                     let mut answer = dns::Record::new();
-                    answer.set_dns_class(dns::Class::HS);
+                    answer.set_dns_class(dns::Class::CH);
                     answer.set_ttl(0);
                     answer.set_rr_type(dns::RdType::TXT);
 

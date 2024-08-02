@@ -13,7 +13,8 @@ pub static HITDNS_SQLITE_POOL: Lazy<SqlitePool> =
     Lazy::new(|| {
         let file = &*HITDNS_SQLITE_FILENAME;
         smol::block_on(async move {
-            let pool = SqlitePoolOptions::new()
+            let pool =
+                SqlitePoolOptions::new()
                 .max_connections(1)
                 .min_connections(1)
                 .acquire_timeout(Duration::from_secs(10))
@@ -25,21 +26,23 @@ pub static HITDNS_SQLITE_POOL: Lazy<SqlitePool> =
                         .create_if_missing(true)
                         .read_only(false)
                         .journal_mode(
-                            SqliteJournalMode::Wal,
+                            SqliteJournalMode::Wal
                         )
                         .locking_mode(
-                            SqliteLockingMode::Normal,
+                            SqliteLockingMode::Normal
                         )
                         .synchronous(
-                            SqliteSynchronous::Normal,
+                            SqliteSynchronous::Normal
                         ),
-                )
-                .await
+                ).await
                 .expect(
                     "sqlx cannot connect to sqlite db",
                 );
 
-            sqlx::query("CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT").execute(&pool).await.expect("sqlx cannot create table in opened sqlite db");
+            sqlx::query("CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT")
+                .execute(&pool).await
+                .expect("sqlx cannot create table in opened sqlite db");
+
             pool
         })
     });
@@ -69,10 +72,11 @@ pub static HITDNS_SLED_DB: Lazy<sled::Db> =
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseSnapshot {
-    pub(crate) cache_v1: std::collections::HashMap<
-        DNSQuery,
-        Arc<DNSEntry>,
-    >,
+    pub(crate) cache_v1:
+        std::collections::HashMap<
+            DNSQuery,
+            Arc<DNSEntry>,
+        >,
     // other database tables may added in future
 }
 

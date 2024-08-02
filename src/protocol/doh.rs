@@ -142,7 +142,9 @@ impl<'a> DNSOverHTTPS {
         loop {
             if zzz {
                 smol::Timer::after(
-                    Duration::from_secs(10)
+                    Duration::from_secs(
+                        fastrand::u64(5..=10)
+                    )
                 ).await;
             } else {
                 zzz = true;
