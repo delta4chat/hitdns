@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "hitdns"
-version = "0.5.3-beta1"
+version = "0.5.4"
 dependencies = [
  "anstyle",
  "anyhow",
