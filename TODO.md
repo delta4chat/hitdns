@@ -1,12 +1,12 @@
 ## fix domain `foo_bar.com` resolve fails:
-* fixed? [ ]
+* [ ] fixed?
 1. this is not our problems, it cause by upstream library `hickory-proto` (for dns message parse)
 ```
-thread 'sscale-wkr-c-7' panicked at src/types.rs:37:14: cannot convert to hickory Query: Label contains invalid characters: Err(Errors { invalid_mapping, disallowed_by_std3_ascii_rules })                                     note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+thread 'sscale-wkr-c-7' panicked at src/types.rs:37:14: cannot convert to hickory Query: Label contains invalid characters: Err(Errors { invalid_mapping, disallowed_by_std3_ascii_rules })                                     note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 ```
 
 ## add a config file instead of command line arguments
-* fixed? [ ]
+* [ ] fixed?
 1. use YAML, TOML, or JSON?
 
 ## more useful API operations
