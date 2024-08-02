@@ -5,7 +5,7 @@
 
 tmp=$(mktemp || exit)
 
-tee $tmp <<"EOF"
+cat > $tmp <<"EOF"
 if type sudo
 then
     if type apt
@@ -47,6 +47,6 @@ EOF
 
 command $*
 status_code="$?"
-find ./target/ \( -name hitdns -or -name hitdns.exe \) -exec bash $tmp '{}' \;
+find ./target/ \( -name hitdns -or -name hitdns.exe \) -exec bash --norc -x $tmp '{}' \;
 exit "$status_code"
 
