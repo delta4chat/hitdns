@@ -34,7 +34,7 @@ jobs:
       - name: Cross Build aarch64 android
         continue-on-error: true
         run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target aarch64-linux-android --verbose && break;done;
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.aarch64-android
           path: target/aarch64-linux-android/release/hitdns
@@ -57,7 +57,7 @@ jobs:
       - name: Cross Build x86 android (64-bit)
         continue-on-error: true
         run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target x86_64-linux-android --verbose && break;done;
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-android
           path: target/x86_64-linux-android/release/hitdns
@@ -80,7 +80,7 @@ jobs:
       - name: Cross Build aarch64 linux
         continue-on-error: true
         run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target aarch64-unknown-linux-gnu --verbose && break;done;
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.aarch64-linux
           path: target/aarch64-unknown-linux-gnu/release/hitdns
@@ -103,7 +103,7 @@ jobs:
       - name: Cross Build aarch64 linux (musl)
         continue-on-error: true
         run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target aarch64-unknown-linux-musl --verbose && break;done;
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.aarch64-linux-musl
           path: target/aarch64-unknown-linux-musl/release/hitdns
@@ -126,7 +126,7 @@ jobs:
       - name: Cross Build amd64 FreeBSD
         continue-on-error: true
         run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target x86_64-unknown-freebsd --verbose && break;done;
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-freebsd
           path: target/x86_64-unknown-freebsd/release/hitdns
@@ -149,7 +149,7 @@ jobs:
       - name: Cross Build amd64 NetBSD
         continue-on-error: true
         run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target x86_64-unknown-netbsd --verbose && break;done;
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-netbsd
           path: target/x86_64-unknown-netbsd/release/hitdns
@@ -172,7 +172,7 @@ jobs:
       - name: Cross Build mips-el Linux musl
         continue-on-error: true
         run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target mipsel-unknown-linux-musl --no-default-features --features sled --verbose && break;done;
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.mipsel-linux-musl
           path: target/mipsel-unknown-linux-musl/release/hitdns
@@ -195,7 +195,7 @@ jobs:
       - name: Cross Build WebAssembly
         continue-on-error: true
         run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target wasm32-unknown-emscripten --verbose && break;done;  ls -hl target/wasm32-unknown-emscripten/release/
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.wasm32-unknown-emscripten
           path: target/wasm32-unknown-emscripten/release/hitdns
@@ -247,7 +247,7 @@ jobs:
 #      - name: Run tests
 #        run: cargo test --release --verbose -- --nocapture
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-linux
           path: target/release/hitdns
@@ -289,7 +289,7 @@ jobs:
       - name: Build Linux (Musl)
         run: for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --target x86_64-unknown-linux-musl --verbose && break;done;
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-linux-musl
           path: target/x86_64-unknown-linux-musl/release/hitdns
@@ -328,7 +328,7 @@ jobs:
         run: for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
         shell: bash
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-windows.exe
           path: target/release/hitdns.exe
@@ -365,7 +365,7 @@ jobs:
       - name: Build (mac)
         run: for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-mac
           path: target/release/hitdns
