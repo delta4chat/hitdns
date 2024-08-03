@@ -1,7 +1,7 @@
 use crate::*;
 
-use core::cell::Cell;
-use core::time::Duration;
+//use core::cell::Cell;
+//use core::time::Duration;
 
 use std::time::Instant;
 use std::sync::Arc;
@@ -11,22 +11,21 @@ type AtomicU128 = Arc<portable_atomic::AtomicU128>;
 type AtomicF64 = Arc<portable_atomic::AtomicF64>;
 
 #[derive(Debug, Clone, Default)]
-pub struct DNSQueryStats {
+pub struct DNSQueryData {
     // how many queries per second
     freq: AtomicF64,
 
-    // how many queries within last 60 seconds, 15 minutes, 1 hour, 12 hours, and total.
+    // how many queries within last 60 seconds, 5 minutes, 15 minutes, 1 hour, 12 hours, 24 hours, and total.
     queries_1m: AtomicU128,
+    queries_5m: AtomicU128,
     queries_15m: AtomicU128,
     queries_60m: AtomicU128,
     queries_12h: AtomicU128,
+    queries_24h: AtomicU128,
     queries_total: AtomicU128,
 
-    // all of queries with timestamp
-    queries: scc::TreeIndex<Instant, DNSQueryInfo>,
-
-    // average used time for processing DNS query (contains upstream query time if cache missing)
-    avg_delay: Cell<Duration>,
+    // average used time (Duration::as_secs_f64) for processing DNS query (contains upstream query time if cache missing)
+    avg_delay: AtomicF64,
 
     // total queries via UDP
     udp_queries: AtomicU128,
@@ -50,19 +49,207 @@ pub struct DNSQueryStats {
     // query numbers of specified DNS Class (usually IN - Internet)
     rdclasses: scc::HashMap<u16, AtomicU128>,
 }
+impl DNSQueryData {
+    pub async fn json(&self) -> serde_json::Value {
+        let mut domains = serde_json::Map::new();
+        self.domains.scan_async(|domain, count|{
+            let key: String = domain.into();
+
+            let val: serde_json::Value =
+                count.load(Relaxed).to_string().into();
+
+            domains.insert(key, val);
+        }).await;
+
+        let mut rdtypes = serde_json::Map::new();
+        self.rdtypes.scan_async(|rdtype, count|{
+            let key: String =
+                format!(
+                    "{}({})",
+                    dns::RdType::from(*rdtype)
+                        .to_string(),
+                    rdtype
+                );
+
+            let val: serde_json::Value =
+                count.load(Relaxed).to_string().into();
+
+            rdtypes.insert(key, val);
+        }).await;
+
+        let mut rdclasses = serde_json::Map::new();
+        self.rdclasses.scan_async(|rdclass, count|{
+            let key: String =
+                format!(
+                    "{}({})",
+                    dns::RdClass::from(*rdclass)
+                        .to_string(),
+                    rdclass
+                );
+
+            let val: serde_json::Value =
+                count.load(Relaxed).to_string().into();
+
+            rdclasses.insert(key, val);
+        }).await;
+
+        serde_json::json!({
+            "freq": self.freq.load(Relaxed),
+            "queries_within": {
+                "1m": self.queries_1m.load(Relaxed)
+                                     .to_string(),
+
+                "5m": self.queries_5m.load(Relaxed)
+                                     .to_string(),
+
+                "15m": self.queries_15m.load(Relaxed)
+                                       .to_string(),
+
+                "60m": self.queries_60m.load(Relaxed)
+                                       .to_string(),
+
+                "12h": self.queries_12h.load(Relaxed)
+                                       .to_string(),
+
+                "24h": self.queries_24h.load(Relaxed)
+                                       .to_string(),
+
+                "total":
+                    self.queries_total.load(Relaxed)
+                                      .to_string()
+            },
+            "queries_from": {
+                "udp": self.udp_queries.load(Relaxed)
+                                       .to_string(),
+
+                "tcp": self.tcp_queries.load(Relaxed)
+                                       .to_string()
+            },
+            "cache_lookups": {
+                "hit":
+                    self.cache_hit.load(Relaxed)
+                                  .to_string(),
+                "expired":
+                    self.cache_expired.load(Relaxed)
+                                      .to_string(),
+                "miss":
+                    self.cache_miss.load(Relaxed)
+                                   .to_string(),
+            },
+            "avg_delay": self.avg_delay.load(Relaxed),
+
+            "queries": {
+                "domains": domains,
+                "rdtypes": rdtypes,
+                "rdclasses": rdclasses,
+            }
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DNSQueryStats {
+    // timestamping
+    started: Instant,
+    elapsed: AtomicF64,
+
+    // all of queries with timestamp
+    queries: scc::TreeIndex<Instant, DNSQueryInfo>,
+
+    // inner data that can `derive(Debug)`
+    data: DNSQueryData,
+}
 
 impl DNSQueryStats {
     pub fn new() -> Self {
-        Default::default()
+        Self {
+            started: Instant::now(),
+            elapsed: Default::default(),
+
+            queries: Default::default(),
+
+            data: Default::default(),
+        }
     }
 
-    async fn update(&self) {
+    pub async fn json(&self) -> serde_json::Value {
+        self.data.json().await
+    }
 
+    fn update(&self) {
+        let elapsed = self.elapsed.load(Relaxed);
+        if elapsed == 0.0 {
+            log::debug!("no .elapsed so cannot calc average queries number");
+            return;
+        };
+
+        /* update .freq */
+        let queries = self.queries.len();
+        let freq = (queries as f64) / elapsed;
+        self.data.freq.store(freq, Relaxed);
+
+        /* update queries_1m/5m/15m/60m/12h/1d */
+        let mut queries_1m: u128 = 0;
+        let mut queries_5m: u128 = 0;
+        let mut queries_15m: u128 = 0;
+        let mut queries_60m: u128 = 0;
+        let mut queries_12h: u128 = 0;
+        let mut queries_24h: u128 = 0;
+
+        let mut used_times: Vec<f64> = vec![];
+
+        {
+            let g = scc::ebr::Guard::new();
+            for entry in self.queries.iter(&g) {
+                let (time, info) = entry;
+
+                if let Some(ut) = info.used_time {
+                    used_times.push(ut.as_secs_f64());
+                }
+
+                let elapsed_secs =
+                    time.elapsed().as_secs();
+
+                if elapsed_secs <= 60 {
+                    queries_1m += 1;
+                }
+                if elapsed_secs <= 60*5 {
+                    queries_5m += 1;
+                }
+                if elapsed_secs <= 60*15 {
+                    queries_15m += 1;
+                }
+                if elapsed_secs <= 60*60 {
+                    queries_60m += 1;
+                }
+                if elapsed_secs <= 60*60*12 {
+                    queries_12h += 1;
+                }
+                if elapsed_secs <= 60*60*24 {
+                    queries_24h += 1;
+                }
+            }
+            // guard dropping now
+        }
+
+        let avg_delay: f64 =
+            used_times.iter().sum::<f64>() / (used_times.len() as f64);
+
+        self.data.avg_delay.store(avg_delay, Relaxed);
+
+        self.data.queries_1m.store(queries_1m, Relaxed);
+        self.data.queries_5m.store(queries_5m, Relaxed);
+        self.data.queries_15m.store(queries_15m, Relaxed);
+        self.data.queries_60m.store(queries_60m, Relaxed);
+        self.data.queries_12h.store(queries_12h, Relaxed);
+        self.data.queries_24h.store(queries_24h, Relaxed);
+
+        self.data.queries_total.store(queries as u128, Relaxed);
     }
 
     pub async fn add_query(
                      &self,
-                     info: DNSQueryInfo,
+                     info: &DNSQueryInfo,
                  ) -> anyhow::Result<()>
     {
         let query: DNSQuery = info.query_msg
@@ -74,9 +261,9 @@ impl DNSQueryStats {
         let rdclass = query.rdclass;
 
         if info.peer.starts_with("udp://") {
-            self.udp_queries.fetch_add(1, Relaxed);
+            self.data.udp_queries.fetch_add(1, Relaxed);
         } else if info.peer.starts_with("tcp://") {
-            self.tcp_queries.fetch_add(1, Relaxed);
+            self.data.tcp_queries.fetch_add(1, Relaxed);
         }
 
         let mut ret = Ok(());
@@ -92,30 +279,56 @@ impl DNSQueryStats {
             }
         };
         if ret.is_err() {
-            log::warn!("cannot insert to scc::HashSet!");
+            log::warn!("cannot insert to scc::HashMap!");
         }
 
-        self.domains.entry_async(domain).await
+        self.data.domains.entry_async(domain).await
                     // Entry
                     .or_default()
                     .get()
                     // AtomicU128
                     .fetch_add(1, Relaxed);
 
-        self.rdtypes.entry_async(rdtype).await
+        self.data.rdtypes.entry_async(rdtype).await
                     // Entry
                     .or_default()
                     .get()
                     // AtomicU128
                     .fetch_add(1, Relaxed);
 
-        self.rdclasses.entry_async(rdclass).await
+        self.data.rdclasses.entry_async(rdclass).await
                       // Entry
                       .or_default()
                       .get()
                       // AtomicU128
                       .fetch_add(1, Relaxed);
 
+        if let Some(status) = &info.cache_status {
+            use DNSCacheStatus::*;
+            match status {
+                Hit(_) => {
+                    self.data.cache_hit.fetch_add(1, Relaxed);
+                },
+                Expired(_) => {
+                    self.data.cache_expired.fetch_add(1, Relaxed);
+                },
+                Miss => {
+                    self.data.cache_miss.fetch_add(1, Relaxed);
+                }
+            }
+        }
+
+        /* all done */
+
+        let old_elapsed = self.elapsed.load(Relaxed);
+        let new_elapsed =
+            self.started.elapsed().as_secs_f64();
+
+        self.elapsed.store(new_elapsed, Relaxed);
+
+        if (new_elapsed - old_elapsed) >= 10.0 {
+            self.update();
+        }
         Ok(())
     }
 }

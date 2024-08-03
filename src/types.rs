@@ -15,6 +15,17 @@ pub struct DNSQuery {
     /// raw query record type, unsigned 16-bit integer
     pub rdtype: u16,
 }
+impl DNSQuery {
+    pub fn rdclass_str(&self) -> String {
+        let rdclass: dns::RdClass = self.rdclass.into();
+        return format!("{}({})", rdclass, self.rdclass);
+    }
+
+    pub fn rdtype_str(&self) -> String {
+        let rdtype: dns::RdType = self.rdtype.into();
+        return format!("{}({})", rdtype, self.rdtype);
+    }
+}
 
 impl core::fmt::Debug for DNSQuery {
     fn fmt(

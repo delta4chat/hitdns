@@ -139,18 +139,28 @@ impl HitdnsAPI {
                   Ok(res)
               },
 
+              "/stats" => {
+                  let mut res =
+                      Response::new(StatusCode::Ok);
+
+                  res.set_content_type(Self::mime_json());
+                  res.set_body(format!("{:#}", daemon.context.stats.json().await));
+                  Ok(res)
+
+              },
+
               _ => {
                 let mut res =
                   Response::new(StatusCode::NotFound);
                 res.set_body(
                   "
 List of avaliable commands:
-/snap      ->  take a snapshot of database.
-/metrics   ->  get all metrics for each resolvers.
-/reload    ->  reload DNS cache entries from disk database.
-/version   ->  current version 
-/info      ->  get build info
-/stat      (TODO)
+GET /snap      ->  take a snapshot of database.
+GET /metrics   ->  get all metrics for each resolvers.
+GET /reload    ->  reload DNS cache entries from disk database.
+GET /version   ->  current version 
+GET /info      ->  get build info
+GET /stats     ->  get DNS query analysis
 ",
                 );
                 res.set_content_type(Self::mime_txt());

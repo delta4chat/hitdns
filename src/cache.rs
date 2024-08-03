@@ -317,7 +317,7 @@ pub struct DNSCache {
 
     pub(crate) resolvers: Arc<DNSResolverArray>,
 
-    debug: bool,
+    pub(crate) debug: bool,
 }
 /// SAFETY: Async access, and backed a scc::HashMap (EBR)
 unsafe impl Sync for DNSCache {}
@@ -466,11 +466,18 @@ impl DNSCache {
         Ok(())
     } // pub(crate) async fn load()
 
-    // cached query
-    pub async fn query(
-        &self,
-        req: dns::Message,
-    ) -> anyhow::Result<dns::Message> {
+    // cached query (oldapi)
+    pub async fn query(&self, req: dns::Message)
+        -> anyhow::Result<dns::Message>
+    {
+        Ok(self.query_with_status(req).await?.0)
+    }
+
+    // cached query with DNSCacheStatus
+    pub async fn query_with_status(
+        &self, req: dns::Message,
+    ) -> anyhow::Result<(dns::Message, DNSCacheStatus)>
+    {
         let started = Instant::now();
 
         let req_id: u16 = req.id();
@@ -485,6 +492,8 @@ impl DNSCache {
             .or_insert_with(|| Arc::new(query).into())
             .get()
             .clone();
+
+        let status = cache_entry.status().await;
 
         let resolver = self
             .resolvers
@@ -525,6 +534,6 @@ impl DNSCache {
         }
 
         log::debug!("DNSCache: got response! id={req_id} query={:?} elapsed={:?} response={res:?}", cache_entry.query, started.elapsed());
-        Ok(res)
+        Ok((res, status))
     }
 }

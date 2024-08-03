@@ -28,6 +28,7 @@ pub use api::*;
 
 // stats.rs
 pub mod stats;
+pub use stats::*;
 
 /* ==================== */
 
@@ -151,16 +152,24 @@ pub async fn timeout_helper<T>(
 pub struct DNSQueryInfo {
     peer: String,
     query_msg: dns::Message,
+    query: DNSQuery,
     time: SystemTime,
     delta: Duration,
+
+    cache_status: Option<DNSCacheStatus>,
+    used_time: Option<Duration>,
 }
 impl From<dns::Message> for DNSQueryInfo {
     fn from(val: dns::Message) -> Self {
         Self {
             peer: String::new(),
-            query_msg: val,
+            query_msg: val.clone(),
+            query: val.try_into().expect("dns message is not a valid query"),
             time: SystemTime::now(),
             delta: Default::default(),
+
+            cache_status: None,
+            used_time: None,
         }
     }
 }
@@ -411,6 +420,7 @@ impl DNSDaemon {
             cache,
             opt,
             hooks,
+            stats: Arc::new(DNSQueryStats::new()),
         };
 
         let task = {
@@ -510,7 +520,9 @@ pub struct DNSDaemonContext {
     cache: Arc<DNSCache>,
     opt: HitdnsOpt,
     hooks: Arc<DNSHookArray>,
+    stats: Arc<DNSQueryStats>,
 }
+
 unsafe impl Send for DNSDaemonContext {}
 unsafe impl Send for DNSDaemonSocket {}
 unsafe impl Send for DNSHookArray {}
@@ -522,13 +534,34 @@ unsafe impl Sync for DNSHookArray {}
 impl DNSDaemonContext {
     async fn handle_query(
         &self,
-        info: &DNSQueryInfo,
+        info: &mut DNSQueryInfo,
     ) -> anyhow::Result<dns::Message> {
+        if info.used_time.is_some() {
+            anyhow::bail!("this DNSQueryInfo already fulfilled!");
+        }
+
         if let Some(res) = self.hooks.via(&info).await {
             return Ok(res);
         }
 
-        self.cache.query(info.query_msg.clone()).await
+        let t = Instant::now();
+        let result =
+            self.cache.query_with_status(
+                info.query_msg.clone()
+            ).await;
+        info.used_time = Some(t.elapsed());
+
+        match result {
+            Ok((res, status)) => {
+                info.cache_status = Some(status);
+                let _=self.stats.add_query(&info).await;
+                Ok(res)
+            },
+            Err(e) => {
+                let _=self.stats.add_query(&info).await;
+                Err(e)
+            }
+        }
     }
 
     async fn handle_udp(self) -> anyhow::Result<()> {
@@ -559,7 +592,7 @@ impl DNSDaemonContext {
         info.peer = format!("udp://{peer}/?id={id}");
         info.delta = delta;
 
-        let res = this.handle_query(&info).await.log_info().unwrap();
+        let res = this.handle_query(&mut info).await.log_info().unwrap();
         udp.send_to(
           res.to_vec()
           .expect("bug: DNSCache.query returns invalid data").as_ref(),
@@ -635,7 +668,7 @@ impl DNSDaemonContext {
 
                     // handle...
                     res = match
-                        this.handle_query(&info)
+                        this.handle_query(&mut info)
                         .await
                         .context("cannot handle incoming DNS query")
                         .log_warn()
