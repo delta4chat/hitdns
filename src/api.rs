@@ -140,13 +140,38 @@ impl HitdnsAPI {
               },
 
               "/stats" => {
-                  let mut res =
-                      Response::new(StatusCode::Ok);
+                  match
+                      daemon.context.stats.json().await
+                  {
+                      Ok(json) => {
+                          let mut res = Response::new(
+                              StatusCode::Ok
+                          );
 
-                  res.set_content_type(Self::mime_json());
-                  res.set_body(format!("{:#}", daemon.context.stats.json().await));
-                  Ok(res)
+                          res.set_content_type(
+                              Self::mime_json()
+                          );
 
+                          res.set_body(
+                              format!("{json:#}")
+                          );
+
+                          Ok(res)
+                      },
+                      Err(e) => {
+                          let mut res = Response::new(StatusCode::InternalServerError);
+
+                          res.set_content_type(
+                              Self::mime_txt()
+                          );
+
+                          res.set_body(
+                              format!("{e:?}")
+                          );
+
+                          Ok(res)
+                      }
+                  }
               },
 
               _ => {

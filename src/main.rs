@@ -110,6 +110,14 @@ pub static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(|| {
     dir
 });
 
+pub static TIME_FMT_JS: Lazy<time::format_description::OwnedFormatItem> = Lazy::new(|| {
+    time::format_description::parse_owned::<1>(
+        // RFC-3339 format with 3 digits of sub-seconds
+        // (aka. JavaScript 'Date' Format)
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
+    ).unwrap()
+});
+
 /*
 pub trait Average<  T: Default + Copy + From<u64>  > {
     fn average(&self: &[T]) -> T {
@@ -574,8 +582,7 @@ impl DNSDaemonContext {
         loop {
             let t = Instant::now();
             let (len, peer) = udp
-                .recv_from(&mut buf)
-                .await
+                .recv_from(&mut buf).await
                 .context("cannot recvfrom udp socket")
                 .log_error()?;
             let delta = t.elapsed();
@@ -585,20 +592,28 @@ impl DNSDaemonContext {
             let this = this.clone();
             let udp = udp.clone();
             smolscale2::spawn(async move {
-        let req = dns::Message::from_vec(&msg).log_debug().unwrap();
-        let id = req.id();
+                let req = dns::Message::from_vec(&msg).log_debug().unwrap();
 
-        let mut info: DNSQueryInfo = req.into();
-        info.peer = format!("udp://{peer}/?id={id}");
-        info.delta = delta;
+                let id = req.id();
+                let mut info: DNSQueryInfo = req.into();
 
-        let res = this.handle_query(&mut info).await.log_info().unwrap();
-        udp.send_to(
-          res.to_vec()
-          .expect("bug: DNSCache.query returns invalid data").as_ref(),
-          peer
-        ).await.log_error().unwrap();
-      }).detach();
+                info.peer = format!("udp://{peer}/?id={id}");
+                info.delta = delta;
+
+                let res =
+                    this.handle_query(&mut info).await
+                    .log_info().unwrap();
+
+                udp.send_to(
+                    res.to_vec()
+                    .expect("bug: DNSCache.query returns invalid data")
+                    .as_ref(),
+
+                    peer
+                ).await
+                .log_error()
+                .unwrap();
+            }).detach();
         }
     }
 
@@ -1090,11 +1105,7 @@ fn main() -> anyhow::Result<()> {
             flb
             .utc()
             .time_format(
-                time::format_description::parse_owned::<1>(
-                // ISO format with 3 digits of sub-seconds
-                // (aka. JavaScript 'Date' Format)
-"[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
-                ).unwrap()
+                TIME_FMT_JS.clone(),
             )
 
             // prevent to spam terminal

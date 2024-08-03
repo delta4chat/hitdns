@@ -7,11 +7,15 @@ use std::time::Instant;
 use std::sync::Arc;
 use std::sync::atomic::Ordering::Relaxed;
 
+type AtomicU64 = Arc<portable_atomic::AtomicU64>;
 type AtomicU128 = Arc<portable_atomic::AtomicU128>;
 type AtomicF64 = Arc<portable_atomic::AtomicF64>;
 
 #[derive(Debug, Clone, Default)]
 pub struct DNSQueryData {
+    // last generate time in unix secs
+    last_update: AtomicU64,
+
     // how many queries per second
     freq: AtomicF64,
 
@@ -50,7 +54,13 @@ pub struct DNSQueryData {
     rdclasses: scc::HashMap<u16, AtomicU128>,
 }
 impl DNSQueryData {
-    pub async fn json(&self) -> serde_json::Value {
+    pub async fn json(&self)
+        -> anyhow::Result<serde_json::Value>
+    {
+        if self.last_update.load(Relaxed) == 0 {
+            anyhow::bail!("no data avaliable: no any update");
+        }
+
         let mut domains = serde_json::Map::new();
         self.domains.scan_async(|domain, count|{
             let key: String = domain.into();
@@ -93,7 +103,17 @@ impl DNSQueryData {
             rdclasses.insert(key, val);
         }).await;
 
-        serde_json::json!({
+        let ts = self.last_update.load(Relaxed);
+        let dt =
+            time::OffsetDateTime::from_unix_timestamp(
+                ts as i64
+            )?;
+
+        Ok(serde_json::json!({
+            "last_update": {
+                "timestamp": ts.to_string(),
+                "string": dt.format(&TIME_FMT_JS)?,
+            },
             "freq": self.freq.load(Relaxed),
             "queries_within": {
                 "1m": self.queries_1m.load(Relaxed)
@@ -143,7 +163,7 @@ impl DNSQueryData {
                 "rdtypes": rdtypes,
                 "rdclasses": rdclasses,
             }
-        })
+        }))
     }
 }
 
@@ -156,7 +176,7 @@ pub struct DNSQueryStats {
     // all of queries with timestamp
     queries: scc::TreeIndex<Instant, DNSQueryInfo>,
 
-    // inner data that can `derive(Debug)`
+    // inner data that can `derive(Default)`
     data: DNSQueryData,
 }
 
@@ -172,7 +192,9 @@ impl DNSQueryStats {
         }
     }
 
-    pub async fn json(&self) -> serde_json::Value {
+    pub async fn json(&self)
+        -> anyhow::Result<serde_json::Value>
+    {
         self.data.json().await
     }
 
@@ -245,6 +267,16 @@ impl DNSQueryStats {
         self.data.queries_24h.store(queries_24h, Relaxed);
 
         self.data.queries_total.store(queries as u128, Relaxed);
+
+        /* store .last_update */
+        self.data.last_update.store(
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+
+            Relaxed
+        );
     }
 
     pub async fn add_query(
@@ -319,14 +351,19 @@ impl DNSQueryStats {
         }
 
         /* all done */
-
-        let old_elapsed = self.elapsed.load(Relaxed);
         let new_elapsed =
             self.started.elapsed().as_secs_f64();
 
         self.elapsed.store(new_elapsed, Relaxed);
 
-        if (new_elapsed - old_elapsed) >= 10.0 {
+        let now = SystemTime::now()
+               .duration_since(SystemTime::UNIX_EPOCH)
+               .unwrap()
+               .as_secs();
+        let last_update =
+            self.data.last_update.load(Relaxed);
+
+        if (now - last_update) >= 10 {
             self.update();
         }
         Ok(())
