@@ -213,19 +213,19 @@ impl DNSQueryStats {
                 if elapsed_secs <= 60 {
                     queries_1m += 1;
                 }
-                if elapsed_secs <= 60*5 {
+                else if elapsed_secs <= 60*5 {
                     queries_5m += 1;
                 }
-                if elapsed_secs <= 60*15 {
+                else if elapsed_secs <= 60*15 {
                     queries_15m += 1;
                 }
-                if elapsed_secs <= 60*60 {
+                else if elapsed_secs <= 60*60 {
                     queries_60m += 1;
                 }
-                if elapsed_secs <= 60*60*12 {
+                else if elapsed_secs <= 60*60*12 {
                     queries_12h += 1;
                 }
-                if elapsed_secs <= 60*60*24 {
+                else if elapsed_secs <= 60*60*24 {
                     queries_24h += 1;
                 }
             }
