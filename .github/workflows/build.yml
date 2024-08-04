@@ -22,7 +22,7 @@ jobs:
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
-          git switch -c this
+          git switch -C this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
@@ -228,7 +228,7 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
-          git switch -c this
+          git switch -C this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
@@ -280,7 +280,7 @@ jobs:
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
-          git switch -c this
+          git switch -C this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
@@ -326,7 +326,7 @@ jobs:
           git config --global user.name github-actions
           git config --global user.email github-actions@github.com
 
-          git switch -c this
+          git switch -C this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
@@ -368,7 +368,7 @@ jobs:
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
-          git switch -c this
+          git switch -C this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
