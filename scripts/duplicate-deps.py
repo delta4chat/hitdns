@@ -1,4 +1,7 @@
-#!/usr/bin/python3
+#!/bin/env python3
+
+import sys
+
 import subprocess
 import json
 import os
@@ -11,8 +14,13 @@ def _deps():
         line = line.decode('utf-8')
         line = decoder.scan_once(line, 0)[0]
         if line['reason'] == 'compiler-artifact':
-            pkg, ver = line['package_id'].split(' ')[:2]
-            yield (pkg, ver)
+            print(line, file=sys.stderr)
+            try:
+                pkg, ver = line['package_id'].split('#')[-1].split('@')
+            except Exception as err:
+                print(repr(err), file=sys.stderr)
+            else:
+                yield (pkg, ver)
         line = process.stdout.readline()
 
 def deps():
