@@ -21,6 +21,8 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
+
+          git config pull.rebase true
           git pull origin master
 
           git switch --orphan bin && git pull origin bin
@@ -227,6 +229,8 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
+
+          git config pull.rebase true
           git pull origin master
 
           git switch --orphan bin && git pull origin bin
@@ -278,6 +282,8 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
+
+          git config pull.rebase true
           git pull origin master
 
           git switch --orphan bin && git pull origin bin
@@ -324,6 +330,7 @@ jobs:
           git config --global user.name github-actions
           git config --global user.email github-actions@github.com
 
+          git config pull.rebase true
           git pull origin master
 
           git switch --orphan bin && git pull origin bin
@@ -365,6 +372,8 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
+
+          git config pull.rebase true
           git pull origin master
 
           git switch --orphan bin && git pull origin bin
