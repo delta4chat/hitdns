@@ -155,7 +155,7 @@ impl<'a> DNSOverHTTPS {
             start = Instant::now();
             maybe_ret =
                 client.head(url_)
-                .header("Padding", randstr(fastrand::usize(1..=50)))
+                .header("X-Padding", randstr(fastrand::usize(1..=50)))
                 .send()
                 .timeout(Duration::from_secs(10))
                 .await;
@@ -224,7 +224,7 @@ impl<'a> DNSOverHTTPS {
             .post(url.clone())
             .header("Content-Type", Self::CONTENT_TYPE)
             .header("Accept", Self::CONTENT_TYPE)
-            .header("Padding", randstr(fastrand::usize(1..=50)))
+            .header("X-Padding", randstr(fastrand::usize(1..=50)))
             .body(req.to_vec()?)
             .send()
             .await
@@ -261,12 +261,15 @@ impl<'a> DNSOverHTTPS {
 }
 
 fn randchr() -> char {
-    const TEMPLATE: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const TEMPLATE: &[char] = &[
+        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+    ];
     const TEMPLATE_LEN: usize = TEMPLATE.len();
 
-    return TEMPLATE.chars().skip(fastrand::usize(0..TEMPLATE_LEN)).next().unwrap();
+    return TEMPLATE[fastrand::usize(0..TEMPLATE_LEN)];
 }
-
 fn randstr(len: usize) -> String {
     let mut out = String::new();
     for _ in 0..len {

@@ -357,8 +357,7 @@ impl DNSQueryStats {
         self.elapsed.store(new_elapsed, Relaxed);
 
         let now = SystemTime::now()
-               .duration_since(SystemTime::UNIX_EPOCH)
-               .unwrap()
+               .duration_since(SystemTime::UNIX_EPOCH)?
                .as_secs();
         let last_update =
             self.data.last_update.load(Relaxed);

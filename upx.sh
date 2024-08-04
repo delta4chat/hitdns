@@ -6,43 +6,51 @@
 tmp=$(mktemp || exit)
 
 cat > $tmp <<"EOF"
-if type sudo
-then
-    if type apt
+prepare() {
+    if type sudo
     then
-    	sudo apt install upx
+        if type apt
+        then
+            sudo apt install upx && return
+        fi
+
+	# disable in macos
+	return 1
+
+        if type brew
+        then
+    	    brew install upx && return
+        fi
+
+        if type port
+        then
+    	    sudo port install upx && return
+        fi
     fi
 
-    if type brew
+    if type choco
     then
-    	brew install upx
+        choco install upx && return
     fi
 
-    if type port
+    if type winget
     then
-    	sudo port install upx
+        winget install upx && return
     fi
+}
 
-fi
+prepare
 
 if type upx
 then
 	upx -9 $1 && exit
 fi
 
-exit
-
-if type xz
+echo failed to compress binary size by upx, fallback to strip if binary too large...
+if test "$(wc -c $1)" -gt 20971520
 then
-	cat $1 | xz -c -v -e -9 > $1.xz && exit
+    strip $1
 fi
-
-if type gzip
-then
-	cat $1 | gzip -c -9 > $1.gz && exit
-fi
-
-echo failed to compress file size, fallback to strip?
 EOF
 
 command $*
