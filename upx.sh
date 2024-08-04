@@ -47,7 +47,7 @@ then
 fi
 
 echo failed to compress binary size by upx, fallback to strip if binary too large...
-if test "$(wc -c $1)" -gt 20971520
+if test "$(cat $1 | wc -c)" -gt 20971520 # 20M
 then
     strip $1
 fi
