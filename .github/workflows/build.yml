@@ -22,13 +22,12 @@ jobs:
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
-          git config pull.rebase true
-          git switch --orphan master && git pull origin master
+          git switch -c this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
-          git switch master
+          git switch this  
           git reset --hard ${{github.sha}}
 
       # do not continue-on-error if cross install failed
@@ -53,7 +52,7 @@ jobs:
             git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 android"
             git push origin bin
           fi
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
           cargo clean
           docker image prune -a -f
@@ -76,7 +75,7 @@ jobs:
             git commit -m "[${{github.sha}}] upload binary of hitdns amd64 android"
             git push origin bin
           fi
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
           cargo clean
           docker image prune -a -f
@@ -99,7 +98,7 @@ jobs:
             git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 linux"
             git push origin bin
           fi
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
           cargo clean
           docker image prune -a -f
@@ -122,7 +121,7 @@ jobs:
             git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 linux (musl)"
             git push origin bin
           fi
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
           cargo clean
           docker image prune -a -f
@@ -145,7 +144,7 @@ jobs:
             git commit -m "[${{github.sha}}] upload binary of hitdns amd64 freebsd"
             git push origin bin
           fi
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
           cargo clean
           docker image prune -a -f
@@ -168,7 +167,7 @@ jobs:
             git commit -m "[${{github.sha}}] upload binary of hitdns amd64 netbsd"
             git push origin bin
           fi
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
           cargo clean
           docker image prune -a -f
@@ -191,7 +190,7 @@ jobs:
             git commit -m "[${{github.sha}}] upload binary of hitdns mipsel linux musl"
             git push origin bin
           fi
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
           cargo clean
           docker image prune -a -f
@@ -214,7 +213,7 @@ jobs:
             git commit -m "[${{github.sha}}] upload binary of hitdns wasm32-unknown-emscripten"
             git push origin bin
           fi
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
           cargo clean
           docker image prune -a -f
@@ -229,14 +228,12 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
-
-          git config pull.rebase true
-          git switch --orphan master && git pull origin master
+          git switch -c this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
           if git log -1 | grep -F "auto-submit}"
           then
@@ -268,7 +265,7 @@ jobs:
           git add -A
           git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux"
           git push origin bin
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
 
   amd64-linux-musl:
@@ -283,13 +280,12 @@ jobs:
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
-          git config pull.rebase true
-          git switch --orphan master && git pull origin master
+          git switch -c this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
 
       - name: Update apt and install Musl
@@ -314,7 +310,7 @@ jobs:
           git add -A
           git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)"
           git push origin bin
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
 
   amd64-windows:
@@ -330,13 +326,12 @@ jobs:
           git config --global user.name github-actions
           git config --global user.email github-actions@github.com
 
-          git config pull.rebase true
-          git switch --orphan master && git pull origin master
+          git switch -c this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
         shell: bash
 
@@ -357,7 +352,7 @@ jobs:
           git add -A
           git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows"
           git push origin bin
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
         shell: bash
 
@@ -373,13 +368,12 @@ jobs:
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
-          git config pull.rebase true
-          git switch --orphan master && git pull origin master
+          git switch -c this
 
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
       
       - name: Build (mac)
@@ -398,6 +392,6 @@ jobs:
           git add -A
           git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac"
           git push origin bin
-          git switch master
+          git switch this
           git reset --hard ${{github.sha}}
 
