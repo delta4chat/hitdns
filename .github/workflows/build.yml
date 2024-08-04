@@ -3,8 +3,8 @@ name: Build
 on:
   push:
     branches: [ master ]
-#  pull_request:
-#    branches: [ master ]
+  pull_request:
+    branches: [ master ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -21,6 +21,8 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git pull origin master
+
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
@@ -225,6 +227,8 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git pull origin master
+
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/
@@ -274,6 +278,8 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git pull origin master
+
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
@@ -317,6 +323,9 @@ jobs:
         run: |
           git config --global user.name github-actions
           git config --global user.email github-actions@github.com
+
+          git pull origin master
+
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
@@ -356,6 +365,8 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git pull origin master
+
           git switch --orphan bin && git pull origin bin
           git switch bin
           mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"

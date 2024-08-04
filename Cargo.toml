@@ -64,7 +64,7 @@ rustls = { optional = true, version = "0.21.10", default-features = false }
 webpki-roots = { optional = true, version = "0.26.1" }
 
 scc = { version = "2.0.16", features = ["serde"] }
-fastrand = "2.0.1"
+fastrand = "2.1.0"
 
 smol = "2.0.0"
 smol-timeout = "0.6.0"
