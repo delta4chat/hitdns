@@ -980,9 +980,8 @@ static ENV_FILTER: Lazy<Option<env_filter::Filter>> =
 fn main() -> anyhow::Result<()> {
     #[cfg(not(feature = "ftlog"))]
     {
-        let ret = env_logger::builder().try_init();
-
-        eprintln!("env_logger: try init = {ret:?}");
+        let _ret = env_logger::builder().try_init();
+        //eprintln!("env_logger: try init = {_ret:?}");
     }
 
     #[cfg(feature = "ftlog")]
@@ -1101,7 +1100,7 @@ fn main() -> anyhow::Result<()> {
             flb = flb.max_log_level(filter_lv);
         }
 
-        let ret =
+        let _ret =
             flb
             .utc()
             .time_format(
@@ -1115,7 +1114,7 @@ fn main() -> anyhow::Result<()> {
             .format(MyFmt{})
             .try_init();
 
-        eprintln!("ftlog_logger: try init = {ret:?}");
+        //eprintln!("ftlog_logger: try init = {_ret:?}");
     }
 
     //smolscale2::set_max_threads(4);
