@@ -1,6 +1,6 @@
 # Hit DNS - Probably the world's fastest DNS forwarder 
 [![crates.io](https://img.shields.io/crates/v/hitdns)](https://crates.io/crates/hitdns)
-[![docs.rs](https://img.shields.io/docsrs/hitdns)](https://docs.rs/hitdns)
+<!-- [![docs.rs](https://img.shields.io/docsrs/hitdns)](https://docs.rs/hitdns) -->
 
 
 [![License](https://img.shields.io/crates/l/hitdns)](https://github.com/delta4chat/hitdns/blob/master/LICENSE.txt)
