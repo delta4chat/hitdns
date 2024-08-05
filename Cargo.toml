@@ -58,7 +58,7 @@ reqwest = { version = "0.12.5", features = ["rustls-tls", "http2"], default-feat
 
 # QUIC library for DoQ client
 quinn  = { optional = true, version = "0.10.2", features = ["tls-rustls", "runtime-async-std"], default-features = false }
-rustls = { optional = true, version = "0.21.10", default-features = false }
+rustls = { optional = true, version = "0.23.12", default-features = false }
 
 # builtin Root CA list
 webpki-roots = { optional = true, version = "0.26.1" }
