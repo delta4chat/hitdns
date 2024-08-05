@@ -44,33 +44,6 @@ static DOH_CLIENT: Lazy<reqwest::Client> = Lazy::new(
     },
 );
 
-struct DummyDNS(
-    // if true, will use static domain name resolving
-    // if false, will complete disable DNS
-    bool,
-);
-impl reqwest::dns::Resolve for DummyDNS {
-    // pub type Resolving = Pin<Box<dyn Future<Output = Result<Addrs, Box<dyn StdError + Send + Sync>>> + Send>>;
-    fn resolve(
-        &self,
-        domain: hyper::client::connect::dns::Name,
-    ) -> reqwest::dns::Resolving {
-        if self.0 {
-            return HOSTS.resolve(domain);
-        }
-        let msg = format!("unexpected DNS resolve request ({domain:?}) from reqwest::Client in DoH client. this avoids infinity-recursive DNS resolving if hitdns itself as a system resolver. because TLS certificate Common Name or Alt Subject Name can be IP addresses, so you can use IP address instead of a domain name (need DoH server supports). or instead you can give a hosts.txt file by --hosts or --use-system-hosts");
-        log::warn!("{}", &msg);
-        Box::pin(async move {
-            let err: Box<
-                dyn std::error::Error + Send + Sync,
-            > = Box::new(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                msg,
-            ));
-            Err(err)
-        })
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct DNSOverHTTPS {

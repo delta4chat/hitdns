@@ -124,7 +124,7 @@ impl Hosts {
 
     fn _reqwest_resolve(
         &self,
-        domain: hyper::client::connect::dns::Name,
+        domain: reqwest::dns::Name,
     ) -> reqwest::dns::Resolving {
         Box::pin(async move {
             let maybe_ips =
@@ -169,7 +169,7 @@ impl Hosts {
 impl reqwest::dns::Resolve for Hosts {
     fn resolve(
         &self,
-        domain: hyper::client::connect::dns::Name,
+        domain: reqwest::dns::Name,
     ) -> reqwest::dns::Resolving {
         self._reqwest_resolve(domain)
     }
@@ -177,7 +177,7 @@ impl reqwest::dns::Resolve for Hosts {
 impl reqwest::dns::Resolve for &Hosts {
     fn resolve(
         &self,
-        domain: hyper::client::connect::dns::Name,
+        domain: reqwest::dns::Name,
     ) -> reqwest::dns::Resolving {
         self._reqwest_resolve(domain)
     }
