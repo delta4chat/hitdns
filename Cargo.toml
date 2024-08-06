@@ -71,7 +71,7 @@ smol-timeout = "0.6.0"
 
 #smolscale = { version = "0.4.4", features = ["preempt"] }
 
-smolscale2 = { version = "0.5.7", features = ["preempt"] }
+smolscale2 = { version = "0.5.8", features = ["preempt"] }
 #smolscale2 = { path = "../smolscale", features = ["preempt"] }
 
 portable-atomic = { version = "1.6.0", features = ["float"] }

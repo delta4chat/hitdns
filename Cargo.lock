@@ -152,6 +152,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-event"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1222afd3d2bce3995035054046a279ae7aa154d70d0766cea050073f3fd7ddf"
+dependencies = [
+ "loom",
+ "pin-project-lite 0.2.14",
+]
+
+[[package]]
 name = "async-executor"
 version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2466,13 +2476,12 @@ dependencies = [
 
 [[package]]
 name = "smolscale2"
-version = "0.5.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc8519868bf70c1a96a8dc32bccb941bd883e91e70c7e2767ba7154c83ad1002"
+version = "0.5.8"
 dependencies = [
  "anyhow",
  "async-channel 1.9.0",
  "async-compat",
+ "async-event",
  "async-executor",
  "async-global-executor",
  "async-io 2.3.3",

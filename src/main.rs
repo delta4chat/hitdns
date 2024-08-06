@@ -74,7 +74,10 @@ pub use smol::net::AsyncToSocketAddrs;
 pub use smol::net::UdpSocket;
 pub use smol::net::{TcpListener, TcpStream};
 
-pub use smol::io::{AsyncReadExt, AsyncWriteExt};
+pub use smol::io::{
+    AsyncReadExt, AsyncWriteExt,
+    AsyncRead, AsyncWrite,
+};
 pub use smol::stream::StreamExt;
 
 pub use smol::channel::{Receiver, Sender};

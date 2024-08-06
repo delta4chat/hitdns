@@ -2,6 +2,8 @@
 pub mod doh;
 pub use doh::*;
 
+pub mod pool;
+
 // dot.rs
 #[cfg(feature = "dot")]
 pub mod dot;
@@ -13,3 +15,5 @@ pub use dot::*;
 pub mod doq;
 #[cfg(feature = "doq")]
 pub use doq::*;
+
+
