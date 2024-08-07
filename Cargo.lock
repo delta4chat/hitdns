@@ -2295,9 +2295,9 @@ checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
 
 [[package]]
 name = "scc"
-version = "2.1.7"
+version = "2.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a870e34715d5d59c8536040d4d4e7a41af44d527dc50237036ba4090db7996fc"
+checksum = "06ff467073ddaff34c3a39e5b454f25dd982484a26fff50254ca793c56a1b714"
 dependencies = [
  "sdd",
  "serde",
@@ -2477,6 +2477,8 @@ dependencies = [
 [[package]]
 name = "smolscale2"
 version = "0.5.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ff6ae5746919468eb03ad91c07e635ab58a519eacb7261c13f93805231e7638"
 dependencies = [
  "anyhow",
  "async-channel 1.9.0",
