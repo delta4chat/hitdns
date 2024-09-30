@@ -63,7 +63,7 @@ rustls = { optional = true, version = "0.23.12", default-features = false }
 # builtin Root CA list
 webpki-roots = { optional = true, version = "0.26.1" }
 
-scc = { version = "2.0.16", features = ["serde"] }
+scc = { version = "2.1.18", features = ["serde"] }
 fastrand = "2.1.0"
 
 smol = "2.0.0"
