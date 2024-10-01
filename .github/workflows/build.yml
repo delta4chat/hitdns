@@ -23,6 +23,7 @@ jobs:
           set -x
           uname -a || true
           ifconfig -a || true
+          free -h || free || true
           uptime || true
           cat /proc/cpuinfo || true
 
@@ -238,6 +239,7 @@ jobs:
           set -x
           uname -a || true
           ifconfig -a || true
+          free -h || free || true
           uptime || true
 
       - name: Create binary directory for this job
@@ -296,6 +298,7 @@ jobs:
           set -x
           uname -a || true
           ifconfig -a || true
+          free -h || free || true
           uptime || true
           cat /proc/cpuinfo || true
 
@@ -349,6 +352,7 @@ jobs:
           set -x
           uname -a || true
           ifconfig -a || true
+          free -h || free || true
           uptime || true
           cat /proc/cpuinfo || true
         shell: bash
@@ -408,6 +412,7 @@ jobs:
           set -x
           uname -a || true
           ifconfig -a || true
+          free -h || free || true
           uptime || true
 
       - name: Create binary directory for this job
@@ -454,6 +459,7 @@ jobs:
           set -x
           uname -a || true
           ifconfig -a || true
+          free -h || free || true
           uptime || true
 
       - name: Create binary directory for this job
