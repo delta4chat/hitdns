@@ -218,8 +218,10 @@ fn dns_stats_hook(
                     if name.contains("random") {
                         texts.push(format!("{}", fastrand::u128(..)));
                     } else if name.contains("api") {
-                        let port = opt.api_listen.port();
-                        texts.push(format!("http://127.0.0.1:{port}/"));
+                        if let Some(api_listen) = opt.api_listen {
+                            let port = api_listen.port();
+                            texts.push(format!("http://127.0.0.1:{port}/"));
+                        }
                     }
 
                     answer.set_data(
@@ -456,16 +458,18 @@ impl DNSDaemon {
         let cache = &ctx.cache;
         let opt = &ctx.opt;
 
-        if true { //let Some(api_listen) = opt.api_listen {
-            if let Ok(api) =
-                HitdnsAPI::new(opt.api_listen, this.clone())
-                    .await
-                    .log_error()
-            {
-                smolscale2::spawn(async move {
-                    api.run().await.unwrap();
-                })
-                .detach();
+        if !opt.no_api {
+            if let Some(api_listen) = opt.api_listen {
+                if let Ok(api) =
+                    HitdnsAPI::new(api_listen, this.clone())
+                        .await
+                        .log_error()
+                {
+                    smolscale2::spawn(async move {
+                        api.run().await.unwrap();
+                    })
+                    .detach();
+                }
             }
         }
 
@@ -790,9 +794,16 @@ pub struct HitdnsOpt {
     #[arg(long)]
     pub listen: Option<SocketAddr>,
 
-    /// Listen address of local HTTP API.
-    #[arg(long, default_value="127.0.0.1:18053")]
-    pub api_listen: SocketAddr,
+    /// Specify the local HTTP API listen address, currently it can only be bound to 127.0.0.1 (for security reasons).
+    ///
+    /// for now this is HTTP/1.1 only (due to async-h1 library limits), so HTTP/1.0 is not supported.
+    ///
+    /// if the API is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 1 (if the port number is in use, then continue decrementing until an available port number is found)
+    #[arg(long)]
+    pub api_listen: Option<SocketAddr>,
+
+    /// disable the local HTTP API.
+    pub no_api: bool,
 
     /// upstream URL of DoH servers.
     /// DNS over HTTPS (RFC 8484)
@@ -955,6 +966,25 @@ async fn main_async() -> anyhow::Result<()> {
         } else {
             let filename = PathBuf::from(filename);
             opt.hosts = Some(filename);
+        }
+    }
+
+    if !opt.no_api {
+        if opt.api_listen.is_none() && opt.listen.is_some() {
+            let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
+            dyna.set_port(opt.listen.unwrap().port());
+
+            loop {
+                dyna.set_port(dyna.port() - 1);
+                if let Ok(sock) = TcpListener::bind(dyna).await {
+                    if let Ok(addr) = sock.local_addr() {
+                        dyna = addr;
+                        break;
+                    }
+                }
+            }
+
+            opt.api_listen = Some(dyna);
         }
     }
 
