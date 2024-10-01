@@ -11,7 +11,7 @@ prepare() {
     then
         if type apt
         then
-            sudo apt install upx && return
+            sudo apt install -y upx && return
         fi
 
 	# disable in macos
@@ -30,7 +30,7 @@ prepare() {
 
     if type choco
     then
-        choco install upx && return
+        choco install -y upx && return
     fi
 
     if type winget
