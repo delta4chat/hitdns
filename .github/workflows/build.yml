@@ -9,6 +9,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+concurrency:
+  cancel-in-progress: ${{ needs.prepare.outputs.cancel == '0' }}
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -41,7 +44,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        if: ${{ needs.prepare.outputs.cancel == '0' }}
         #with:
         #  submodules: true
 
@@ -55,7 +57,6 @@ jobs:
           uptime || true
 
       - name: Create binary directory for this job
-        if: ${{ needs.prepare.outputs.cancel == '0' }}
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
           git switch -C this
