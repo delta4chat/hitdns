@@ -282,7 +282,7 @@ jobs:
           path: target/release/hitdns
 
       - name: Upload binary of amd64 linux
-        if: ${{ outputs.cancel != '1' }}
+        if: ${{ jobs.amd64-linux.outputs.cancel != '1' }}
         run: |
           git switch bin
           git pull origin bin
