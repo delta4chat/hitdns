@@ -87,8 +87,9 @@ impl From<Arc<DNSQuery>> for DNSCacheEntry {
         DNSCacheEntry {
             query,
             entry: Arc::new(RwLock::new(None)),
-            updating: Arc::new(AtomicBool::new(false)),
             update_task: Arc::new(RwLock::new(None)),
+
+            updating: Arc::new(AtomicBool::new(false)),
             update_event: Arc::new(Event::new()),
         }
     }
