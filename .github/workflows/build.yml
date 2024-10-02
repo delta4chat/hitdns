@@ -10,7 +10,7 @@ env:
   CARGO_TERM_COLOR: always
 
 concurrency:
-  cancel-in-progress: ${{ needs.prepare.outputs.cancel == '0' }}
+  cancel-in-progress: ${{ needs.prepare.outputs.cancel != '0' }}
 
 jobs:
   prepare:
