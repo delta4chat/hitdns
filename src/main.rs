@@ -32,17 +32,23 @@ pub use stats::*;
 
 /* ==================== */
 
-pub use std::net::{IpAddr, SocketAddr};
-pub use std::path::PathBuf;
-pub use std::time::{Instant, SystemTime};
-
-pub use core::ops::{Deref, DerefMut};
+pub use core::ops::{
+    Deref, DerefMut,
+    Add, Div,
+};
 pub use core::pin::Pin;
 pub use core::time::Duration;
+
+pub use core::fmt::Debug;
+pub use core::iter::Sum;
 
 extern crate alloc;
 pub use alloc::collections::VecDeque;
 pub use alloc::sync::Arc;
+
+pub use std::net::{IpAddr, SocketAddr};
+pub use std::path::PathBuf;
+pub use std::time::{Instant, SystemTime};
 
 pub mod dns {
     pub use hickory_proto::op::*;
@@ -67,7 +73,7 @@ pub mod dns {
 pub use smol::lock::RwLock;
 
 pub use bytes::Bytes;
-pub use serde::{Deserialize, Serialize};
+pub use serde::{Serialize, Deserialize};
 
 pub use smol::net::AsyncToSocketAddrs;
 
@@ -99,10 +105,6 @@ pub use anyhow::Context;
 
 // command line argument parser
 pub use clap::Parser;
-
-pub use core::fmt::Debug;
-pub use core::iter::Sum;
-pub use core::ops::{Add, Div};
 
 pub use smol_timeout::TimeoutExt;
 
@@ -215,6 +217,7 @@ fn dns_stats_hook(
                     answer.set_rr_type(dns::RdType::TXT);
 
                     let mut texts = vec![];
+
                     if name.contains("random") {
                         texts.push(format!("{}", fastrand::u128(..)));
                     } else if name.contains("api") {
@@ -277,7 +280,7 @@ impl DNSHookArray {
     /// it will return Some with override result.
     ///
     /// anyway, this function will calls ALL associated middleware,
-    /// but only the first valid response will be return.
+    /// but only the first valid response (with minimal nice value) will be return.
     pub async fn via(
         &self,
         info: &DNSQueryInfo,
@@ -303,18 +306,14 @@ impl DNSHookArray {
             let (cur_nice, hook) = val;
 
             if let Some(cur_res) = (hook)(info, self.opt.clone()).await {
-                if let Some((prev_id, prev_nice, _)) =
-                    maybe_res
-                {
-                    if *cur_nice > prev_nice
-                        && prev_id < *cur_id
+                if let Some((prev_id, prev_nice, _)) = maybe_res {
+                    if *cur_nice > prev_nice && prev_id < *cur_id
                     {
                         continue;
                     }
                 }
 
-                maybe_res =
-                    Some((*cur_id, *cur_nice, cur_res));
+                maybe_res = Some((*cur_id, *cur_nice, cur_res));
             }
         }
 
@@ -331,7 +330,9 @@ impl DNSHookArray {
 pub struct DNSDaemonSocket {
     udp: Arc<UdpSocket>,
     tcp: Arc<TcpListener>,
-    //http:
+
+    // TODO plaintext HTTP with POST /dns-query for your reverse proxy (for example Nginx) to serve DoH.
+    // http: Arc<TcpListener>,
 }
 
 #[derive(Debug)]
@@ -377,6 +378,8 @@ impl DNSDaemon {
 
         let resolvers = {
             let mut x: Vec<Arc<dyn DNSResolver>> = vec![];
+
+            // always avaliable
             for doh_url in opt.doh_upstream.iter() {
                 x.push(Arc::new(DNSOverHTTPS::new(
                     doh_url,
@@ -516,10 +519,9 @@ impl DNSDaemon {
                 );
             }
 
-            if this.task.udp.is_finished()
-                || this.task.tcp.is_finished()
+            if this.task.udp.is_finished() || this.task.tcp.is_finished()
             {
-                log::error!("listener task died");
+                log::error!("one of listener tasks died");
                 return;
             }
 
@@ -839,18 +841,23 @@ impl DefaultServers {
             "https://1.1.1.1/dns-query",
             "https://[2606:4700:4700::1001]/dns-query",
             "https://[2606:4700:4700::1111]/dns-query",
+
             // [Anycast] Quad9 DNS (No filter)
             "https://9.9.9.10/dns-query",
             "https://149.112.112.10/dns-query",
             "https://[2620:fe::10]/dns-query",
             "https://[2620:fe::fe:10]/dns-query",
+
             // [TW] TWNIC DNS 101
             "https://101.101.101.101/dns-query",
+
             // [DE] dns.sb
             "https://45.11.45.11/dns-query",
             "https://185.222.222.222/dns-query",
+
             // Adguard DNS Un-filtered
             "https://94.140.14.140/dns-query",
+
             // [CH] dns.switch.ch
             //"https://130.59.31.248/dns-query",
         ];
@@ -949,17 +956,20 @@ async fn main_async() -> anyhow::Result<()> {
     }
 
     if opt.use_system_hosts {
-        let filename = if cfg!(target_vendor = "apple") {
-            "/private/etc/hosts"
-        } else if cfg!(target_os = "android") {
-            "/system/etc/hosts"
-        } else if cfg!(target_family = "unix") {
-            "/etc/hosts"
-        } else if cfg!(target_family = "windows") {
-            r"C:\Windows\System32\drivers\etc\hosts"
-        } else {
-            ""
-        };
+        let filename =
+            if cfg!(target_vendor = "apple") {
+                "/private/etc/hosts".to_string()
+            } else if cfg!(target_os = "android") {
+                "/system/etc/hosts".to_string()
+            } else if cfg!(target_family = "unix") {
+                "/etc/hosts".to_string()
+            } else if cfg!(target_family = "windows") {
+                let mut out = std::env::var("SystemDrive").unwrap_or(String::from("C:"));
+                out.extend(r"\Windows\System32\drivers\etc\hosts".chars());
+                out
+            } else {
+                "".to_string()
+            };
 
         if filename.is_empty() {
             log::warn!("cannot find your system-side hosts.txt, please provaide a path by --hosts");
