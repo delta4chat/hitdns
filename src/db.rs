@@ -35,13 +35,13 @@ pub static HITDNS_SQLITE_POOL: Lazy<SqlitePool> =
                             SqliteSynchronous::Normal
                         ),
                 ).await
-                .expect(
-                    "sqlx cannot connect to sqlite db",
-                );
+                .expect("sqlx cannot connect to sqlite db");
 
-            sqlx::query("CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT")
-                .execute(&pool).await
-                .expect("sqlx cannot create table in opened sqlite db");
+            sqlx::query(
+                "CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT"
+            )
+            .execute(&pool).await
+            .expect("sqlx cannot create table in opened sqlite db");
 
             pool
         })
@@ -75,7 +75,7 @@ pub struct DatabaseSnapshot {
     pub(crate) cache_v1:
         std::collections::HashMap<
             DNSQuery,
-            Arc<DNSEntry>,
+            Arc<DNSEntry>
         >,
     // other database tables may added in future
 }
@@ -129,7 +129,8 @@ impl DatabaseSnapshot {
                 sqlx::query("INSERT OR IGNORE INTO hitdns_cache_v1 VALUES (?1, ?2); UPDATE hitdns_cache_v1 SET entry = ?2 WHERE query = ?1")
                 .bind(&query).bind(&entry)
                 .execute(&*HITDNS_SQLITE_POOL)
-                .await.log_warn()?;
+                .await
+                .log_warn()?;
             }
 
             #[cfg(feature = "sled")]
