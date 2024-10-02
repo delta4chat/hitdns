@@ -1,7 +1,6 @@
 use crate::*;
 
-pub static HOSTS: Lazy<Hosts> =
-    Lazy::new(|| Hosts::new());
+pub static HOSTS: Lazy<Hosts> = Lazy::new(Hosts::new);
 
 #[derive(Debug)]
 pub struct Hosts {
@@ -25,12 +24,9 @@ impl Hosts {
         const HOSTS_EXAMPLE: &'static str = "   two examples of hosts.txt that is: 142.250.189.206 ipv4.google.com | 2607:f8b0:4005:814::200e ipv6.google.com   ";
 
         let mut file: String =
-            smol::fs::read_to_string(filename)
-                .await
-                .context(
-                    "cannot read from hosts.txt file",
-                )
-                .log_warn()?;
+            smol::fs::read_to_string(filename).await
+            .context("cannot read from hosts.txt file")
+            .log_warn()?;
 
         // compatible Unix/Linux LF, Windows CR LF, and Mac CR
         // LF    = \n
@@ -58,8 +54,9 @@ impl Hosts {
                 line = line.replace("\t", " ");
             }
 
-            // ignore comments.
+            // ignore comments or mal-formatted texts.
             if !line.contains(" ") {
+                log::warn!("Hosts: {filename:?}: ignore invalid line: no space character found at line {lines}. / {HOSTS_EXAMPLE}");
                 continue;
             }
             if line.replace(" ", "").starts_with("#") {
@@ -72,7 +69,6 @@ impl Hosts {
             let words = Vec::from_iter(line.split(" "));
             let words_len = words.len();
             if words_len <= 1 {
-                log::warn!("Hosts: {filename:?}: ignore invalid line: no space character found at line {lines}. / {HOSTS_EXAMPLE}");
                 continue;
             }
             let ip: IpAddr = match words[0].parse() {
@@ -83,7 +79,7 @@ impl Hosts {
                 },
             };
             let mut domain = words[1].to_string();
-            if !domain.ends_with(".") {
+            if ! domain.ends_with(".") {
                 domain.push('.');
             }
             let domain = domain.to_ascii_lowercase();
@@ -95,7 +91,7 @@ impl Hosts {
 
             // Entry
             self.map.entry_async(domain).await
-            .or_insert_with(|| { Vec::new() })
+            .or_insert_with(Vec::new)
             .get_mut()
             // Vec
             .push(ip);
@@ -111,7 +107,7 @@ impl Hosts {
         domain: impl ToString,
     ) -> Option<Vec<IpAddr>> {
         let mut domain: String = domain.to_string();
-        if !domain.ends_with(".") {
+        if ! domain.ends_with(".") {
             domain.push('.');
         }
         let domain = domain.to_ascii_lowercase();
@@ -154,12 +150,13 @@ impl Hosts {
             } else {
                 let msg = format!("DNS static resolve failed: unable to find a mapping from {domain:?} to IPv4/IPv6 addresses.");
                 log::warn!("{}", &msg);
-                let err: Box<
-                    dyn std::error::Error + Send + Sync,
-                > = Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Unsupported,
-                    msg,
-                ));
+                let err: Box<dyn std::error::Error + Send + Sync> =
+                    Box::new(
+                        std::io::Error::new(
+                            std::io::ErrorKind::Unsupported,
+                            msg
+                        )
+                    );
                 Err(err)
             }
         })
