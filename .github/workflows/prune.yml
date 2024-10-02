@@ -8,6 +8,10 @@ on:
 jobs:
   auto-pruning:
     runs-on: ubuntu-latest
+
+    outputs:
+      cancel: ${{ steps.step1.outputs.cancel }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,9 +26,11 @@ jobs:
           git commit -m 'prune any older history, just keep latest contents'
 
       - name: Run bin-prune.py
-        run: python3 bin-prune.py
+        id: step1
+        run: python3 bin-prune.py >> "$GITHUB_OUTPUT"
 
       - name: Push changes
+        if: ${{ outputs.cancel != '1' }}
         run: |
           git add -A
           git commit -m 'auto delete old binary'
