@@ -23,4 +23,4 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 4. [ ] add hosts support for DNS resolving
 5. [ ] \(optional) add network offline detects?
 6. [ ] \(optional) add automatic update expired cache entry?
-
+7. [ ] CI: build.yml: use matrix instead of duplicate codes
