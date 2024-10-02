@@ -2,8 +2,10 @@
 
 use crate::*;
 
-pub use portable_atomic::AtomicU32;
-pub use portable_atomic::Ordering::Relaxed;
+use event_listener::Event;
+
+pub use portable_atomic::{AtomicU32, AtomicBool};
+pub use portable_atomic::Ordering::{Relaxed, SeqCst};
 
 pub static MIN_TTL: AtomicU32 = AtomicU32::new(0);
 pub static MAX_TTL: AtomicU32 = AtomicU32::new(u32::MAX);
@@ -41,6 +43,29 @@ impl TryInto<Arc<DNSEntry>> for DNSCacheStatus {
     }
 }
 
+pub struct Defer {
+    called: bool,
+    f: Box<dyn Fn() -> ()>,
+}
+impl Defer {
+    pub fn new(f: Box<dyn Fn() -> ()>) -> Self {
+        Self {
+            called: false,
+            f,
+        }
+    }
+}
+impl Drop for Defer {
+    fn drop(&mut self) {
+        if self.called {
+            return;
+        }
+        self.called = true;
+
+        (self.f)();
+    }
+}
+
 /* ========== DNS Cache Entry ========== */
 #[derive(Debug, Clone)]
 pub struct DNSCacheEntry {
@@ -54,15 +79,17 @@ pub struct DNSCacheEntry {
         >,
     >,
 
-    update_notify: Arc<RwLock<Option<Receiver<()>>>>,
+    updating: Arc<AtomicBool>,
+    update_event: Arc<Event>,
 }
 impl From<Arc<DNSQuery>> for DNSCacheEntry {
     fn from(query: Arc<DNSQuery>) -> DNSCacheEntry {
         DNSCacheEntry {
             query,
             entry: Arc::new(RwLock::new(None)),
+            updating: Arc::new(AtomicBool::new(false)),
             update_task: Arc::new(RwLock::new(None)),
-            update_notify: Arc::new(RwLock::new(None)),
+            update_event: Arc::new(Event::new()),
         }
     }
 }
@@ -70,8 +97,7 @@ impl From<Arc<DNSEntry>> for DNSCacheEntry {
     fn from(entry: Arc<DNSEntry>) -> DNSCacheEntry {
         let query = entry.query.clone();
 
-        let mut this: DNSCacheEntry =
-            Arc::new(query).into();
+        let mut this: DNSCacheEntry = Arc::new(query).into();
 
         this.entry = Arc::new(RwLock::new(Some(entry)));
 
@@ -81,9 +107,7 @@ impl From<Arc<DNSEntry>> for DNSCacheEntry {
 
 impl DNSCacheEntry {
     pub async fn status(&self) -> DNSCacheStatus {
-        if let Some(entry) =
-            self.entry.read().await.deref().clone()
-        {
+        if let Some(entry) = self.entry.read().await.deref().clone() {
             entry.into()
         } else {
             DNSCacheStatus::Miss
@@ -92,44 +116,44 @@ impl DNSCacheEntry {
 
     // wait until finish.
     pub async fn wait(&self) {
+        let mut zzz = false;
         while self.is_updating().await {
             log::debug!(
                 "{:?} still in updating...",
                 self.query
             );
-            smol::Timer::after(Duration::from_millis(50))
-                .await;
-            if let Some(maybe_rx) = self
-                .update_notify
-                .read()
-                .timeout(Duration::from_millis(50))
+
+            if zzz {
+                smol::Timer::after(Duration::from_millis(50)).await;
+            } else {
+                zzz = true;
+            }
+
+            if let None =
+                self.update_event.listen()
+                .timeout(Duration::from_millis(100))
                 .await
             {
-                if let Some(rx) = maybe_rx.as_ref() {
-                    let _ = rx.recv().await;
-                } else {
-                    break;
-                }
-            } else {
-                log::warn!(
-          "timed out get read lock for update_notify!"
-        );
+                log::warn!("timed out for waiting event from update_event");
             }
         }
     }
 
     pub async fn is_updating(&self) -> bool {
+        if self.updating.load(SeqCst) {
+            return true;
+        }
+
         // smol-timeout Option
         if let Some(maybe_task) = self
             .update_task
             .read()
-            .timeout(Duration::from_millis(50))
+            .timeout(Duration::from_millis(100))
             .await
         {
             // Option<smol::Task>
-            if let Some(task) = maybe_task.deref().clone()
-            {
-                task.is_finished() == false
+            if let Some(task) = maybe_task.deref().clone() {
+                ! task.is_finished()
             } else {
                 false
             }
@@ -181,26 +205,28 @@ impl DNSCacheEntry {
             let entry_lock = self.entry.clone();
             let query = self.query.clone();
 
-            let (update_tx, update_rx) =
-                smol::channel::bounded(1);
-
-            *self.update_notify.write().await =
-                Some(update_rx);
+            let updating = self.updating.clone();
+            let update_event = self.update_event.clone();
 
             let task = smolscale2::spawn(async move {
+                /*
+                updating.store(true, SeqCst);
+                let _guard = Defer::new(Box::new(move || {
+                    updating.store(false, SeqCst);
+                }));
+                */
+
                 let upstream = resolver.dns_upstream();
 
                 let start = Instant::now();
-                let mut response = match timeout_helper(
-                    resolver.dns_resolve(&query),
-                    timeout,
-                )
-                .await
-                {
-                    Some(v) => v?,
+                let mut response = match timeout_helper(resolver.dns_resolve(&query), timeout).await {
+                    Some(v) => { v? },
                     None => {
-                        anyhow::bail!("resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}", &query);
-                    },
+                        anyhow::bail!(
+                            "resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}",
+                            &query
+                        );
+                    }
                 };
                 let elapsed = start.elapsed();
 
@@ -223,10 +249,7 @@ impl DNSCacheEntry {
 
                     ttl
                 };
-                let expire = SystemTime::now()
-                    + Duration::from_secs(
-                        expire_ttl as u64,
-                    );
+                let expire = SystemTime::now() + Duration::from_secs(expire_ttl as u64);
 
                 response.set_id(0);
                 *response.extensions_mut() = None;
@@ -239,20 +262,14 @@ impl DNSCacheEntry {
                     expire,
                 });
 
-                *entry_lock.write().await =
-                    Some(entry.clone());
+                *entry_lock.write().await = Some(entry.clone());
 
-                let _ =
-                    update_tx.send(()).await.log_error();
+                let _ = update_event.notify_relaxed(usize::MAX);
 
                 #[cfg(feature = "sqlite")]
                 {
-                    let query: Vec<u8> =
-                        bincode::serialize(&query)
-                            .log_error()?;
-                    let entry: Vec<u8> =
-                        bincode::serialize(&entry)
-                            .log_error()?;
+                    let query: Vec<u8> = bincode::serialize(&query).log_error()?;
+                    let entry: Vec<u8> = bincode::serialize(&entry).log_error()?;
 
                     let _ =
                         sqlx::query("INSERT OR IGNORE INTO hitdns_cache_v1 VALUES (?1, ?2); UPDATE hitdns_cache_v1 SET entry = ?2 WHERE query = ?1")
@@ -263,30 +280,21 @@ impl DNSCacheEntry {
 
                 #[cfg(feature = "sled")]
                 {
-                    let query: Vec<u8> =
-                        bincode::serialize(&query)
-                            .log_error()?;
-                    let entry: Vec<u8> =
-                        bincode::serialize(&entry)
-                            .log_error()?;
+                    let query: Vec<u8> = bincode::serialize(&query).log_error()?;
+                    let entry: Vec<u8> = bincode::serialize(&entry).log_error()?;
 
                     let tree = HITDNS_SLED_DB
                         .open_tree(b"hitdns_cache_v2")
                         .log_warn()?;
 
-                    tree.insert(query, entry)
-                        .log_warn()?;
-
-                    tree.flush_async()
-                        .await
-                        .log_error()?;
+                    tree.insert(query, entry).log_warn()?;
+                    tree.flush_async().await.log_error()?;
                 }
 
                 Ok(())
             });
 
-            *self.update_task.write().await =
-                Some(Arc::new(task));
+            *self.update_task.write().await = Some(Arc::new(task));
         }
 
         if let DNSCacheStatus::Miss = status {
