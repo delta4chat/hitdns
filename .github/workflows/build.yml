@@ -9,89 +9,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
-concurrency:
-  cancel-in-progress: ${{ jobs.prepare.outputs.cancel != '0' }}
-
 jobs:
-  prepare:
-    runs-on: ubuntu-latest
-    outputs:
-      cancel: ${{ steps.step1.outputs.cancel }}
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: check whether this commit disable CI
-        run: |
-          if git log -1 | grep -F "#NOCI"
-          then
-            echo "This commit Disable CI"
-            echo "cancel=1" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if git log -1 | grep -F "auto-submit}"
-          then
-            echo "Skip any auto commit by bots"
-            echo "cancel=2" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "cancel=0" >> "$GITHUB_OUTPUT"
-
-  amd64-linux:
-    needs: prepare
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        #with:
-        #  submodules: true
-
-      - name: Show system info
-        if: ${{ needs.prepare.outputs.cancel == '0' }}
-        run: |
-          set -x
-          uname -a || true
-          ifconfig -a || true
-          free -h || free || true
-          uptime || true
-
-      - name: Create binary directory for this job
-        run: |
-          git config --global user.name github-actions && git config --global user.email github-actions@github.com
-          git switch -C this
-
-          git switch --orphan bin && git pull origin bin
-          git switch bin
-          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/
-          git switch this
-          git reset --hard ${{github.sha}}
-
-      - name: Build Linux
-        if: ${{ needs.prepare.outputs.cancel == '0' }}
-        run: for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
-
-#      - name: Run tests
-#        run: cargo test --release --verbose -- --nocapture
-
-      - uses: actions/upload-artifact@v4
-        if: ${{ needs.prepare.outputs.cancel == '0' }}
-        with:
-          name: hitdns.amd64-linux
-          path: target/release/hitdns
-
-      - name: Upload binary of amd64 linux
-        if: ${{ needs.prepare.outputs.cancel == '0' }}
-        run: |
-          git switch bin
-          git pull origin bin
-          cp -v target/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-linux
-          git add -A
-          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux"
-          git push origin bin
-          git switch this
-          git reset --hard ${{github.sha}}
-
   cross:
     needs: amd64-linux
     runs-on: ubuntu-latest
@@ -308,6 +226,64 @@ jobs:
           git reset --hard ${{github.sha}}
           cargo clean
           docker image prune -a -f
+
+  amd64-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        #with:
+        #  submodules: true
+
+      - name: Show system info
+        run: |
+          set -x
+          uname -a || true
+          ifconfig -a || true
+          free -h || free || true
+          uptime || true
+
+      - name: Create binary directory for this job
+        run: |
+          git config --global user.name github-actions && git config --global user.email github-actions@github.com
+          git switch -C this
+
+          git switch --orphan bin && git pull origin bin
+          git switch bin
+          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/
+          git switch this
+          git reset --hard ${{github.sha}}
+          if git log -1 | grep -F "auto-submit}"
+          then
+            echo "Skip any auto commit by bots"
+            exit 100
+          fi
+          if git log -1 | grep -F "#NOCI"
+          then
+            echo "This commit Disable CI"
+            exit 1
+          fi
+
+      - name: Build Linux
+        run: for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
+
+#      - name: Run tests
+#        run: cargo test --release --verbose -- --nocapture
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hitdns.amd64-linux
+          path: target/release/hitdns
+
+      - name: Upload binary of amd64 linux
+        run: |
+          git switch bin
+          git pull origin bin
+          cp -v target/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-linux
+          git add -A
+          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux"
+          git push origin bin
+          git switch this
+          git reset --hard ${{github.sha}}
 
   amd64-linux-musl:
     needs: amd64-linux
