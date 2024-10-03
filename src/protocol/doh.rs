@@ -1,7 +1,7 @@
 use crate::*;
 
-static DOH_CLIENT: Lazy<reqwest::Client> = Lazy::new(
-    || {
+static DOH_CLIENT: Lazy<reqwest::Client> =
+    Lazy::new(|| {
         reqwest::Client::builder()
 
         // log::trace
@@ -17,7 +17,7 @@ static DOH_CLIENT: Lazy<reqwest::Client> = Lazy::new(
         .user_agent(
             format!(
                 "hitdns/{}",
-                env!("CARGO_PKG_VERSION")
+                option_env!("CARGO_PKG_VERSION").unwrap_or("NA")
             )
         )
 
@@ -28,8 +28,8 @@ static DOH_CLIENT: Lazy<reqwest::Client> = Lazy::new(
         .http2_keep_alive_interval(Some(Duration::from_secs(10)))
         .http2_keep_alive_timeout(Duration::from_secs(10))
         .http2_keep_alive_while_idle(true)
-        .referer(false)
-        .redirect(reqwest::redirect::Policy::none())
+        .referer(false) // do not send Referer / Referrer
+        .redirect(reqwest::redirect::Policy::none()) // do not follow redirects
 
         // connection settings
         .tcp_nodelay(true)
@@ -41,9 +41,7 @@ static DOH_CLIENT: Lazy<reqwest::Client> = Lazy::new(
 
         // build client
         .build().unwrap()
-    },
-);
-
+    });
 
 #[derive(Debug, Clone)]
 pub struct DNSOverHTTPS {
@@ -54,8 +52,7 @@ pub struct DNSOverHTTPS {
 }
 
 impl<'a> DNSOverHTTPS {
-    const CONTENT_TYPE: &'static str =
-        "application/dns-message";
+    const CONTENT_TYPE: &'static str = "application/dns-message";
 
     pub fn new(
         url: impl ToString,
@@ -68,9 +65,7 @@ impl<'a> DNSOverHTTPS {
 
         let url = reqwest::Url::parse(&url).log_warn()?;
         if url.scheme() != "https" {
-            anyhow::bail!(
-                "DoH server URL scheme invalid."
-            );
+            anyhow::bail!("DoH server URL scheme invalid.");
         }
 
         /*
@@ -83,8 +78,7 @@ impl<'a> DNSOverHTTPS {
 
         let client = DOH_CLIENT.clone();
 
-        let metrics =
-            Arc::new(RwLock::new(DNSMetrics::from(&url)));
+        let metrics = Arc::new(RwLock::new(DNSMetrics::from(&url)));
 
         let _task = Arc::new(smolscale2::spawn(
             Self::_metrics_task(
@@ -101,6 +95,7 @@ impl<'a> DNSOverHTTPS {
             _task,
         })
     }
+
     async fn _metrics_task(
         client: reqwest::Client,
         url: reqwest::Url,
@@ -136,7 +131,7 @@ impl<'a> DNSOverHTTPS {
 
             let metrics = metrics.clone();
             let url_ = url.clone();
-            smolscale2::spawn(async move {
+            {
                 let mut m = metrics.write().await;
 
                 if let Some(ret) = &maybe_ret {
@@ -153,15 +148,12 @@ impl<'a> DNSOverHTTPS {
                     m.down();
                 }
 
-            }).detach();
+            }
         }
     }
 
     // un-cached DNS Query
-    async fn _dns_resolve(
-        &self,
-        query: &DNSQuery,
-    ) -> anyhow::Result<dns::Message> {
+    async fn _dns_resolve(&self, query: &DNSQuery) -> anyhow::Result<dns::Message> {
         log::info!("DoH un-cached Query: {query:?}");
         let start = Instant::now();
         let result = self._orig_dns_resolve(query).await;
@@ -169,6 +161,7 @@ impl<'a> DNSOverHTTPS {
         log::info!("DoH un-cached Result: (elapsed={latency:?}) {result:?}");
 
         let ok = result.is_ok();
+
         let metrics_lock = self.metrics.clone();
         smolscale2::spawn(async move {
             let mut metrics = metrics_lock.write().await;
@@ -178,8 +171,7 @@ impl<'a> DNSOverHTTPS {
             } else {
                 metrics.down();
             }
-        })
-        .detach();
+        }).detach();
 
         result
     }
@@ -207,27 +199,21 @@ impl<'a> DNSOverHTTPS {
             anyhow::bail!("DoH server {url} returns non-200 HTTP status code: {http_res:?}");
         }
 
-        if let Some(ct) =
-            http_res.headers().get("Content-Type")
-        {
-            if ct.as_bytes().to_ascii_lowercase()
-                != Self::CONTENT_TYPE.as_bytes()
-            {
+        if let Some(ct) = http_res.headers().get("Content-Type") {
+            if ct.as_bytes().to_ascii_lowercase() != Self::CONTENT_TYPE.as_bytes() {
                 anyhow::bail!("DoH server {url} returns invalid Content-Type header: {http_res:?}");
             }
         } else {
             anyhow::bail!("DoH server {url} does not specify Content-Type header: {http_res:?}");
         }
 
-        let res: Bytes =
-            http_res.bytes().await.log_warn()?;
+        let res: Bytes = http_res.bytes().await.log_warn()?;
 
         if res.len() > 65535 {
             anyhow::bail!("unexpected received too large response from DoH server {url}");
         }
 
-        let response =
-            dns::Message::from_vec(&res).log_warn()?;
+        let response = dns::Message::from_vec(&res).log_warn()?;
 
         Ok(response)
     }
