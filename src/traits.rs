@@ -1,14 +1,10 @@
 use crate::*;
 
-pub type PinFut<'a, T> =
-    Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+pub type PinFut<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 pub trait DNSResolver: Send + Sync + 'static {
     /// un-cached DNS query
-    fn dns_resolve(
-        &self,
-        query: &DNSQuery,
-    ) -> PinFut<anyhow::Result<dns::Message>>;
+    fn dns_resolve(&self, query: &DNSQuery) -> PinFut<anyhow::Result<dns::Message>>;
 
     /// a description for upstream, usually URL or any other.
     fn dns_upstream(&self) -> String;
@@ -21,15 +17,12 @@ pub trait DNSResolver: Send + Sync + 'static {
 }
 
 impl core::fmt::Debug for dyn DNSResolver {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> Result<(), core::fmt::Error> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
         f.debug_struct("dyn DNSResolver")
-            .field("dns_upstream", &self.dns_upstream())
-            .field("dns_protocol", &self.dns_protocol())
-            //.field("dns_metrics", &self.dns_metrics())
-            .finish()
+        .field("dns_upstream", &self.dns_upstream())
+        .field("dns_protocol", &self.dns_protocol())
+        //.field("dns_metrics", &self.dns_metrics())
+        .finish()
     }
 }
 
