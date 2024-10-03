@@ -47,7 +47,7 @@ pub use alloc::collections::VecDeque;
 pub use alloc::sync::Arc;
 
 pub use std::net::{IpAddr, SocketAddr};
-pub use std::path::PathBuf;
+pub use std::path::{Path, PathBuf};
 pub use std::time::{Instant, SystemTime};
 
 pub mod dns {
@@ -112,7 +112,64 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
     smol::block_on(async move {
         let mut opt = HitdnsOpt::parse();
 
-        if opt.use_system_hosts {
+        if let Some(ref config) = opt.config {
+            let mut args: toml_env::Args = Default::default();
+
+            args.config_path = Some(config);
+            args.logging = toml_env::Logging::Log; // use `log` crate for logging
+
+            // use empty filename to disable these config source
+            args.dotenv_path = Path::new("");
+            args.config_variable_name = "";
+
+            match toml_env::initialize(args) {
+                Ok(val) => {
+                    if let Some(opt_toml) = val {
+                        log::info!("loaded config from TOML config file: {config:?}");
+                        opt = opt_toml;
+                    }
+                },
+                Err(err) => {
+                    log::error!("cannot parse TOML config file ({config:?}): {err:?}");
+                }
+            }
+
+        }
+
+        /* ===== handle optional args ===== */
+
+        if opt.min_ttl.is_none() {
+            opt.min_ttl = Some(180); // 3 minutes
+        }
+
+        if opt.max_ttl.is_none() {
+            opt.max_ttl = Some(604800); // 7 days
+        }
+
+        if opt.no_api.is_none() {
+            opt.no_api = Some(false);
+        }
+
+        if opt.debug.is_none() {
+            opt.debug = Some(false);
+        }
+
+        if opt.use_system_hosts.is_none() {
+            opt.use_system_hosts = Some(false);
+        }
+
+        if opt.no_default_servers.is_none() {
+            opt.no_default_servers = Some(false);
+        }
+
+        #[cfg(feature = "rsinfo")]
+        if opt.info.is_none() {
+            opt.info = Some(false);
+        }
+
+        /* ============= */
+
+        if opt.use_system_hosts == Some(true) {
             let filename =
                 if cfg!(target_vendor = "apple") {
                     "/private/etc/hosts".to_string()
@@ -136,7 +193,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             }
         }
 
-        if !opt.no_api {
+        if opt.no_api == Some(false) {
             if opt.api_listen.is_none() && opt.listen.is_some() {
                 let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
                 dyna.set_port(opt.listen.unwrap().port());
@@ -470,7 +527,7 @@ impl DNSDaemon {
             }
 
             if x.is_empty() {
-                if !opt.no_default_servers {
+                if opt.no_default_servers == Some(false) {
                     x = DefaultServers::global();
                     log::info!("no upstream specified. use default servers: {x:#?}");
                 }
@@ -486,7 +543,7 @@ impl DNSDaemon {
         };
 
         let cache = Arc::new(
-            DNSCache::new(resolvers, opt.debug).await?,
+            DNSCache::new(resolvers, opt.debug.unwrap()).await?,
         );
 
         let hooks = Arc::new(DNSHookArray::new(opt.clone()));
@@ -522,7 +579,7 @@ impl DNSDaemon {
         let cache = &ctx.cache;
         let opt = &ctx.opt;
 
-        if !opt.no_api {
+        if opt.no_api == Some(false) {
             if let Some(api_listen) = opt.api_listen {
                 if let Ok(api) =
                     HitdnsAPI::new(api_listen, this.clone())
@@ -538,7 +595,7 @@ impl DNSDaemon {
         }
 
         loop {
-            if opt.debug {
+            if opt.debug == Some(true) {
                 log::trace!(
                     "cache status: {:?}",
                     &cache.memory
@@ -569,7 +626,7 @@ impl DNSDaemon {
                 task.udp
             );
 
-            if opt.debug {
+            if opt.debug == Some(true) {
                 let mut x = vec![];
                 for r in cache.resolvers.list.iter() {
                     x.push(r.dns_metrics().await);
@@ -805,9 +862,17 @@ impl DNSDaemonContext {
     }
 }
 
-#[derive(Debug, Clone, clap::Parser)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, clap::Parser)]
 #[command(author, version, about, long_about)]
 pub struct HitdnsOpt {
+    /// specify the location of TOML-formatted config file. if not specified, will use command line args.
+    ///
+    /// NOTICE: if specified and the config file is valid, the config file will override all command line args.
+    ///
+    /// NOTE: for ".config" itself, it will be ignored if that read from TOML config file.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+
     /// specify the data dir. if not specified, will use directories to get platform-specified runtime dir.
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
@@ -815,7 +880,7 @@ pub struct HitdnsOpt {
     #[cfg(feature = "rsinfo")]
     /// show build information then quit program.
     #[arg(long)]
-    pub info: bool,
+    pub info: Option<bool>,
 
     /// Dumps all cache entry from disk database file.
     /// if filename is "-", prints to standard output.
@@ -829,17 +894,17 @@ pub struct HitdnsOpt {
 
     /// debug mode.
     #[arg(long)]
-    pub debug: bool,
+    pub debug: Option<bool>,
 
     /// Minimum TTL of cached DNS entry.
     /// default to 3 minutes.
-    #[arg(long, default_value = "180")]
-    pub min_ttl: u32,
+    #[arg(long)]
+    pub min_ttl: Option<u32>,
 
     /// Maximum TTL of cached DNS entry.
     /// default to 7 days.
-    #[arg(long, default_value = "604800")]
-    pub max_ttl: u32,
+    #[arg(long)]
+    pub max_ttl: Option<u32>,
 
     /// location of a hosts.txt file.
     /// examples of this file format, that can be found at /etc/hosts (Unix-like systems), or
@@ -849,13 +914,13 @@ pub struct HitdnsOpt {
 
     /// Whether try to find system-side hosts.txt
     #[arg(long)]
-    pub use_system_hosts: bool,
+    pub use_system_hosts: Option<bool>,
 
     /// Whether enable TLS SNI extension.
     /// if this is unspecified, default disable SNI (for bypass internet censorship in few totalitarian countries)
     /// if you specified --tls-sni or --hosts or --use-system-hosts, then TLS SNI will enabled by default.
     #[arg(long)]
-    pub tls_sni: bool,
+    pub tls_sni: Option<bool>,
 
     /// Listen address of local plaintext DNS server.
     #[arg(long)]
@@ -870,7 +935,7 @@ pub struct HitdnsOpt {
     pub api_listen: Option<SocketAddr>,
 
     /// disable the local HTTP API.
-    pub no_api: bool,
+    pub no_api: Option<bool>,
 
     /// upstream URL of DoH servers.
     /// DNS over HTTPS (RFC 8484)
@@ -879,7 +944,7 @@ pub struct HitdnsOpt {
 
     /// without built-in default list of global DNS resolvers.
     #[arg(long)]
-    pub no_default_servers: bool,
+    pub no_default_servers: Option<bool>,
 
     #[cfg(feature = "dot")]
     /// *Experimental*
@@ -971,7 +1036,7 @@ async fn main_async() -> anyhow::Result<()> {
     let opt = HITDNS_OPT.clone();
 
     #[cfg(feature = "rsinfo")]
-    if opt.info {
+    if opt.info == Some(true) {
         let info = rsinfo::all_info();
         println!("{info:#?}");
         return Ok(());
@@ -1020,8 +1085,8 @@ async fn main_async() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    MIN_TTL.store(opt.min_ttl, Relaxed);
-    MAX_TTL.store(opt.max_ttl, Relaxed);
+    MIN_TTL.store(opt.min_ttl.unwrap(), Relaxed);
+    MAX_TTL.store(opt.max_ttl.unwrap(), Relaxed);
 
     let daemon = DNSDaemon::new(opt).await.unwrap();
     daemon.run().await;

@@ -8,8 +8,8 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 ```
 
 ## add a config file instead of command line arguments
-* [ ] fixed?
-1. use YAML, TOML, or JSON?
+* [x] completed TOML config file
+~~1. use YAML, TOML, or JSON?~~
 
 ## more useful API operations
 1. [ ] such as restart, stop, or update binary
@@ -17,7 +17,7 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 3. [ ] dynamic change DNS records?
 
 ## Other one-line things
-1. [ ] create README.md
+1. [x] create README.md
 2. [ ] add ACL rules
 3. [ ] add support for LAN devices lookups, for example `.local` / `.lan` domains. (should forward it to gateway DNS such as `192.168.1.1`?)
 4. [ ] add hosts support for DNS resolving
