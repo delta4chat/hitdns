@@ -28,21 +28,13 @@ impl DNSQuery {
 }
 
 impl core::fmt::Debug for DNSQuery {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> Result<(), core::fmt::Error> {
-        f.write_str(
-            format!("DNS-Query( {self} )").as_str(),
-        )
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
+        f.write_str(format!("DNS-Query( {self} )").as_str())
     }
 }
 
 impl core::fmt::Display for DNSQuery {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> Result<(), core::fmt::Error> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
         let query: dns::Query = self
             .try_into()
             .expect("cannot convert to hickory Query");
@@ -55,8 +47,7 @@ impl core::fmt::Display for DNSQuery {
                 self.rdclass,
                 query.query_type(),
                 self.rdtype,
-            )
-            .as_str(),
+            ).as_str()
         )
     }
 }
@@ -86,18 +77,14 @@ impl TryFrom<&str> for DNSQuery {
             .replace(")", "")
             .split("(")
             .last()
-            .ok_or(anyhow::anyhow!(
-                "malformed rdclass field of dns query"
-            ))?
+            .ok_or(anyhow::anyhow!("malformed rdclass field of dns query"))?
             .parse()?;
 
         let rdtype: u16 = arr[2]
             .replace(")", "")
             .split("(")
             .last()
-            .ok_or(anyhow::anyhow!(
-                "malformed rdtype field of dns query"
-            ))?
+            .ok_or(anyhow::anyhow!("malformed rdtype field of dns query"))?
             .parse()?;
 
         Ok(DNSQuery {
@@ -128,9 +115,7 @@ impl TryFrom<dns::Message> for DNSQuery {
         if queries_len > 1 {
             log::debug!("unexpected DNS query message with multi queries, just keep the first query.");
         }
-        if msg.name_servers().len() > 0
-            || msg.answers().len() > 0
-        {
+        if msg.name_servers().len() > 0 || msg.answers().len() > 0 {
             log::debug!("unexpected DNS query message with authority/answer section, ignore these sections.");
         }
 
@@ -141,11 +126,10 @@ impl TryFrom<dns::Message> for DNSQuery {
 
 impl From<dns::Query> for DNSQuery {
     fn from(val: dns::Query) -> DNSQuery {
-        let mut name =
-            val.name().to_string().to_lowercase();
+        let mut name = val.name().to_string().to_lowercase();
 
         // de-duplicate by convert all domain to "ends with dot"
-        if !name.ends_with(".") {
+        if ! name.ends_with(".") {
             name.push('.');
         }
 
@@ -161,17 +145,18 @@ impl TryFrom<&DNSQuery> for dns::Query {
     fn try_from(
         val: &DNSQuery,
     ) -> anyhow::Result<dns::Query> {
-        let mut name =
-            val.name.to_string().to_lowercase();
-        if !name.ends_with(".") {
+        let mut name = val.name.to_string().to_lowercase();
+        if ! name.ends_with(".") {
             name.push('.');
         }
 
-        Ok(dns::Query::new()
+        Ok(
+            dns::Query::new()
             .set_name(dns::Name::from_str_relaxed(name)?)
             .set_query_class(val.rdclass.into())
             .set_query_type(val.rdtype.into())
-            .to_owned())
+            .to_owned()
+        )
     }
 }
 
@@ -180,7 +165,8 @@ impl TryFrom<&DNSQuery> for dns::Message {
     fn try_from(
         val: &DNSQuery,
     ) -> anyhow::Result<dns::Message> {
-        Ok(dns::Message::new()
+        Ok(
+            dns::Message::new()
             .set_id(0)
             .set_message_type(dns::MessageType::Query)
             .set_op_code(dns::OpCode::Query)
@@ -189,15 +175,14 @@ impl TryFrom<&DNSQuery> for dns::Message {
             .set_authentic_data(false)
             .set_checking_disabled(false)
             .add_query(val.try_into()?)
-            .to_owned())
+            .to_owned()
+        )
     }
 }
 
 /* ========== DNS Entry ========== */
 
-#[derive(
-    Clone, Serialize, Deserialize, PartialEq, Eq,
-)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct DNSEntry {
     pub query: DNSQuery,
     pub response: Vec<u8>,
@@ -206,9 +191,9 @@ pub struct DNSEntry {
     pub elapsed: Duration,
 }
 impl DNSEntry {
-    fn _quoted_printable_opt() -> quoted_printable::Options
-    {
+    fn _quoted_printable_opt() -> quoted_printable::Options {
         quoted_printable::Options::default()
+
         // do not split lines for each 76 characters 
         .line_length_limit(usize::MAX)
 
@@ -247,9 +232,7 @@ impl DNSEntry {
         })
     }
 
-    pub fn from_json(
-        json: &serde_json::Value,
-    ) -> anyhow::Result<Self> {
+    pub fn from_json(json: &serde_json::Value) -> anyhow::Result<Self> {
         let map = match json.as_object() {
             Some(v) => v,
             None => {
@@ -275,14 +258,12 @@ impl DNSEntry {
         }
 
         let query_text: String = map_get_str!("query");
-        let resp_quoted: String =
-            map_get_str!("response");
+        let resp_quoted: String = map_get_str!("response");
         let expire_unix: String = map_get_str!("expire");
         let upstream: String = map_get_str!("upstream");
         let elapsed_str: String = map_get_str!("elapsed");
 
-        let query: DNSQuery =
-            query_text.as_str().try_into()?;
+        let query: DNSQuery = query_text.as_str().try_into()?;
 
         let response: Vec<u8> =
             quoted_printable::decode_with_options(
@@ -291,27 +272,22 @@ impl DNSEntry {
             )?;
 
         let expire: SystemTime = {
-            let since = if expire_unix.contains(".") {
-                let ts: f64 =
-                    expire_unix.parse().unwrap_or(0.0);
-
-                Duration::from_secs_f64(ts)
-            } else {
-                let ts: u64 =
-                    expire_unix.parse().unwrap_or(0);
-
-                Duration::from_secs(ts)
-            };
+            let since =
+                if expire_unix.contains(".") {
+                    let ts: f64 = expire_unix.parse().unwrap_or(0.0);
+                    Duration::from_secs_f64(ts)
+                } else {
+                    let ts: u64 = expire_unix.parse().unwrap_or(0);
+                    Duration::from_secs(ts)
+                };
 
             SystemTime::UNIX_EPOCH
-                .checked_add(since)
-                .unwrap_or(SystemTime::UNIX_EPOCH)
+            .checked_add(since)
+            .unwrap_or(SystemTime::UNIX_EPOCH)
         };
 
         let elapsed: Duration = {
-            let secs: f64 =
-                elapsed_str.parse().unwrap_or(0.0);
-
+            let secs: f64 = elapsed_str.parse().unwrap_or(0.0);
             Duration::from_secs_f64(secs)
         };
 
@@ -331,23 +307,18 @@ impl core::fmt::Debug for DNSEntry {
         f: &mut core::fmt::Formatter,
     ) -> Result<(), core::fmt::Error> {
         f.debug_struct("DNS-Entry")
-            .field("query", &self.query)
-            .field(
-                "response",
-                &Bytes::copy_from_slice(&self.response),
-            )
-            .field("expire", &self.expire)
-            .field("upstream", &self.upstream)
-            .field("elapsed", &self.elapsed)
-            .finish()
+        .field("query", &self.query)
+        .field("response", &Bytes::copy_from_slice(&self.response))
+        .field("expire", &self.expire)
+        .field("upstream", &self.upstream)
+        .field("elapsed", &self.elapsed)
+        .finish()
     }
 }
 
 impl TryFrom<&DNSEntry> for dns::Message {
     type Error = anyhow::Error;
-    fn try_from(
-        entry: &DNSEntry,
-    ) -> anyhow::Result<dns::Message> {
+    fn try_from(entry: &DNSEntry) -> anyhow::Result<dns::Message> {
         Ok(dns::Message::from_vec(&entry.response)?)
     }
 }
@@ -367,12 +338,12 @@ impl core::fmt::Debug for DNSMetrics {
         f: &mut core::fmt::Formatter,
     ) -> Result<(), core::fmt::Error> {
         f.debug_struct("DNS-Metrics")
-            .field("latency", &self.latency())
-            .field("reliability", &self.reliability)
-            .field("online", &self.online)
-            .field("last_respond", &self.last_respond)
-            .field("upstream", &self.upstream)
-            .finish()
+        .field("latency", &self.latency())
+        .field("reliability", &self.reliability)
+        .field("online", &self.online)
+        .field("last_respond", &self.last_respond)
+        .field("upstream", &self.upstream)
+        .finish()
     }
 }
 
@@ -396,6 +367,7 @@ impl DNSMetrics {
 
             "reliability": self.reliability,
             "online": self.online,
+
             "last_respond":
                 self.last_respond
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -441,22 +413,21 @@ impl DNSMetrics {
     /* == Getters == */
     /// returns Average Latency
     pub fn latency(&self) -> Duration {
-        let nanos: Vec<u128> = self
-            .latency
+        let nanos: Vec<u128> =
+            self.latency
             .iter()
-            .map(|x| x.as_nanos())
+            .map(|x| { x.as_nanos() })
             .collect();
 
         let avg: u128 = average(&nanos);
 
-        let avg: u64 = if avg > (u64::MAX as u128) {
-            log::error!(
-                "latency great-than u64::MAX !!!"
-            );
-            u64::MAX
-        } else {
-            avg as u64
-        };
+        let avg: u64 =
+            if avg > (u64::MAX as u128) {
+                log::error!("latency great-than u64::MAX !!!");
+                u64::MAX
+            } else {
+                avg as u64
+            };
 
         Duration::from_nanos(avg)
     }
@@ -486,9 +457,7 @@ pub struct DNSResolverArray {
 
 impl DNSResolverArray {
     // constructor
-    pub fn from(
-        val: impl IntoIterator<Item = Arc<dyn DNSResolver>>,
-    ) -> DNSResolverArray {
+    pub fn from(val: impl IntoIterator<Item = Arc<dyn DNSResolver>>) -> DNSResolverArray {
         let mut list = Vec::new();
 
         for resolver in val {
@@ -496,14 +465,12 @@ impl DNSResolverArray {
         }
 
         DNSResolverArray {
-            list: Arc::new(list),
+            list: Arc::new(list)
         }
     }
 
     /// select best resolver if available, or fallback to random.
-    pub async fn best_or_random(
-        &self,
-    ) -> anyhow::Result<Arc<dyn DNSResolver>> {
+    pub async fn best_or_random(&self) -> anyhow::Result<Arc<dyn DNSResolver>> {
         if let Ok(v) = self.best().await {
             return Ok(v);
         }
@@ -512,9 +479,7 @@ impl DNSResolverArray {
     }
 
     /// select best resolver by minimum latency / maximum reliability.
-    pub async fn best(
-        &self,
-    ) -> anyhow::Result<Arc<dyn DNSResolver>> {
+    pub async fn best(&self) -> anyhow::Result<Arc<dyn DNSResolver>> {
         let mut best = None;
         let mut best_metrics = None;
         for resolver in self.list.as_ref().iter() {
@@ -564,9 +529,7 @@ impl DNSResolverArray {
         }
     }
 
-    pub fn random(
-        &self,
-    ) -> anyhow::Result<Arc<dyn DNSResolver>> {
+    pub fn random(&self) -> anyhow::Result<Arc<dyn DNSResolver>> {
         if self.list.is_empty() {
             anyhow::bail!(
                 "unexpected empty list of DNS Resolvers!"
@@ -582,7 +545,9 @@ impl DNSResolverArray {
             if let Some(resolver) = self.list.get(n) {
                 return Ok(resolver.clone());
             } else {
-                log::debug!("unexpected cannot get({n}) from resolver list: maybe self.list.len()=={len} changed before get?");
+                log::debug!(
+                    "unexpected cannot get({n}) from resolver list: maybe self.list.len()=={len} changed before get?"
+                );
             }
         }
 
@@ -590,9 +555,7 @@ impl DNSResolverArray {
     }
 
     /// select fixed one of all resolvers (often useless)
-    pub fn fixed(
-        &self,
-    ) -> anyhow::Result<Arc<dyn DNSResolver>> {
+    pub fn fixed(&self) -> anyhow::Result<Arc<dyn DNSResolver>> {
         if let Some(resolver) = self.list.get(0) {
             Ok(resolver.clone())
         } else {
@@ -614,3 +577,4 @@ impl DNSResolver for DNSResolverArray {
     }
 }
 */
+
