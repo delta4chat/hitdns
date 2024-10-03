@@ -162,9 +162,7 @@ impl TryFrom<&DNSQuery> for dns::Query {
 
 impl TryFrom<&DNSQuery> for dns::Message {
     type Error = anyhow::Error;
-    fn try_from(
-        val: &DNSQuery,
-    ) -> anyhow::Result<dns::Message> {
+    fn try_from(val: &DNSQuery) -> anyhow::Result<dns::Message> {
         Ok(
             dns::Message::new()
             .set_id(0)
@@ -177,6 +175,13 @@ impl TryFrom<&DNSQuery> for dns::Message {
             .add_query(val.try_into()?)
             .to_owned()
         )
+    }
+}
+impl TryFrom<DNSQuery> for dns::Message {
+    type Error = anyhow::Error;
+    fn try_from(val: DNSQuery) -> anyhow::Result<dns::Message> {
+        let val = &val;
+        val.try_into()
     }
 }
 

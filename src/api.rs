@@ -25,12 +25,10 @@ impl HitdnsAPI {
     }
 
     fn mime_json() -> Mime {
-        Mime::from_str("text/json; charset=utf-8")
-            .unwrap()
+        Mime::from_str("application/json; charset=utf-8").unwrap()
     }
     fn mime_txt() -> Mime {
-        Mime::from_str("text/plain; charset=utf-8")
-            .unwrap()
+        Mime::from_str("text/plain; charset=utf-8").unwrap()
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
@@ -149,7 +147,7 @@ impl HitdnsAPI {
                                 _ => {
                                     let mut res = Response::new(StatusCode::NotFound);
                                     res.set_body(
-                  "
+"
 List of avaliable commands:
 GET /snap          ->  take a snapshot of database.
 GET /metrics       ->  get all metrics for each resolvers.

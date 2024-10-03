@@ -150,6 +150,10 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             opt.no_api = Some(false);
         }
 
+        if opt.no_dohp.is_none() {
+            opt.no_dohp = Some(false);
+        }
+
         if opt.debug.is_none() {
             opt.debug = Some(false);
         }
@@ -193,6 +197,26 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             }
         }
 
+
+        if opt.no_dohp == Some(false) {
+            if opt.dohp_listen.is_none() && opt.listen.is_some() {
+                let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
+                dyna.set_port(opt.listen.unwrap().port());
+
+                loop {
+                    dyna.set_port(dyna.port() - 1);
+                    if let Ok(sock) = TcpListener::bind(dyna).await {
+                        if let Ok(addr) = sock.local_addr() {
+                            dyna = addr;
+                            break;
+                        }
+                    }
+                }
+
+                opt.dohp_listen = Some(dyna);
+            }
+        }
+
         if opt.no_api == Some(false) {
             if opt.api_listen.is_none() && opt.listen.is_some() {
                 let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
@@ -200,6 +224,14 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
 
                 loop {
                     dyna.set_port(dyna.port() - 1);
+
+                    // skip the port used by DoH-plaintext
+                    if let Some(ref dl) = opt.dohp_listen {
+                        if dyna.port() == dl.port() {
+                            continue;
+                        }
+                    }
+
                     if let Ok(sock) = TcpListener::bind(dyna).await {
                         if let Ok(addr) = sock.local_addr() {
                             dyna = addr;
@@ -326,7 +358,6 @@ fn dns_stats_hook(
                 let answers = res.answers_mut();
                 answers.clear();
 
-
                 let name = query.name().to_string();
                 if name.ends_with(".hitdns.") {
                     let mut answer = dns::Record::new();
@@ -340,8 +371,11 @@ fn dns_stats_hook(
                         texts.push(format!("{}", fastrand::u128(..)));
                     } else if name.contains("api") {
                         if let Some(api_listen) = opt.api_listen {
-                            let port = api_listen.port();
-                            texts.push(format!("http://127.0.0.1:{port}/"));
+                            texts.push(format!("http://{api_listen}/"));
+                        }
+                    } else if name.contains("dohp") {
+                        if let Some(dohp_listen) = opt.dohp_listen {
+                            texts.push(format!("http://{dohp_listen}/"));
                         }
                     }
 
@@ -449,14 +483,15 @@ pub struct DNSDaemonSocket {
     udp: Arc<UdpSocket>,
     tcp: Arc<TcpListener>,
 
-    // TODO plaintext HTTP with POST /dns-query for your reverse proxy (for example Nginx) to serve DoH.
-    // http: Arc<TcpListener>,
+    // TODO plaintext HTTP with /dns-query for your reverse proxy (for example Nginx) to serve DoH.
+    http: Option<Arc<DNSOverHTTP>>,
 }
 
 #[derive(Debug)]
 pub struct DNSDaemonTask {
     udp: smol::Task<anyhow::Result<()>>,
     tcp: smol::Task<anyhow::Result<()>>,
+    http: Option<smol::Task<anyhow::Result<()>>>,
 }
 
 #[derive(Debug)]
@@ -549,24 +584,46 @@ impl DNSDaemon {
         let hooks = Arc::new(DNSHookArray::new(opt.clone()));
         hooks.add(0, Arc::new(dns_stats_hook)).await;
 
-        let context = DNSDaemonContext {
-            socket: DNSDaemonSocket { udp, tcp },
+        let mut context = DNSDaemonContext {
+            socket: DNSDaemonSocket {
+                udp, tcp,
+                http: None,
+            },
             cache,
-            opt,
+            opt: opt.clone(),
             hooks,
             stats: Arc::new(DNSQueryStats::new()),
         };
 
-        let task = {
+        let mut task = {
             let udp_fut = context.clone().handle_udp();
             let tcp_fut = context.clone().handle_tcp();
-            Arc::new(DNSDaemonTask {
+            DNSDaemonTask {
                 udp: smolscale2::spawn(udp_fut),
                 tcp: smolscale2::spawn(tcp_fut),
-            })
+                http: None
+            }
         };
 
-        Ok(Self { context, task })
+
+        if let Some(dl) = opt.dohp_listen {
+            let dohp =
+                Arc::new(
+                    DNSOverHTTP::new(dl, context.clone()).await?
+                );
+            context.socket.http = Some(dohp.clone());
+
+            task.http = Some(
+                smolscale2::spawn(async move {
+                    dohp.run().await
+                })
+            );
+        }
+
+        Ok(Self {
+            context,
+            task: Arc::new(task),
+        })
     }
 
     async fn run(self) {
@@ -922,19 +979,31 @@ pub struct HitdnsOpt {
     #[arg(long)]
     pub tls_sni: Option<bool>,
 
-    /// Listen address of local plaintext DNS server.
+    /// Listen address of RFC 1035 plaintext DNS server (UDP and TCP).
     #[arg(long)]
     pub listen: Option<SocketAddr>,
 
-    /// Specify the local HTTP API listen address, currently it can only be bound to 127.0.0.1 (for security reasons).
-    ///
+    /// Listen address of localhost plaintext DoH server.
     /// for now this is HTTP/1.1 only (due to async-h1 library limits), so HTTP/1.0 is not supported.
     ///
     /// if the API is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 1 (if the port number is in use, then continue decrementing until an available port number is found)
     #[arg(long)]
+    pub dohp_listen: Option<SocketAddr>,
+
+    /// disable the localhost plaintext DoH server.
+    #[arg(long)]
+    pub no_dohp: Option<bool>,
+
+    /// Specify the localhost HTTP API listen address, currently it can only be bound to 127.0.0.1 (for security reasons).
+    ///
+    /// for now this is HTTP/1.1 only (due to async-h1 library limits), so HTTP/1.0 is not supported.
+    ///
+    /// if the API is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 2 (if the port number is in use, then continue decrementing until an available port number is found)
+    #[arg(long)]
     pub api_listen: Option<SocketAddr>,
 
-    /// disable the local HTTP API.
+    /// disable the localhost HTTP API.
+    #[arg(long)]
     pub no_api: Option<bool>,
 
     /// upstream URL of DoH servers.

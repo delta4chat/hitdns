@@ -1154,6 +1154,7 @@ dependencies = [
  "anyhow",
  "async-h1",
  "async-tls",
+ "base64 0.22.1",
  "bincode",
  "bytes",
  "clap",
