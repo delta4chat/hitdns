@@ -4,21 +4,21 @@
 
 use crate::*;
 
+#[derive(Clone)]
 pub(crate) struct Pool<Conn>
 where
     Conn: AsyncReadExt+AsyncWriteExt+Send+Sync+Clone
 {
-    pub connector: Arc<dyn Fn(SocketAddr) -> Conn>,
+    pub connector: Arc<dyn Fn(SocketAddr) -> PinFut<Arc<Conn>>>,
     pub min_conn: u16,
     pub max_conn: u16,
-    pub conns:
-        scc::HashMap<SocketAddr, VecDeque<Arc<Conn>>>,
+    pub conns: scc::HashMap<SocketAddr, VecDeque<Arc<Conn>>>,
 }
 
 impl<Conn: AsyncReadExt+AsyncWriteExt+Send+Sync+Clone> Pool<Conn> {
     pub async fn new(
         remote: impl ToString,
-        connector: Arc<dyn Fn(SocketAddr) -> Conn>,
+        connector: Arc<dyn Fn(SocketAddr) -> PinFut<Arc<Conn>>>
     ) -> anyhow::Result<Self> {
         let remote: String = remote.to_string();
         if ! remote.contains(":") {
@@ -28,17 +28,11 @@ impl<Conn: AsyncReadExt+AsyncWriteExt+Send+Sync+Clone> Pool<Conn> {
         let conns = scc::HashMap::new();
 
         if let Ok(addr) = remote.parse() {
-            let _ = conns.insert_async(
-                addr,
-                Default::default()
-            ).await;
+            let _ = conns.insert_async(addr, Default::default()).await;
         } else {
-            let mut remote: Vec<&str> =
-                remote.split(":").collect();
+            let mut remote: Vec<&str> = remote.split(":").collect();
 
-            let port: u16 =
-                remote.pop().unwrap()
-                .parse()?;
+            let port: u16 = remote.pop().unwrap().parse()?;
 
             let host: String = remote.join(":");
 
@@ -58,12 +52,21 @@ impl<Conn: AsyncReadExt+AsyncWriteExt+Send+Sync+Clone> Pool<Conn> {
             }
         }
 
-        Ok(Self {
+        let this = Self {
             connector,
             min_conn: conns.len().min(3) as u16,
             max_conn: 10,
             conns,
-        })
+        };
+
+        {
+            let this = this.clone();
+            smolscale2::spawn(async move {
+                this._watchdog().await;
+            }).detach();
+        }
+
+        Ok(this)
     }
 
     async fn _watchdog(&self) {
@@ -91,9 +94,7 @@ impl<Conn: AsyncReadExt+AsyncWriteExt+Send+Sync+Clone> Pool<Conn> {
                     .get_mut()
 
                     .push_front(
-                        Arc::new(
-                            (self.connector)(addr)
-                        )
+                        (self.connector)(addr).await
                     );
             }
         }

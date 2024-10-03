@@ -108,13 +108,74 @@ pub use clap::Parser;
 
 pub use smol_timeout::TimeoutExt;
 
+pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
+    smol::block_on(async move {
+        let mut opt = HitdnsOpt::parse();
+
+        if opt.use_system_hosts {
+            let filename =
+                if cfg!(target_vendor = "apple") {
+                    "/private/etc/hosts".to_string()
+                } else if cfg!(target_os = "android") {
+                    "/system/etc/hosts".to_string()
+                } else if cfg!(target_family = "unix") {
+                    "/etc/hosts".to_string()
+                } else if cfg!(target_family = "windows") {
+                    let mut out = std::env::var("SystemDrive").unwrap_or(String::from("C:"));
+                    out.extend(r"\Windows\System32\drivers\etc\hosts".chars());
+                    out
+                } else {
+                    "".to_string()
+                };
+
+            if filename.is_empty() {
+                log::warn!("cannot find your system-side hosts.txt, please provaide a path by --hosts");
+            } else {
+                let filename = PathBuf::from(filename);
+                opt.hosts = Some(filename);
+            }
+        }
+
+        if !opt.no_api {
+            if opt.api_listen.is_none() && opt.listen.is_some() {
+                let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
+                dyna.set_port(opt.listen.unwrap().port());
+
+                loop {
+                    dyna.set_port(dyna.port() - 1);
+                    if let Ok(sock) = TcpListener::bind(dyna).await {
+                        if let Ok(addr) = sock.local_addr() {
+                            dyna = addr;
+                            break;
+                        }
+                    }
+                }
+
+                opt.api_listen = Some(dyna);
+            }
+        }
+
+        opt
+    }) // smol::block_on
+});
+
 pub static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(|| {
-    let dir = directories::ProjectDirs::from("org", "delta4chat", "hitdns").expect("Cannot get platform-specified dir (via `directories::ProjectDirs`)").data_dir().to_owned();
-    std::fs::create_dir_all(&dir)
-        .expect("cannot create project dir {dir:?}");
+    let dir =
+        if let Some(ref val) = (&*HITDNS_OPT).data_dir {
+            val.to_owned()
+        } else {
+            directories::ProjectDirs::from("org", "delta4chat", "hitdns")
+            .expect("Cannot get platform-specified dir (via `directories::ProjectDirs`)")
+            .data_dir()
+            .to_owned()
+        };
+
+    std::fs::create_dir_all(&dir).expect("cannot create project dir {dir:?}");
+
     dir
 });
 
+#[cfg(feature = "ftlog")]
 pub static TIME_FMT_JS: Lazy<time::format_description::OwnedFormatItem> = Lazy::new(|| {
     time::format_description::parse_owned::<1>(
         // RFC-3339 format with 3 digits of sub-seconds
@@ -747,6 +808,10 @@ impl DNSDaemonContext {
 #[derive(Debug, Clone, clap::Parser)]
 #[command(author, version, about, long_about)]
 pub struct HitdnsOpt {
+    /// specify the data dir. if not specified, will use directories to get platform-specified runtime dir.
+    #[arg(long)]
+    pub data_dir: Option<PathBuf>,
+
     #[cfg(feature = "rsinfo")]
     /// show build information then quit program.
     #[arg(long)]
@@ -903,7 +968,7 @@ impl DefaultServers {
 }
 
 async fn main_async() -> anyhow::Result<()> {
-    let mut opt = HitdnsOpt::parse();
+    let opt = HITDNS_OPT.clone();
 
     #[cfg(feature = "rsinfo")]
     if opt.info {
@@ -953,49 +1018,6 @@ async fn main_async() -> anyhow::Result<()> {
         log::info!("DatabaseSnapshot loaded.");
 
         return Ok(());
-    }
-
-    if opt.use_system_hosts {
-        let filename =
-            if cfg!(target_vendor = "apple") {
-                "/private/etc/hosts".to_string()
-            } else if cfg!(target_os = "android") {
-                "/system/etc/hosts".to_string()
-            } else if cfg!(target_family = "unix") {
-                "/etc/hosts".to_string()
-            } else if cfg!(target_family = "windows") {
-                let mut out = std::env::var("SystemDrive").unwrap_or(String::from("C:"));
-                out.extend(r"\Windows\System32\drivers\etc\hosts".chars());
-                out
-            } else {
-                "".to_string()
-            };
-
-        if filename.is_empty() {
-            log::warn!("cannot find your system-side hosts.txt, please provaide a path by --hosts");
-        } else {
-            let filename = PathBuf::from(filename);
-            opt.hosts = Some(filename);
-        }
-    }
-
-    if !opt.no_api {
-        if opt.api_listen.is_none() && opt.listen.is_some() {
-            let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
-            dyna.set_port(opt.listen.unwrap().port());
-
-            loop {
-                dyna.set_port(dyna.port() - 1);
-                if let Ok(sock) = TcpListener::bind(dyna).await {
-                    if let Ok(addr) = sock.local_addr() {
-                        dyna = addr;
-                        break;
-                    }
-                }
-            }
-
-            opt.api_listen = Some(dyna);
-        }
     }
 
     MIN_TTL.store(opt.min_ttl, Relaxed);

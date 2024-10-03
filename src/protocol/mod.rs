@@ -2,7 +2,7 @@
 pub mod doh;
 pub use doh::*;
 
-pub mod pool;
+//pub mod pool; // compile error
 
 // dot.rs
 #[cfg(feature = "dot")]
