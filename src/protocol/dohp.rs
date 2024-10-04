@@ -545,6 +545,7 @@ impl DNSOverHTTP {
                                             "Question": [
                                                 {
                                                     "name": name,
+                                                    "class": rdclass,
                                                     "type": rdtype,
                                                 }
                                             ],
@@ -591,9 +592,12 @@ impl DNSOverHTTP {
                                                                 return Ok(res);
                                                             };
 
+                                                        let rdclass: u16 = rr.dns_class().into();
                                                         let rdtype: u16 = rdtype.into();
+
                                                         answers.push(serde_json::json!({
                                                             "name": name,
+                                                            "class": rdclass,
                                                             "type": rdtype,
                                                             "TTL": ttl,
                                                             "data": ip_str
@@ -609,7 +613,7 @@ impl DNSOverHTTP {
                                                     if let Some(rdata) = rr.data() {
                                                         let rdata = rdata.clone().into_rdata();
 
-                                                        let mut txt_data;
+                                                        let txt_data;
 
                                                         if let Some(txt) = rdata.as_txt() {
                                                             match version {
@@ -657,9 +661,12 @@ impl DNSOverHTTP {
                                                             return Ok(res);
                                                         };
 
+                                                        let rdclass: u16 = rr.dns_class().into();
                                                         let rdtype: u16 = rdtype.into();
+
                                                         answers.push(serde_json::json!({
                                                             "name": name,
+                                                            "class": rdclass,
                                                             "type": rdtype,
                                                             "TTL": ttl,
                                                             "data": txt_data,
