@@ -9,6 +9,7 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 
 ## add a config file instead of command line arguments
 * [x] completed TOML config file
+<br/>
 ~~1. use YAML, TOML, or JSON?~~
 
 ## more useful API operations
@@ -20,7 +21,7 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 1. [x] create README.md
 2. [ ] add ACL rules
 3. [ ] add support for LAN devices lookups, for example `.local` / `.lan` domains. (should forward it to gateway DNS such as `192.168.1.1`?)
-4. [ ] add hosts support for DNS resolving
+4. [x] add hosts support for DNS resolving
 5. [ ] \(optional) add network offline detects?
 6. [ ] \(optional) add automatic update expired cache entry?
 7. [ ] CI: build.yml: use matrix instead of duplicate codes

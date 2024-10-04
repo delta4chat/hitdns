@@ -173,7 +173,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
 
         /* ============= */
 
-        if opt.use_system_hosts == Some(true) {
+        if opt.use_system_hosts == Some(true) && opt.hosts.is_none() {
             let filename =
                 if cfg!(target_vendor = "apple") {
                     "/private/etc/hosts".to_string()
@@ -337,6 +337,94 @@ impl From<dns::Message> for DNSQueryInfo {
     }
 }
 
+fn dns_hosts_hook(
+    info: &DNSQueryInfo,
+    opt: HitdnsOpt,
+) -> PinFut<Option<dns::Message>> {
+    Box::pin(async move {
+        let mut resp = None;
+
+        if info.query.rdclass != 1 {
+            return resp;
+        }
+
+        match info.query.rdtype {
+            1 | 28 => {
+                let mut ips = Vec::new();
+                if let Some(ip46) = HOSTS.lookup(info.query.name.as_str()).await {
+                    for ip in ip46.into_iter() {
+                        match info.query.rdtype {
+                            1 => {
+                                if ip.is_ipv4() {
+                                    ips.push(ip);
+                                }
+                            },
+                            28 => {
+                                if ip.is_ipv6() {
+                                    ips.push(ip);
+                                }
+                            },
+                            _ => { unreachable!() }
+                        }
+                    }
+                }
+
+                if ! ips.is_empty() {
+                    let mut res = info.query_msg.clone();
+                    res.set_op_code(dns::OpCode::Query);
+                    res.set_message_type(dns::MessageType::Response);
+
+                    res.additionals_mut().clear();
+                    res.name_servers_mut().clear();
+                    res.extensions_mut().take();
+
+                    let answers = res.answers_mut();
+                    answers.clear();
+
+                    for ip in ips.iter() {
+                        let mut answer = dns::Record::new();
+                        answer.set_name(dns::Name::from_str_relaxed(info.query.name.clone()).unwrap());
+                        answer.set_dns_class(dns::Class::IN);
+                        answer.set_ttl(60);
+                        answer.set_rr_type(info.query.rdtype.into());
+
+                        match info.query.rdtype {
+                            1 => {
+                                let ipv4 = match ip {
+                                    IpAddr::V4(val) => val,
+                                    _ => { unreachable!() }
+                                };
+
+                                answer.set_data(
+                                    Some(dns::RData::A(dns::rdata::A(*ipv4)))
+                                );
+                            },
+                            28 => {
+                                let ipv6 = match ip {
+                                    IpAddr::V6(val) => val,
+                                    _ => { unreachable!() }
+                                };
+
+                                answer.set_data(
+                                    Some(dns::RData::AAAA(dns::rdata::AAAA(*ipv6)))
+                                );
+                            },
+                            _ => { unreachable!(); }
+                        }
+
+                        answers.push(answer);
+                    }
+
+                    resp = Some(res);
+                }
+            },
+            _ => {}
+        }
+
+        resp
+    })
+}
+
 fn dns_stats_hook(
     info: &DNSQueryInfo,
     opt: HitdnsOpt,
@@ -459,7 +547,7 @@ impl DNSHookArray {
 
             if let Some(cur_res) = (hook)(info, self.opt.clone()).await {
                 if let Some((prev_id, prev_nice, _)) = maybe_res {
-                    if *cur_nice > prev_nice && prev_id < *cur_id
+                    if *cur_nice > prev_nice // && prev_id < *cur_id
                     {
                         continue;
                     }
@@ -582,6 +670,7 @@ impl DNSDaemon {
         );
 
         let hooks = Arc::new(DNSHookArray::new(opt.clone()));
+        hooks.add(-1, Arc::new(dns_hosts_hook)).await;
         hooks.add(0, Arc::new(dns_stats_hook)).await;
 
         let mut context = DNSDaemonContext {
@@ -966,6 +1055,8 @@ pub struct HitdnsOpt {
     /// location of a hosts.txt file.
     /// examples of this file format, that can be found at /etc/hosts (Unix-like systems), or
     /// C:\Windows\System32\drivers\etc\hosts (Windows)
+    ///
+    /// specify this will override system hosts.
     #[arg(long)]
     pub hosts: Option<PathBuf>,
 
