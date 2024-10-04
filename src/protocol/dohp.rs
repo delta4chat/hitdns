@@ -282,6 +282,8 @@ impl DNSOverHTTP {
                                         return Ok(res);
                                     }
 
+                                    let mut maybe_version: Option<String> = None;
+
                                     let mut maybe_name: Option<String> = None;
                                     let mut maybe_class: Option<String> = None;
                                     let mut maybe_type: Option<String> = None;
@@ -298,6 +300,11 @@ impl DNSOverHTTP {
 
                                     for (key, val) in url.query_pairs() {
                                         match key.into_owned().to_ascii_lowercase().as_str() {
+                                            "version" => {
+                                                if maybe_version.is_none() {
+                                                    maybe_version = Some(val.into_owned())
+                                                }
+                                            },
                                             "name" => {
                                                 if maybe_name.is_none() {
                                                     maybe_name = Some(val.into_owned());
@@ -344,6 +351,24 @@ impl DNSOverHTTP {
                                                 }
                                             },
                                             _ => {}
+                                        }
+                                    }
+
+                                    // version=1: original format from Google, defaults to this if not specified or it is not a unsigned 16-bit integer.
+                                    // version=2: hitdns modified version, such as TXT array
+                                    // 
+                                    // other version is reserved for future use.
+                                    //
+                                    // NOTE: because ?class= does not breaking compatibility, so it will be accepted by v1 format
+                                    let version: u16 = maybe_version.unwrap_or(String::new()).parse().unwrap_or(1);
+
+                                    match version {
+                                        1 | 2 => {},
+                                        _ => {
+                                            res.set_status(StatusCode::BadRequest);
+                                            res.set_content_type(Self::mime_txt());
+                                            res.set_body(format!("unknown version, it should be 1 or 2"));
+                                            return Ok(res);
                                         }
                                     }
 
@@ -465,7 +490,14 @@ impl DNSOverHTTP {
                                     let id = dns_req.id();
 
                                     let mut info = DNSQueryInfo {
-                                        peer: format!("dohp://{peer}/?protocol=GoogleModified&method=GET&id={id}"),
+                                        peer: format!(
+                                                  "dohp://{peer}/?protocol={}&method=GET&id={id}",
+                                                  match version {
+                                                      1 => "Google",
+                                                      2 => "GoogleModified",
+                                                      _ => { unreachable!() }
+                                                  }
+                                              ),
                                         query_msg: dns_req.clone(),
                                         query: dns_query,
                                         time: SystemTime::now(),
@@ -520,16 +552,15 @@ impl DNSOverHTTP {
                                             "Answer": [],
                                         });
 
+                                        let answers = json.get_mut("Answer").unwrap().as_array_mut().unwrap();
                                         for rr in dns_res.answers().iter() {
-                                            let json = json.as_object_mut().unwrap();
-                                            let answer = json.get_mut("Answer").unwrap();
-
                                             let name = rr.name().to_ascii();
                                             let rdtype = rr.record_type();
                                             let ttl = rr.ttl();
 
                                             use dns::RdType::*;
                                             use dns::RecordData;
+
                                             match rdtype {
                                                 A | AAAA => {
                                                     if let Some(rdata) = rr.data() {
@@ -561,12 +592,12 @@ impl DNSOverHTTP {
                                                             };
 
                                                         let rdtype: u16 = rdtype.into();
-                                                        *answer = serde_json::json!({
+                                                        answers.push(serde_json::json!({
                                                             "name": name,
                                                             "type": rdtype,
                                                             "TTL": ttl,
                                                             "data": ip_str
-                                                        });
+                                                        }));
                                                     } else {
                                                         res.set_status(StatusCode::InternalServerError);
                                                         res.set_content_type(Self::mime_txt());
@@ -578,13 +609,46 @@ impl DNSOverHTTP {
                                                     if let Some(rdata) = rr.data() {
                                                         let rdata = rdata.clone().into_rdata();
 
-                                                        // modified: returns array of TXT data, instead of use "a""b"
-                                                        let mut txt_strings: Vec<String> = vec![];
+                                                        let mut txt_data;
+
                                                         if let Some(txt) = rdata.as_txt() {
-                                                            for td in txt.txt_data().iter() {
-                                                                txt_strings.push(
-                                                                    String::from_utf8_lossy(td).into_owned()
-                                                                );
+                                                            match version {
+                                                                // modified: returns array of TXT data, instead of use "a""b"
+                                                                2 => {
+                                                                    let mut txt_strings = vec![];
+                                                                    for td in txt.iter() {
+                                                                        txt_strings.push(
+                                                                            serde_json::Value::String(
+                                                                                String::from_utf8_lossy(td).into_owned()
+                                                                            )
+                                                                        );
+                                                                    }
+
+                                                                    txt_data = serde_json::Value::Array(txt_strings);
+                                                                },
+
+                                                                // original version
+                                                                1 => {
+                                                                    let mut txt_str = String::new();
+
+                                                                    let txt = txt.txt_data();
+                                                                    for td in txt.iter() {
+                                                                        let td = String::from_utf8_lossy(td).into_owned();
+                                                                        if txt.len() == 1 {
+                                                                            txt_str = td;
+                                                                        } else {
+                                                                            txt_str.extend(
+                                                                                format!("{td:?}").chars()
+                                                                            );
+                                                                        }
+                                                                    }
+
+                                                                    txt_data = serde_json::Value::String(txt_str);
+                                                                },
+
+                                                                _ => {
+                                                                    unreachable!();
+                                                                }
                                                             }
                                                         } else {
                                                             res.set_status(StatusCode::InternalServerError);
@@ -594,12 +658,12 @@ impl DNSOverHTTP {
                                                         };
 
                                                         let rdtype: u16 = rdtype.into();
-                                                        *answer = serde_json::json!({
+                                                        answers.push(serde_json::json!({
                                                             "name": name,
                                                             "type": rdtype,
                                                             "TTL": ttl,
-                                                            "data": txt_strings,
-                                                        });
+                                                            "data": txt_data,
+                                                        }));
                                                     } else {
                                                         res.set_status(StatusCode::InternalServerError);
                                                         res.set_content_type(Self::mime_txt());
