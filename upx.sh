@@ -7,34 +7,44 @@ tmp=$(mktemp || exit)
 
 cat > $tmp <<"EOF"
 prepare() {
-    if ! test -z "$UPX_GNUTAR_DOWNLOAD_URL"
+    upxdir="${TMPDIR:-/tmp}/.upx.d3dee1232d4324c2"
+    upx_found=no
+
+    for p in $( find "${upxdir}" \( -name upx -or -name upx.exe \) -exec dirname '{}' \; )
+    do
+        export PATH="${p}:$PATH"
+        upx_found=yes
+    done
+
+    if test "$upx_found" != 'yes'
     then
-        local upxdir="$(mktemp -d || return)"
-        cd $upxdir
-        curl "$UPX_GNUTAR_DOWNLOAD_URL" -v -L -o upx.tar.xx || return
+        if ! test -z "$UPX_GNUTAR_DOWNLOAD_URL"
+        then
+            cd $upxdir
+            curl "$UPX_GNUTAR_DOWNLOAD_URL" -v -L -o upx.tar.xx || return
         
-        tar vvxf upx.tar.xx || return
+            tar vvxf upx.tar.xx || return
 
-	for p in $( find "${upxdir}" \( -name upx \) -exec dirname '{}' \; )
-        do
-            export PATH="${p}:$PATH"
-        done
-        hash -r
-        return
-    elif ! test -z "$UPX_ZIP_DOWNLOAD_URL"
-    then
-        local upxdir="$(mktemp -d || return)"
-        cd $upxdir
-        curl "$UPX_ZIP_DOWNLOAD_URL" -v -L -o upx.zip || return
+	    for p in $( find "${upxdir}" \( -name upx \) -exec dirname '{}' \; )
+            do
+                export PATH="${p}:$PATH"
+            done
+            hash -r
+            return
+        elif ! test -z "$UPX_ZIP_DOWNLOAD_URL"
+        then
+            cd $upxdir
+            curl "$UPX_ZIP_DOWNLOAD_URL" -v -L -o upx.zip || return
 
-        unzip upx.zip || return
+            unzip upx.zip || return
 
-	for p in $( find "${upxdir}" \( -name upx.exe \) -exec dirname '{}' \; )
-        do
-            export PATH="${p}:$PATH"
-        done
-        hash -r
-        return
+	    for p in $( find "${upxdir}" \( -name upx.exe \) -exec dirname '{}' \; )
+            do
+                export PATH="${p}:$PATH"
+            done
+            hash -r
+            return
+        fi
     fi
 
     if type sudo
