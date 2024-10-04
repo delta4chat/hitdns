@@ -7,10 +7,10 @@ tmp=$(mktemp || exit)
 
 cat > $tmp <<"EOF"
 prepare() {
-    upxdir="${TMPDIR:-/tmp}/.upx.d3dee1232d4324c2"
+    local upxdir="${TMPDIR:-/tmp}/.upx.d3dee1232d4324c2"
     mkdir -p "$upxdir"
-    upx_found=no
 
+    local upx_found=no
     for p in $( find "${upxdir}" \( -name upx -or -name upx.exe \) -exec dirname '{}' \; )
     do
         export PATH="${p}:$PATH"
@@ -46,6 +46,8 @@ prepare() {
             hash -r
             return
         fi
+    else
+        return
     fi
 
     if type sudo
