@@ -73,13 +73,17 @@ unsafe impl Send for Defer {}
 pub struct DNSCacheEntry {
     query: Arc<DNSQuery>,
 
-    pub(crate) entry: Arc<RwLock<Option<Arc<DNSEntry>>>>,
+    pub(crate) entry:
+        Arc<RwLock<
+            Option<Arc<DNSEntry>>
+        >>,
 
-    update_task: Arc<
-        RwLock<
-            Option<Arc<smol::Task<anyhow::Result<()>>>>,
-        >,
-    >,
+    update_task:
+        Arc<RwLock<
+            Option<Arc<
+                smol::Task<anyhow::Result<()>>
+            >>
+        >>,
 
     updating: Arc<AtomicBool>,
     update_event: Arc<Event>,
@@ -218,8 +222,10 @@ impl DNSCacheEntry {
 
             let task = smolscale2::spawn(async move {
                 updating.store(true, SeqCst);
+
+                let updating2 = updating.clone();
                 let _guard = Defer::new(Box::new(move || {
-                    updating.store(false, SeqCst);
+                    updating2.store(false, SeqCst);
                 }));
 
                 let upstream = resolver.dns_upstream();
@@ -269,6 +275,7 @@ impl DNSCacheEntry {
                 });
 
                 *entry_lock.write().await = Some(entry.clone());
+                updating.store(false, Relaxed);
                 log::debug!("send notify to {} listeners", update_event.notify_relaxed(usize::MAX));
 
                 #[cfg(feature = "sqlite")]
