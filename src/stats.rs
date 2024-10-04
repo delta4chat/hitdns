@@ -37,6 +37,9 @@ pub struct DNSQueryData {
     // total queries via TCP
     tcp_queries: AtomicU128,
 
+    // total queries via DoH-plaintext
+    dohp_queries: AtomicU128,
+
     // number of cache missing
     cache_miss: AtomicU128,
     // number of cache hit (not expired)
@@ -54,9 +57,7 @@ pub struct DNSQueryData {
     rdclasses: scc::HashMap<u16, AtomicU128>,
 }
 impl DNSQueryData {
-    pub async fn json(&self)
-        -> anyhow::Result<serde_json::Value>
-    {
+    pub async fn to_json(&self) -> anyhow::Result<serde_json::Value> {
         if self.last_update.load(Relaxed) == 0 {
             anyhow::bail!("no data avaliable: no any update");
         }
@@ -144,6 +145,9 @@ impl DNSQueryData {
 
                 "tcp": self.tcp_queries.load(Relaxed)
                                        .to_string()
+
+                "dohp": self.dohp_queries.load(Relaxed)
+                                         .to_string(),
             },
             "cache_lookups": {
                 "hit":
@@ -296,6 +300,8 @@ impl DNSQueryStats {
             self.data.udp_queries.fetch_add(1, Relaxed);
         } else if info.peer.starts_with("tcp://") {
             self.data.tcp_queries.fetch_add(1, Relaxed);
+        } else if info.peer.starts_with("dohp://") {
+            self.data.dohp_queries.fetch_add(1, Relaxed);
         }
 
         let mut ret = Ok(());
@@ -351,8 +357,7 @@ impl DNSQueryStats {
         }
 
         /* all done */
-        let new_elapsed =
-            self.started.elapsed().as_secs_f64();
+        let new_elapsed = self.started.elapsed().as_secs_f64();
 
         self.elapsed.store(new_elapsed, Relaxed);
 
