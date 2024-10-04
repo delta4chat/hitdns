@@ -66,6 +66,8 @@ impl Drop for Defer {
     }
 }
 
+unsafe impl Send for Defer {}
+
 /* ========== DNS Cache Entry ========== */
 #[derive(Debug, Clone)]
 pub struct DNSCacheEntry {
@@ -135,7 +137,11 @@ impl DNSCacheEntry {
                 .timeout(Duration::from_millis(100))
                 .await
             {
-                log::warn!("timed out for waiting event from update_event");
+                log::trace!("timed out for waiting event from update_event");
+                continue;
+            } else {
+                log::debug!("geted notify from event!");
+                break;
             }
         }
     }
@@ -176,6 +182,7 @@ impl DNSCacheEntry {
         timeout: Duration,
     ) -> anyhow::Result<Arc<DNSEntry>> {
         let status = self.status().await;
+
         // no need update a un-expired DNSRecord.
         // cache hit.
         if let DNSCacheStatus::Hit(entry) = status {
@@ -210,12 +217,10 @@ impl DNSCacheEntry {
             let update_event = self.update_event.clone();
 
             let task = smolscale2::spawn(async move {
-                /*
                 updating.store(true, SeqCst);
                 let _guard = Defer::new(Box::new(move || {
                     updating.store(false, SeqCst);
                 }));
-                */
 
                 let upstream = resolver.dns_upstream();
 
@@ -264,8 +269,7 @@ impl DNSCacheEntry {
                 });
 
                 *entry_lock.write().await = Some(entry.clone());
-
-                let _ = update_event.notify_relaxed(usize::MAX);
+                log::debug!("send notify to {} listeners", update_event.notify_relaxed(usize::MAX));
 
                 #[cfg(feature = "sqlite")]
                 {
@@ -321,11 +325,8 @@ impl DNSCacheEntry {
 /* ========== DNS Cache ========== */
 #[derive(Debug, Clone)]
 pub struct DNSCache {
-    pub(crate) memory:
-        Arc<scc::HashMap<DNSQuery, DNSCacheEntry>>,
-
+    pub(crate) memory: Arc<scc::HashMap<DNSQuery, DNSCacheEntry>>,
     pub(crate) resolvers: Arc<DNSResolverArray>,
-
     pub(crate) debug: bool,
 }
 /// SAFETY: Async access, and backed a scc::HashMap (EBR)
@@ -347,10 +348,7 @@ impl DNSCache {
         }
     }
 
-    pub async fn new(
-        resolvers: DNSResolverArray,
-        debug: bool,
-    ) -> anyhow::Result<Self> {
+    pub async fn new(resolvers: DNSResolverArray, debug: bool) -> anyhow::Result<Self> {
         let mut this = Self::init();
 
         this.resolvers = Arc::new(resolvers);
@@ -360,18 +358,11 @@ impl DNSCache {
         Ok(this)
     }
 
-    pub(crate) async fn load(
-        &self,
-    ) -> anyhow::Result<()> {
+    pub(crate) async fn load(&self) -> anyhow::Result<()> {
         #[cfg(feature = "sqlite")]
         {
-            let mut ret = sqlx::query(
-                "SELECT * FROM hitdns_cache_v1",
-            )
-            .fetch(&*HITDNS_SQLITE_POOL);
-            while let Ok(Some(line)) =
-                ret.try_next().await
-            {
+            let mut ret = sqlx::query("SELECT * FROM hitdns_cache_v1").fetch(&*HITDNS_SQLITE_POOL);
+            while let Ok(Some(line)) = ret.try_next().await {
                 assert_eq!(line.columns().len(), 2);
                 let query: Vec<u8> = line
                     .try_get_raw(0)?
@@ -383,51 +374,33 @@ impl DNSCache {
                     .decode();
 
                 let query: DNSQuery =
-          match bincode::deserialize(&query)
-            .context(
-              "cannot deserialize 'query' from sqlite",
-            )
-            .log_error()
-          {
-            Ok(v) => v,
-            _ => {
-              continue;
-            },
-          };
+                    match bincode::deserialize(&query).context("cannot deserialize 'query' from sqlite").log_error() {
+                        Ok(v) => v,
+                        _ => {
+                            continue;
+                        }
+                    };
                 let entry: DNSEntry =
-          match bincode::deserialize(&entry)
-            .context(
-              "cannot deserialize 'entry' from sqlite",
-            )
-            .log_error()
-          {
-            Ok(v) => v,
-            _ => {
-              continue;
-            },
-          };
+                    match bincode::deserialize(&entry).context("cannot deserialize 'entry' from sqlite").log_error() {
+                        Ok(v) => v,
+                        _ => {
+                            continue;
+                        }
+                    };
 
-                let cache_entry: DNSCacheEntry =
-                    Arc::new(entry).into();
+                let cache_entry: DNSCacheEntry = Arc::new(entry).into();
 
-                let _ = self
-                    .memory
-                    .insert(query, cache_entry);
+                let _ = self.memory.insert(query, cache_entry);
             }
         }
 
         #[cfg(feature = "sled")]
         {
-            let tree = HITDNS_SLED_DB
-                .open_tree(b"hitdns_cache_v2")
-                .context("cannot open sled tree")
-                .log_warn()?;
+            let tree = HITDNS_SLED_DB.open_tree(b"hitdns_cache_v2").context("cannot open sled tree").log_warn()?;
 
             for ret in tree.iter() {
                 if self.debug {
-                    log::trace!(
-                        "from sled tree: {ret:?}"
-                    );
+                    log::trace!("from sled tree: {ret:?}");
                 }
 
                 let (query, entry) = match ret {
@@ -435,40 +408,27 @@ impl DNSCache {
                     Err(e) => {
                         log::warn!("cannot fetch one from sled tree (error={e:?}). end of sled tree?");
                         continue;
-                    },
+                    }
                 };
 
                 let query: DNSQuery =
-          match bincode::deserialize(&query)
-            .context(
-              "cannot deserialize 'query' from sled",
-            )
-            .log_error()
-          {
-            Ok(v) => v,
-            _ => {
-              continue;
-            },
-          };
+                    match bincode::deserialize(&query).context("cannot deserialize 'query' from sled").log_error() {
+                        Ok(v) => v,
+                        _ => {
+                            continue;
+                        }
+                    };
                 let entry: DNSEntry =
-          match bincode::deserialize(&entry)
-            .context(
-              "cannot deserialize 'entry' from sled",
-            )
-            .log_error()
-          {
-            Ok(v) => v,
-            _ => {
-              continue;
-            },
-          };
+                    match bincode::deserialize(&entry).context("cannot deserialize 'entry' from sled").log_error() {
+                        Ok(v) => v,
+                        _ => {
+                            continue;
+                        }
+                    };
 
-                let cache_entry: DNSCacheEntry =
-                    Arc::new(entry).into();
+                let cache_entry: DNSCacheEntry = Arc::new(entry).into();
 
-                let _ = self
-                    .memory
-                    .insert(query, cache_entry);
+                let _ = self.memory.insert(query, cache_entry);
             }
         }
 
@@ -476,56 +436,49 @@ impl DNSCache {
     } // pub(crate) async fn load()
 
     // cached query (oldapi)
-    pub async fn query(&self, req: dns::Message)
-        -> anyhow::Result<dns::Message>
-    {
+    pub async fn query(&self, req: dns::Message) -> anyhow::Result<dns::Message> {
         Ok(self.query_with_status(req).await?.0)
     }
 
     // cached query with DNSCacheStatus
-    pub async fn query_with_status(
-        &self, req: dns::Message,
-    ) -> anyhow::Result<(dns::Message, DNSCacheStatus)>
-    {
+    pub async fn query_with_status(&self, req: dns::Message) -> anyhow::Result<(dns::Message, DNSCacheStatus)> {
         let started = Instant::now();
 
         let req_id: u16 = req.id();
-        let query: DNSQuery =
-            req.try_into().log_debug()?;
+        let query: DNSQuery = req.try_into().log_debug()?;
         log::debug!("DNSCache: received new query: id={req_id} query={:?}", &query);
 
-        let cache_entry = self
-            .memory
-            .entry_async(query.clone())
-            .await
-            .or_insert_with(|| Arc::new(query).into())
+        let cache_entry =
+            self.memory
+            .entry_async(query.clone()).await
+            .or_insert_with(|| { Arc::new(query).into() })
             .get()
             .clone();
 
         let status = cache_entry.status().await;
 
-        let resolver = self
-            .resolvers
-            .best_or_random()
-            .await
+        let resolver =
+            self.resolvers
+            .best_or_random().await
             .log_warn()
             .ok();
-        let entry = cache_entry
-            .update(resolver, Duration::from_secs(10))
+        let entry =
+            cache_entry.update(resolver, Duration::from_secs(10))
             .await
             .log_warn()?;
 
-        let now_unix = SystemTime::now()
+        let now_unix =
+            SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .log_error()?;
-        let expire_unix = entry
-            .expire
+        let expire_unix =
+            entry.expire
             .duration_since(SystemTime::UNIX_EPOCH)
             .log_error()?;
 
-        let mut res: dns::Message =
-            entry.as_ref().try_into().log_warn()?;
+        let mut res: dns::Message = entry.as_ref().try_into().log_warn()?;
         res.set_id(req_id);
+
         let ttl: u32 = if now_unix > expire_unix {
             0
         } else {
