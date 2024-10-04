@@ -7,6 +7,36 @@ tmp=$(mktemp || exit)
 
 cat > $tmp <<"EOF"
 prepare() {
+    if ! test -z "$UPX_GNUTAR_DOWNLOAD_URL"
+    then
+        local upxdir="$(mktemp -d || return)"
+        cd $upxdir
+        curl "$UPX_GNUTAR_DOWNLOAD_URL" -v -L -o upx.tar.xx || return
+        
+        tar vvxf upx.tar.xx || return
+
+	for p in $( find "${upxdir}" \( -name upx \) -exec dirname '{}' \; )
+        do
+            export PATH="${p}:$PATH"
+        done
+        hash -r
+        return
+    elif ! test -z "$UPX_ZIP_DOWNLOAD_URL"
+    then
+        local upxdir="$(mktemp -d || return)"
+        cd $upxdir
+        curl "$UPX_ZIP_DOWNLOAD_URL" -v -L -o upx.zip || return
+
+        unzip upx.zip || return
+
+	for p in $( find "${upxdir}" \( -name upx.exe \) -exec dirname '{}' \; )
+        do
+            export PATH="${p}:$PATH"
+        done
+        hash -r
+        return
+    fi
+
     if type sudo
     then
         if type apt
@@ -41,6 +71,8 @@ prepare() {
 
 prepare
 
+echo $PATH
+
 if type upx
 then
 	upx -9 $1 && exit
@@ -55,6 +87,6 @@ EOF
 
 command $*
 status_code="$?"
-find ./target/ \( -name hitdns -or -name hitdns.exe \) -exec bash --norc -x $tmp '{}' \;
+find "$(realpath ./target/)" \( -name hitdns -or -name hitdns.exe \) -exec bash --norc -x $tmp '{}' \;
 exit "$status_code"
 
