@@ -129,7 +129,7 @@ impl HitdnsAPI {
 
                                 "/stats" => {
                                     let mut res = Response::new(StatusCode::Ok);
-                                    match daemon.context.stats.json().await {
+                                    match daemon.context.stats.to_json().await {
                                         Ok(json) => {
                                             res.set_content_type(Self::mime_json());
                                             res.set_body(format!("{json:#}"));

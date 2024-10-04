@@ -144,7 +144,7 @@ impl DNSQueryData {
                                        .to_string(),
 
                 "tcp": self.tcp_queries.load(Relaxed)
-                                       .to_string()
+                                       .to_string(),
 
                 "dohp": self.dohp_queries.load(Relaxed)
                                          .to_string(),
@@ -196,10 +196,10 @@ impl DNSQueryStats {
         }
     }
 
-    pub async fn json(&self)
+    pub async fn to_json(&self)
         -> anyhow::Result<serde_json::Value>
     {
-        self.data.json().await
+        self.data.to_json().await
     }
 
     fn update(&self) {
