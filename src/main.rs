@@ -56,6 +56,7 @@ pub mod dns {
         IntoName,
         domain::Name,
         LowerName,
+        RecordData,
         dns_class::DNSClass,
         record_type::RecordType,
         record_data::RData,
@@ -67,7 +68,6 @@ pub mod dns {
     pub use DNSClass as RdClass;
     pub use RecordType as Type;
     pub use RecordType as RdType;
-
 }
 
 pub use smol::lock::RwLock;

@@ -283,7 +283,9 @@ impl DNSOverHTTP {
                                     }
 
                                     let mut maybe_name: Option<String> = None;
+                                    let mut maybe_class: Option<String> = None;
                                     let mut maybe_type: Option<String> = None;
+
                                     let mut maybe_ct: Option<String> = // content-type
                                         if let Some(ct) = req.header("Content-Type") {
                                             Some(ct.as_str().to_string())
@@ -293,7 +295,7 @@ impl DNSOverHTTP {
 
                                     let mut maybe_cd: Option<String> = None; // check disabled
                                     let mut maybe_do: Option<String> = None; // dnssec ok
-                                                                             //
+
                                     for (key, val) in url.query_pairs() {
                                         match key.into_owned().to_ascii_lowercase().as_str() {
                                             "name" => {
@@ -303,22 +305,42 @@ impl DNSOverHTTP {
                                             },
                                             "type" => {
                                                 if maybe_type.is_none() {
-                                                    maybe_type = Some(val.into_owned());
+                                                    let val = val.into_owned();
+                                                    if ! val.is_empty() {
+                                                        maybe_type = Some(val);
+                                                    }
+                                                }
+                                            },
+                                            "class" => {
+                                                if maybe_class.is_none() {
+                                                    let val = val.into_owned();
+                                                    if ! val.is_empty() {
+                                                        maybe_class = Some(val);
+                                                    }
                                                 }
                                             },
                                             "ct" => {
                                                 if maybe_ct.is_none() {
-                                                    maybe_ct = Some(val.into_owned());
+                                                    let val = val.into_owned();
+                                                    if ! val.is_empty() {
+                                                        maybe_ct = Some(val);
+                                                    }
                                                 }
                                             },
                                             "cd" => {
                                                 if maybe_cd.is_none() {
-                                                    maybe_cd = Some(val.into_owned());
+                                                    let val = val.into_owned();
+                                                    if ! val.is_empty() {
+                                                        maybe_cd = Some(val);
+                                                    }
                                                 }
                                             },
                                             "do" => {
                                                 if maybe_do.is_none() {
-                                                    maybe_do = Some(val.into_owned());
+                                                    let val = val.into_owned();
+                                                    if ! val.is_empty() {
+                                                        maybe_do = Some(val);
+                                                    }
                                                 }
                                             },
                                             _ => {}
@@ -339,13 +361,39 @@ impl DNSOverHTTP {
                                         n
                                     };
 
+                                    let rdclass: u16 =
+                                        if let Some(ref c) = maybe_class {
+                                            let maybe_ci: Option<u16> = c.parse().ok();
+                                            if let Some(ci) = maybe_ci {
+                                                ci
+                                            } else {
+                                                if let Ok(rc) = dns::RdClass::from_str(c.to_ascii_uppercase().as_str()) {
+                                                    rc.into()
+                                                } else {
+                                                    res.set_status(StatusCode::BadRequest);
+                                                    res.set_content_type(Self::mime_txt());
+                                                    res.set_body(format!("invalid value of 'class': if you need to specifiy custom rdclass, please use unsigned 16-bit integer"));
+                                                    return Ok(res);
+                                                }
+                                            }
+                                        } else {
+                                            dns::RdClass::IN.into()
+                                        };
+
                                     let rdtype: u16 =
                                         if let Some(ref t) = maybe_type {
                                             let maybe_ti: Option<u16> = t.parse().ok();
                                             if let Some(ti) = maybe_ti {
                                                 ti
                                             } else {
-                                                dns::RdType::from_str(t).unwrap_or(dns::RdType::A).into()
+                                                if let Ok(rt) = dns::RdType::from_str(t.to_ascii_uppercase().as_str()) {
+                                                    rt.into()
+                                                } else {
+                                                    res.set_status(StatusCode::BadRequest);
+                                                    res.set_content_type(Self::mime_txt());
+                                                    res.set_body(format!("invalid value of 'type': if you need to specifiy custom rdtype, please use unsigned 16-bit integer"));
+                                                    return Ok(res);
+                                                }
                                             }
                                         } else {
                                             dns::RdType::A.into()
@@ -395,8 +443,8 @@ impl DNSOverHTTP {
 
                                     let dns_query =
                                         DNSQuery {
-                                            name,
-                                            rdclass: dns::RdClass::IN.into(),
+                                            name: name.clone(),
+                                            rdclass,
                                             rdtype,
                                         };
 
@@ -411,10 +459,13 @@ impl DNSOverHTTP {
                                             }
                                         };
 
+                                    dns_req.set_authentic_data(dnssec_ok);
+                                    dns_req.set_checking_disabled(cd);
+
                                     let id = dns_req.id();
 
                                     let mut info = DNSQueryInfo {
-                                        peer: format!("dohp://{peer}/?protocol=Google&method=GET&id={id}"),
+                                        peer: format!("dohp://{peer}/?protocol=GoogleModified&method=GET&id={id}"),
                                         query_msg: dns_req.clone(),
                                         query: dns_query,
                                         time: SystemTime::now(),
@@ -448,7 +499,122 @@ impl DNSOverHTTP {
                                             }
                                         );
                                     } else {
-                                        todo!("json output");
+                                        let status: u16 = dns_res.response_code().into();
+
+                                        let mut json = serde_json::json!({
+                                            "Status": status,
+
+                                            "TC": dns_res.truncated(),
+                                            "RD": dns_res.recursion_desired(),
+                                            "RA": dns_res.recursion_available(),
+                                            "AD": dns_res.authentic_data(),
+                                            "CD": dns_res.checking_disabled(),
+
+                                            "Question": [
+                                                {
+                                                    "name": name,
+                                                    "type": rdtype,
+                                                }
+                                            ],
+
+                                            "Answer": [],
+                                        });
+
+                                        for rr in dns_res.answers().iter() {
+                                            let json = json.as_object_mut().unwrap();
+                                            let answer = json.get_mut("Answer").unwrap();
+
+                                            let name = rr.name().to_ascii();
+                                            let rdtype = rr.record_type();
+                                            let ttl = rr.ttl();
+
+                                            use dns::RdType::*;
+                                            use dns::RecordData;
+                                            match rdtype {
+                                                A | AAAA => {
+                                                    if let Some(rdata) = rr.data() {
+                                                        let rdata = rdata.clone().into_rdata();
+                                                        let ip_str: String =
+                                                            if rdata.is_a() {
+                                                                if let Some(a) = rdata.as_a() {
+                                                                    a.0.to_string()
+                                                                } else {
+                                                                    res.set_status(StatusCode::InternalServerError);
+                                                                    res.set_content_type(Self::mime_txt());
+                                                                    res.set_body(format!("unexpected upstream DNS resolver respond A record with non-A rdata"));
+                                                                    return Ok(res);
+                                                                }
+                                                            } else if rdata.is_aaaa() {
+                                                                if let Some(aaaa) = rdata.as_aaaa() {
+                                                                    aaaa.0.to_string()
+                                                                } else {
+                                                                    res.set_status(StatusCode::InternalServerError);
+                                                                    res.set_content_type(Self::mime_txt());
+                                                                    res.set_body(format!("unexpected upstream DNS resolver respond AAAA record with non-AAAA rdata"));
+                                                                    return Ok(res);
+                                                                }
+                                                            } else {
+                                                                res.set_status(StatusCode::InternalServerError);
+                                                                res.set_content_type(Self::mime_txt());
+                                                                res.set_body(format!("Bug: matched A or AAAA but hickory-proto does not provide A or AAAA rdata: {rdata:?}"));
+                                                                return Ok(res);
+                                                            };
+
+                                                        let rdtype: u16 = rdtype.into();
+                                                        *answer = serde_json::json!({
+                                                            "name": name,
+                                                            "type": rdtype,
+                                                            "TTL": ttl,
+                                                            "data": ip_str
+                                                        });
+                                                    } else {
+                                                        res.set_status(StatusCode::InternalServerError);
+                                                        res.set_content_type(Self::mime_txt());
+                                                        res.set_body(format!("unexpected upstream DNS resolver respond A record without IPv4 address: {rr:?}"));
+                                                        return Ok(res);
+                                                    }
+                                                },
+                                                TXT => {
+                                                    if let Some(rdata) = rr.data() {
+                                                        let rdata = rdata.clone().into_rdata();
+
+                                                        // modified: returns array of TXT data, instead of use "a""b"
+                                                        let mut txt_strings: Vec<String> = vec![];
+                                                        if let Some(txt) = rdata.as_txt() {
+                                                            for td in txt.txt_data().iter() {
+                                                                txt_strings.push(
+                                                                    String::from_utf8_lossy(td).into_owned()
+                                                                );
+                                                            }
+                                                        } else {
+                                                            res.set_status(StatusCode::InternalServerError);
+                                                            res.set_content_type(Self::mime_txt());
+                                                            res.set_body(format!("unexpected upstream DNS resolver respond TXT record with non-TXT rdata"));
+                                                            return Ok(res);
+                                                        };
+
+                                                        let rdtype: u16 = rdtype.into();
+                                                        *answer = serde_json::json!({
+                                                            "name": name,
+                                                            "type": rdtype,
+                                                            "TTL": ttl,
+                                                            "data": txt_strings,
+                                                        });
+                                                    } else {
+                                                        res.set_status(StatusCode::InternalServerError);
+                                                        res.set_content_type(Self::mime_txt());
+                                                        res.set_body(format!("unexpected upstream DNS resolver respond TXT record without text: {rr:?}"));
+                                                        return Ok(res);
+                                                    }
+                                                },
+                                                _ => {
+                                                    todo!("other format")
+                                                }
+                                            } // match rdtype
+                                        } // for each answers
+
+                                        res.set_content_type(Self::mime_json());
+                                        res.set_body(format!("{json:#}"));
                                     }
 
                                     Ok(res)
@@ -466,7 +632,7 @@ List of avaliable query methods:
 POST /dns-query                            -> query DNS using RFC 8484 Post: https://tools.ietf.org/html/rfc8484#page-6
 GET  /dns-query?dns=[base64url]            -> query DNS using RFC 8484 Get: https://tools.ietf.org/html/rfc8484#section-4.1.1
 
-GET  /resolve?name=[domain]&type=[rdtype]  -> query DNS using Google's JSON API: https://developers.google.com/speed/public-dns/docs/doh/json
+GET  /resolve?name=[domain]&type=[rdtype]  -> query DNS using JSON API (modified from Google's JSON API): https://developers.google.com/speed/public-dns/docs/doh/json
 
 "
                                     );
