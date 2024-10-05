@@ -49,7 +49,7 @@ impl DNSOverHTTP {
 
             let context = self.context.clone();
             smolscale2::spawn(
-                async_h1::accept(
+                async_h1b::accept_with_opts(
                     conn,
                     move |mut req| {
                         let context = context.clone();
@@ -68,13 +68,13 @@ impl DNSOverHTTP {
                                                     res.set_status(StatusCode::BadRequest);
                                                     res.set_content_type(Self::mime_txt());
                                                     res.set_body("Content-Type is wrong, it must be 'application/dns-message'");
-                                                    return Ok(res);
+                                                    return res;
                                                 }
                                             } else {
                                                 res.set_status(StatusCode::BadRequest);
                                                 res.set_content_type(Self::mime_txt());
                                                 res.set_body("does not specify Content-Type");
-                                                return Ok(res);
+                                                return res;
                                             }
 
                                             if let Some(ct) = req.header("Accept") {
@@ -82,13 +82,13 @@ impl DNSOverHTTP {
                                                     res.set_status(StatusCode::BadRequest);
                                                     res.set_content_type(Self::mime_txt());
                                                     res.set_body("Accept is wrong, it must be 'application/dns-message'");
-                                                    return Ok(res);
+                                                    return res;
                                                 }
                                             } else {
                                                 res.set_status(StatusCode::BadRequest);
                                                 res.set_content_type(Self::mime_txt());
                                                 res.set_body("does not specify Accept");
-                                                return Ok(res);
+                                                return res;
                                             }
 
                                             let dns_req =
@@ -100,7 +100,7 @@ impl DNSOverHTTP {
                                                                 res.set_status(StatusCode::BadRequest);
                                                                 res.set_content_type(Self::mime_txt());
                                                                 res.set_body(format!("mal-formatted DNS wire format (RFC 1035): {err:?}"));
-                                                                return Ok(res);
+                                                                return res;
                                                             }
                                                         }
                                                     },
@@ -108,7 +108,7 @@ impl DNSOverHTTP {
                                                         res.set_status(StatusCode::BadRequest);
                                                         res.set_content_type(Self::mime_txt());
                                                         res.set_body(format!("cannot read request body: {err:?}"));
-                                                        return Ok(res);
+                                                        return res;
                                                     }
                                                 };
 
@@ -119,7 +119,7 @@ impl DNSOverHTTP {
                                                         res.set_status(StatusCode::BadRequest);
                                                         res.set_content_type(Self::mime_txt());
                                                         res.set_body(format!("request dns wire is not a valid DNSQuery: {err:?}"));
-                                                        return Ok(res);
+                                                        return res;
                                                     }
                                                 };
 
@@ -147,7 +147,7 @@ impl DNSOverHTTP {
                                                                 res.set_status(StatusCode::InternalServerError);
                                                                 res.set_content_type(Self::mime_txt());
                                                                 res.set_body(format!("bug: DNSCache.query returns invalid data: {err:?}"));
-                                                                return Ok(res);
+                                                                return res;
                                                             }
                                                         }
                                                     );
@@ -165,13 +165,13 @@ impl DNSOverHTTP {
                                                     res.set_status(StatusCode::BadRequest);
                                                     res.set_content_type(Self::mime_txt());
                                                     res.set_body("Accept is wrong, it must be 'application/dns-message'");
-                                                    return Ok(res);
+                                                    return res;
                                                 }
                                             } else {
                                                 res.set_status(StatusCode::BadRequest);
                                                 res.set_content_type(Self::mime_txt());
                                                 res.set_body("does not specify Accept");
-                                                return Ok(res);
+                                                return res;
                                             }
 
                                             let mut maybe_dns: Option<String> = None;
@@ -189,7 +189,7 @@ impl DNSOverHTTP {
                                                         res.set_status(StatusCode::BadRequest);
                                                         res.set_content_type(Self::mime_txt());
                                                         res.set_body(format!("missing 'dns' in URL query string"));
-                                                        return Ok(res);
+                                                        return res;
                                                     }
                                                 };
 
@@ -202,7 +202,7 @@ impl DNSOverHTTP {
                                                                 res.set_status(StatusCode::BadRequest);
                                                                 res.set_content_type(Self::mime_txt());
                                                                 res.set_body(format!("mal-formatted DNS wire format (RFC 1035): {err:?}"));
-                                                                return Ok(res);
+                                                                return res;
                                                             }
                                                         }
                                                     },
@@ -210,7 +210,7 @@ impl DNSOverHTTP {
                                                         res.set_status(StatusCode::BadRequest);
                                                         res.set_content_type(Self::mime_txt());
                                                         res.set_body(format!("mal-formatted 'dns' base64url: {err:?}"));
-                                                        return Ok(res);
+                                                        return res;
                                                     }
                                                 };
 
@@ -221,7 +221,7 @@ impl DNSOverHTTP {
                                                         res.set_status(StatusCode::BadRequest);
                                                         res.set_content_type(Self::mime_txt());
                                                         res.set_body(format!("request dns wire is not a valid DNSQuery: {err:?}"));
-                                                        return Ok(res);
+                                                        return res;
                                                     }
                                                 };
 
@@ -249,7 +249,7 @@ impl DNSOverHTTP {
                                                                 res.set_status(StatusCode::InternalServerError);
                                                                 res.set_content_type(Self::mime_txt());
                                                                 res.set_body(format!("bug: DNSCache.query returns invalid data: {err:?}"));
-                                                                return Ok(res);
+                                                                return res;
                                                             }
                                                         }
                                                     );
@@ -268,7 +268,7 @@ impl DNSOverHTTP {
                                         }
                                     }
 
-                                    Ok(res)
+                                    res
                                 },
 
                                 "/resolve" => {
@@ -279,7 +279,7 @@ impl DNSOverHTTP {
                                         res.set_status(StatusCode::BadRequest);
                                         res.set_content_type(Self::mime_txt());
                                         res.set_body(format!("invalid HTTP request method, it must be GET"));
-                                        return Ok(res);
+                                        return res;
                                     }
 
                                     let mut maybe_version: Option<String> = None;
@@ -368,7 +368,7 @@ impl DNSOverHTTP {
                                             res.set_status(StatusCode::BadRequest);
                                             res.set_content_type(Self::mime_txt());
                                             res.set_body(format!("unknown version, it should be 1 or 2"));
-                                            return Ok(res);
+                                            return res;
                                         }
                                     }
 
@@ -376,7 +376,7 @@ impl DNSOverHTTP {
                                         res.set_status(StatusCode::BadRequest);
                                         res.set_content_type(Self::mime_txt());
                                         res.set_body(format!("missing 'name' in URL query string"));
-                                        return Ok(res);
+                                        return res;
                                     }
                                     let name: String = {
                                         let mut n = maybe_name.unwrap();
@@ -398,7 +398,7 @@ impl DNSOverHTTP {
                                                     res.set_status(StatusCode::BadRequest);
                                                     res.set_content_type(Self::mime_txt());
                                                     res.set_body(format!("invalid value of 'class': if you need to specifiy custom rdclass, please use unsigned 16-bit integer"));
-                                                    return Ok(res);
+                                                    return res;
                                                 }
                                             }
                                         } else {
@@ -417,7 +417,7 @@ impl DNSOverHTTP {
                                                     res.set_status(StatusCode::BadRequest);
                                                     res.set_content_type(Self::mime_txt());
                                                     res.set_body(format!("invalid value of 'type': if you need to specifiy custom rdtype, please use unsigned 16-bit integer"));
-                                                    return Ok(res);
+                                                    return res;
                                                 }
                                             }
                                         } else {
@@ -480,7 +480,7 @@ impl DNSOverHTTP {
                                                 res.set_status(StatusCode::InternalServerError);
                                                 res.set_content_type(Self::mime_txt());
                                                 res.set_body(format!("unable to build dns::Message from DNSQuery: {err:?}"));
-                                                return Ok(res);
+                                                return res;
                                             }
                                         };
 
@@ -513,7 +513,7 @@ impl DNSOverHTTP {
                                             res.set_status(StatusCode::InternalServerError);
                                             res.set_content_type(Self::mime_txt());
                                             res.set_body(format!("unable to handle DNS query: {err:?}"));
-                                            return Ok(res);
+                                            return res;
                                         }
                                     };
 
@@ -526,7 +526,7 @@ impl DNSOverHTTP {
                                                     res.set_status(StatusCode::InternalServerError);
                                                     res.set_content_type(Self::mime_txt());
                                                     res.set_body(format!("bug: DNSCache.query returns invalid data: {err:?}"));
-                                                    return Ok(res);
+                                                    return res;
                                                 }
                                             }
                                         );
@@ -574,7 +574,7 @@ impl DNSOverHTTP {
                                                                     res.set_status(StatusCode::InternalServerError);
                                                                     res.set_content_type(Self::mime_txt());
                                                                     res.set_body(format!("unexpected upstream DNS resolver respond A record with non-A rdata"));
-                                                                    return Ok(res);
+                                                                    return res;
                                                                 }
                                                             } else if rdata.is_aaaa() {
                                                                 if let Some(aaaa) = rdata.as_aaaa() {
@@ -583,13 +583,13 @@ impl DNSOverHTTP {
                                                                     res.set_status(StatusCode::InternalServerError);
                                                                     res.set_content_type(Self::mime_txt());
                                                                     res.set_body(format!("unexpected upstream DNS resolver respond AAAA record with non-AAAA rdata"));
-                                                                    return Ok(res);
+                                                                    return res;
                                                                 }
                                                             } else {
                                                                 res.set_status(StatusCode::InternalServerError);
                                                                 res.set_content_type(Self::mime_txt());
                                                                 res.set_body(format!("Bug: matched A or AAAA but hickory-proto does not provide A or AAAA rdata: {rdata:?}"));
-                                                                return Ok(res);
+                                                                return res;
                                                             };
 
                                                         let rdclass: u16 = rr.dns_class().into();
@@ -606,7 +606,7 @@ impl DNSOverHTTP {
                                                         res.set_status(StatusCode::InternalServerError);
                                                         res.set_content_type(Self::mime_txt());
                                                         res.set_body(format!("unexpected upstream DNS resolver respond A record without IPv4 address: {rr:?}"));
-                                                        return Ok(res);
+                                                        return res;
                                                     }
                                                 },
                                                 TXT => {
@@ -658,7 +658,7 @@ impl DNSOverHTTP {
                                                             res.set_status(StatusCode::InternalServerError);
                                                             res.set_content_type(Self::mime_txt());
                                                             res.set_body(format!("unexpected upstream DNS resolver respond TXT record with non-TXT rdata"));
-                                                            return Ok(res);
+                                                            return res;
                                                         };
 
                                                         let rdclass: u16 = rr.dns_class().into();
@@ -675,7 +675,7 @@ impl DNSOverHTTP {
                                                         res.set_status(StatusCode::InternalServerError);
                                                         res.set_content_type(Self::mime_txt());
                                                         res.set_body(format!("unexpected upstream DNS resolver respond TXT record without text: {rr:?}"));
-                                                        return Ok(res);
+                                                        return res;
                                                     }
                                                 },
                                                 _ => {
@@ -688,7 +688,7 @@ impl DNSOverHTTP {
                                         res.set_body(format!("{json:#}"));
                                     }
 
-                                    Ok(res)
+                                    res
                                 },
 
                                 _ => {
@@ -707,12 +707,15 @@ GET  /resolve?name=[domain]&type=[rdtype]  -> query DNS using JSON API (modified
 
 "
                                     );
-                                    Ok(res)
+                                    res
                                 }
                             } // match
                         } // async move block
-                    } // move closure
-                ) // async_h1::accept
+                    }, // move closure
+                    async_h1b::ServerOptions::new()
+                        .with_headers_timeout(Duration::from_secs(10))
+                        .with_default_host("unspecified.invalid")
+                ) // async_h1b::accept_with_opts
             ).detach(); // smolscale2::spawn
         }
     }

@@ -108,6 +108,20 @@ pub use clap::Parser;
 
 pub use smol_timeout::TimeoutExt;
 
+// hitdns nonce randomly for each run
+pub static HITDNS_NONCE: Lazy<String> = Lazy::new(|| {
+    let unix = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or(Duration::ZERO)
+        .as_secs_f64();
+
+
+    let rand = fastrand::u128(..);
+
+    format!("{unix}_{rand}")
+});
+
+// hitdns opt parsed from clap or toml-env
 pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
     smol::block_on(async move {
         let mut opt = HitdnsOpt::parse();
@@ -243,6 +257,8 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
                 opt.api_listen = Some(dyna);
             }
         }
+
+        assert!(opt.api_listen != opt.dohp_listen);
 
         opt
     }) // smol::block_on
@@ -1075,7 +1091,7 @@ pub struct HitdnsOpt {
     pub listen: Option<SocketAddr>,
 
     /// Listen address of localhost plaintext DoH server.
-    /// for now this is HTTP/1.1 only (due to async-h1 library limits), so HTTP/1.0 is not supported.
+    /// for now this server supports HTTP/1.1 and HTTP/1.0
     ///
     /// if the API is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 1 (if the port number is in use, then continue decrementing until an available port number is found)
     #[arg(long)]
@@ -1087,7 +1103,7 @@ pub struct HitdnsOpt {
 
     /// Specify the localhost HTTP API listen address, currently it can only be bound to 127.0.0.1 (for security reasons).
     ///
-    /// for now this is HTTP/1.1 only (due to async-h1 library limits), so HTTP/1.0 is not supported.
+    /// for now this server supports HTTP/1.1 and HTTP/1.0
     ///
     /// if the API is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 2 (if the port number is in use, then continue decrementing until an available port number is found)
     #[arg(long)]

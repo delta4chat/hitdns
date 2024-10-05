@@ -41,7 +41,7 @@ impl HitdnsAPI {
 
             let daemon = self.daemon.clone();
             smolscale2::spawn(
-                async_h1::accept(
+                async_h1b::accept_with_opts(
                     conn,
                     move |req| {
                         let daemon = daemon.clone();
@@ -50,15 +50,25 @@ impl HitdnsAPI {
                             let url = req.url();
                             match url.path().to_lowercase().as_str() {
                                 "/snap" => {
-                                    let json =
-                                        DatabaseSnapshot::export().await?
-                                        .to_json();
-
                                     let mut res = Response::new(StatusCode::Ok);
-                                    res.set_body(format!("{json:#}"));
-                                    res.set_content_type(Self::mime_json());
 
-                                    Ok(res)
+                                    let json =
+                                        match DatabaseSnapshot::export().await {
+                                            Ok(ds) => {
+                                                ds.to_json()
+                                            },
+                                            Err(err) => {
+                                                res.set_status(StatusCode::InternalServerError);
+                                                res.set_content_type(Self::mime_txt());
+                                                res.set_body(format!("cannot take snapshot of database: {err:?}"));
+                                                return res;
+                                            }
+                                        };
+
+                                    res.set_content_type(Self::mime_json());
+                                    res.set_body(format!("{json:#}"));
+
+                                    res
                                 },
 
                                 "/metrics" => {
@@ -81,7 +91,7 @@ impl HitdnsAPI {
                                     res.set_body(format!("{all_metrics:#}"));
                                     res.set_content_type(Self::mime_json());
 
-                                    Ok(res)
+                                    res
                                 },
 
                                 "/reload-cache" => {
@@ -102,7 +112,7 @@ impl HitdnsAPI {
                                         }
                                     }
 
-                                    Ok(res)
+                                    res
                                 },
 
                                 #[cfg(feature = "rsinfo")]
@@ -112,7 +122,7 @@ impl HitdnsAPI {
                                     res.set_body(
                                         format!("{:#}", rsinfo::ALL_INFO.to_json())
                                     );
-                                    Ok(res)
+                                    res
                                 },
 
                                 "/version" => {
@@ -124,8 +134,15 @@ impl HitdnsAPI {
                                         res.set_status(StatusCode::InternalServerError);
                                         res.set_body("N/A");
                                     }
-                                    Ok(res)
+                                    res
                                 },
+
+                                "/nonce" => {
+                                    let mut res = Response::new(StatusCode::Ok);
+                                    res.set_content_type(Self::mime_txt());
+                                    res.set_body(HITDNS_NONCE.as_str());
+                                    res
+                                }
 
                                 "/stats" => {
                                     let mut res = Response::new(StatusCode::Ok);
@@ -141,7 +158,7 @@ impl HitdnsAPI {
                                         }
                                     }
 
-                                    Ok(res)
+                                    res
                                 },
 
                                 _ => {
@@ -152,18 +169,22 @@ List of avaliable commands:
 GET /snap          ->  take a snapshot of database.
 GET /metrics       ->  get all metrics for each resolvers.
 GET /reload-cache  ->  reload DNS cache entries from disk database.
-GET /version       ->  current version 
+GET /version       ->  current version
+GET /nonce         ->  a fixed nonce during between lifetime of this process.
 GET /info          ->  get build info
 GET /stats         ->  get DNS query analysis
 "
                                     );
                                     res.set_content_type(Self::mime_txt());
-                                    Ok(res)
+                                    res
                                 }
                             } // match
                         } // async move block
-                    } // move closure
-                ) // async_h1::accept
+                    }, // move closure
+                    async_h1b::ServerOptions::new()
+                        .with_headers_timeout(Duration::from_secs(60))
+                        .with_default_host("unspecified.invalid")
+                ) // async_h1b::accept_with_opts
             ).detach(); // smolscale2::spawn
         }
     }

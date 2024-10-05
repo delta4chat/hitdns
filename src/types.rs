@@ -219,7 +219,7 @@ impl DNSEntry {
         let expire_unix: String = self
             .expire
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or(Duration::from_secs(0))
+            .unwrap_or(Duration::ZERO)
             .as_secs()
             .to_string();
 
@@ -376,7 +376,7 @@ impl DNSMetrics {
             "last_respond":
                 self.last_respond
                 .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or(Duration::from_secs(0))
+                .unwrap_or(Duration::ZERO)
                 .as_secs_f64()
                 .to_string(),
 
