@@ -568,103 +568,204 @@ impl DNSOverHTTP {
                                             use dns::RdType::*;
                                             use dns::RecordData;
 
+                                            let rdata =
+                                                if let Some(rd) = rr.data() {
+                                                    rd.clone().into_rdata()
+                                                } else {
+                                                    res.set_status(StatusCode::InternalServerError);
+                                                    res.set_content_type(Self::mime_txt());
+                                                    res.set_body(format!("unexpected upstream DNS resolver respond Record without RDATA: {rr:?}"));
+                                                    return res;
+                                                };
+
                                             let mut data;
                                             match rdtype {
                                                 A | AAAA => {
-                                                    if let Some(rdata) = rr.data() {
-                                                        let rdata = rdata.clone().into_rdata();
-                                                        let ip_str: String =
-                                                            if rdata.is_a() {
-                                                                if let Some(a) = rdata.as_a() {
-                                                                    a.0.to_string()
-                                                                } else {
-                                                                    res.set_status(StatusCode::InternalServerError);
-                                                                    res.set_content_type(Self::mime_txt());
-                                                                    res.set_body(format!("unexpected upstream DNS resolver respond A record with non-A rdata"));
-                                                                    return res;
-                                                                }
-                                                            } else if rdata.is_aaaa() {
-                                                                if let Some(aaaa) = rdata.as_aaaa() {
-                                                                    aaaa.0.to_string()
-                                                                } else {
-                                                                    res.set_status(StatusCode::InternalServerError);
-                                                                    res.set_content_type(Self::mime_txt());
-                                                                    res.set_body(format!("unexpected upstream DNS resolver respond AAAA record with non-AAAA rdata"));
-                                                                    return res;
-                                                                }
+                                                    let ip_str: String =
+                                                        if rdata.is_a() {
+                                                            if let Some(a) = rdata.as_a() {
+                                                                a.0.to_string()
                                                             } else {
                                                                 res.set_status(StatusCode::InternalServerError);
                                                                 res.set_content_type(Self::mime_txt());
-                                                                res.set_body(format!("Bug: matched A or AAAA but hickory-proto does not provide A or AAAA rdata: {rdata:?}"));
+                                                                res.set_body(format!("unexpected upstream DNS resolver respond A record with non-A rdata"));
                                                                 return res;
-                                                            };
-
-                                                        data = serde_json::Value::String(ip_str);
-                                                    } else {
-                                                        res.set_status(StatusCode::InternalServerError);
-                                                        res.set_content_type(Self::mime_txt());
-                                                        res.set_body(format!("unexpected upstream DNS resolver respond A record without IPv4 address: {rr:?}"));
-                                                        return res;
-                                                    }
-                                                },
-                                                TXT => {
-                                                    if let Some(rdata) = rr.data() {
-                                                        let rdata = rdata.clone().into_rdata();
-
-                                                        let txt_data;
-
-                                                        if let Some(txt) = rdata.as_txt() {
-                                                            match version {
-                                                                // modified: returns array of TXT data, instead of use "a""b"
-                                                                2 => {
-                                                                    let mut txt_strings = vec![];
-                                                                    for td in txt.iter() {
-                                                                        txt_strings.push(
-                                                                            serde_json::Value::String(
-                                                                                String::from_utf8_lossy(td).into_owned()
-                                                                            )
-                                                                        );
-                                                                    }
-
-                                                                    txt_data = serde_json::Value::Array(txt_strings);
-                                                                },
-
-                                                                // original version
-                                                                1 => {
-                                                                    let mut txt_str = String::new();
-
-                                                                    let txt = txt.txt_data();
-                                                                    for td in txt.iter() {
-                                                                        let td = String::from_utf8_lossy(td).into_owned();
-                                                                        if txt.len() == 1 {
-                                                                            txt_str = td;
-                                                                        } else {
-                                                                            txt_str.extend(
-                                                                                format!("{td:?}").chars()
-                                                                            );
-                                                                        }
-                                                                    }
-
-                                                                    txt_data = serde_json::Value::String(txt_str);
-                                                                },
-
-                                                                _ => {
-                                                                    unreachable!();
-                                                                }
+                                                            }
+                                                        } else if rdata.is_aaaa() {
+                                                            if let Some(aaaa) = rdata.as_aaaa() {
+                                                                aaaa.0.to_string()
+                                                            } else {
+                                                                res.set_status(StatusCode::InternalServerError);
+                                                                res.set_content_type(Self::mime_txt());
+                                                                res.set_body(format!("unexpected upstream DNS resolver respond AAAA record with non-AAAA rdata"));
+                                                                return res;
                                                             }
                                                         } else {
                                                             res.set_status(StatusCode::InternalServerError);
                                                             res.set_content_type(Self::mime_txt());
-                                                            res.set_body(format!("unexpected upstream DNS resolver respond TXT record with non-TXT rdata"));
+                                                            res.set_body(format!("Bug: matched A or AAAA but hickory-proto does not provide A or AAAA rdata: {rdata:?}"));
                                                             return res;
                                                         };
 
-                                                        data = txt_data;
+                                                    data = serde_json::Value::String(ip_str);
+                                                },
+                                                TXT => {
+                                                    let txt_data;
 
+                                                    if let Some(txt) = rdata.as_txt() {
+                                                        match version {
+                                                            // modified: returns array of TXT data, instead of use "a""b"
+                                                            2 => {
+                                                                let mut txt_strings = vec![];
+                                                                for td in txt.iter() {
+                                                                    txt_strings.push(
+                                                                        serde_json::Value::String(
+                                                                            String::from_utf8_lossy(td).into_owned()
+                                                                        )
+                                                                    );
+                                                                }
+
+                                                                txt_data = serde_json::Value::Array(txt_strings);
+                                                            },
+
+                                                            // original version
+                                                            1 => {
+                                                                let mut txt_str = String::new();
+
+                                                                let txt = txt.txt_data();
+                                                                for td in txt.iter() {
+                                                                    let td = String::from_utf8_lossy(td).into_owned();
+                                                                    if txt.len() == 1 {
+                                                                        txt_str = td;
+                                                                    } else {
+                                                                        txt_str.extend(
+                                                                            format!("{td:?}").chars()
+                                                                        );
+                                                                    }
+                                                                }
+
+                                                                txt_data = serde_json::Value::String(txt_str);
+                                                            },
+
+                                                            _ => {
+                                                                unreachable!();
+                                                            }
+                                                        }
+
+                                                        data = txt_data;
                                                     } else {
                                                         res.set_status(StatusCode::InternalServerError);
                                                         res.set_content_type(Self::mime_txt());
                                                         res.set_body(format!("unexpected upstream DNS resolver respond TXT record without text: {rr:?}"));
+                                                        return res;
+                                                    }
+                                                },
+                                                CNAME | NS | PTR => {
+                                                    if let Some(rdata) = rr.data() {
+                                                        if let Some(cname) = rdata.as_cname() {
+                                                            data = serde_json::Value::String(cname.0.to_ascii());
+                                                        } else if let Some(ns) = rdata.as_ns() {
+                                                            data = serde_json::Value::String(ns.0.to_ascii());
+                                                        } else if let Some(ptr) = rdata.as_ptr() {
+                                                            data = serde_json::Value::String(ptr.0.to_ascii());
+                                                        } else {
+                                                            res.set_status(StatusCode::InternalServerError);
+                                                            res.set_content_type(Self::mime_txt());
+                                                            res.set_body(format!("unexpected upstream DNS resolver respond CNAME/NS/PTR record with it's rdata"));
+                                                            return res;
+                                                        }
+                                                    } else {
+                                                        res.set_status(StatusCode::InternalServerError);
+                                                        res.set_content_type(Self::mime_txt());
+                                                        res.set_body(format!("unexpected upstream DNS resolver respond CNAME/NS/PTR record without domain: {rr:?}"));
+                                                        return res;
+                                                    }
+                                                },
+                                                MX => {
+                                                    if let Some(mx) = rdata.as_mx() {
+                                                        data =
+                                                            serde_json::Value::String(
+                                                                format!(
+                                                                    "{} {}",
+                                                                    mx.preference(),
+                                                                    mx.exchange().to_ascii()
+                                                                )
+                                                            );
+                                                    } else {
+                                                        res.set_status(StatusCode::InternalServerError);
+                                                        res.set_content_type(Self::mime_txt());
+                                                        res.set_body(format!("unexpected upstream DNS resolver respond MX record with non-MX rdata"));
+                                                        return res;
+                                                    }
+                                                },
+                                                SOA => {
+                                                    if let Some(soa) = rdata.as_soa() {
+                                                        data =
+                                                            serde_json::Value::String(
+                                                                format!(
+                                                                    "{} {} {} {} {} {} {}",
+                                                                    soa.mname().to_ascii(),
+                                                                    soa.rname().to_ascii(),
+                                                                    soa.serial(),
+                                                                    soa.refresh(),
+                                                                    soa.retry(),
+                                                                    soa.expire(),
+                                                                    soa.minimum()
+                                                                )
+                                                            );
+                                                    } else {
+                                                        res.set_status(StatusCode::InternalServerError);
+                                                        res.set_content_type(Self::mime_txt());
+                                                        res.set_body(format!("unexpected upstream DNS resolver respond SOA record with non-SOA rdata"));
+                                                        return res;
+                                                    }
+                                                },
+                                                SRV => {
+                                                    if let Some(srv) = rdata.as_srv() {
+                                                        data =
+                                                            serde_json::Value::String(
+                                                                format!(
+                                                                    "{} {} {} {}",
+                                                                    srv.priority(),
+                                                                    srv.weight(),
+                                                                    srv.port(),
+                                                                    srv.target().to_ascii()
+                                                                )
+                                                            );
+                                                    } else {
+                                                        res.set_status(StatusCode::InternalServerError);
+                                                        res.set_content_type(Self::mime_txt());
+                                                        res.set_body(format!("unexpected upstream DNS resolver respond SRV record with non-SRV rdata"));
+                                                        return res;
+                                                    }
+                                                },
+                                                SVCB => {
+                                                    if let Some(svcb) = rdata.as_svcb() {
+                                                        data =
+                                                            serde_json::Value::String(
+                                                                format!(
+                                                                    "{} {} {}",
+                                                                    svcb.svc_priority(),
+                                                                    svcb.target_name(),
+
+                                                                    svcb.svc_params().iter().map(
+                                                                        |(key, val)| {
+                                                                            if val.is_no_default_alpn() {
+                                                                                // NO_DEFAULT_ALPN is does not have it's value
+                                                                                format!("{key}")
+                                                                            } else {
+                                                                                format!("{key}={val}")
+                                                                            }
+                                                                        }
+                                                                    )
+                                                                    .collect::<Vec<String>>()
+                                                                    .join(" ")
+                                                                )
+                                                            );
+                                                    } else {
+                                                        res.set_status(StatusCode::InternalServerError);
+                                                        res.set_content_type(Self::mime_txt());
+                                                        res.set_body(format!("unexpected upstream DNS resolver respond SVCB record with non-SVCB rdata"));
                                                         return res;
                                                     }
                                                 },

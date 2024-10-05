@@ -509,7 +509,7 @@ jobs:
           cp -v target/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.aarch64-mac
           git add -A
           git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 mac"
-          git push origin bin || true # why this rejected by github?   ! [rejected] bin -> bin (fetch first) error: failed to push some refs to 'https://github.com/delta4chat/hitdns'
+          git push origin bin # || true # why this rejected by github?   ! [rejected] bin -> bin (fetch first) error: failed to push some refs to 'https://github.com/delta4chat/hitdns'
           git switch this
           git reset --hard ${{github.sha}}
 
