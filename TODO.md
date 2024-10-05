@@ -25,3 +25,5 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 5. [ ] \(optional) add network offline detects?
 6. [ ] \(optional) add automatic update expired cache entry?
 7. [ ] CI: build.yml: use matrix instead of duplicate codes
+8. [ ] implement [RFC 8427](https://www.rfc-editor.org/rfc/rfc8427) JSON output
+9. [ ] add more rdtype output in dohp `/resolve`

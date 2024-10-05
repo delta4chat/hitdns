@@ -555,13 +555,20 @@ impl DNSOverHTTP {
 
                                         let answers = json.get_mut("Answer").unwrap().as_array_mut().unwrap();
                                         for rr in dns_res.answers().iter() {
-                                            let name = rr.name().to_ascii();
+                                            let name = {
+                                                let mut n = rr.name().to_ascii();
+                                                if ! n.ends_with('.') {
+                                                    n.push('.');
+                                                }
+                                                n
+                                            };
                                             let rdtype = rr.record_type();
                                             let ttl = rr.ttl();
 
                                             use dns::RdType::*;
                                             use dns::RecordData;
 
+                                            let mut data;
                                             match rdtype {
                                                 A | AAAA => {
                                                     if let Some(rdata) = rr.data() {
@@ -592,16 +599,7 @@ impl DNSOverHTTP {
                                                                 return res;
                                                             };
 
-                                                        let rdclass: u16 = rr.dns_class().into();
-                                                        let rdtype: u16 = rdtype.into();
-
-                                                        answers.push(serde_json::json!({
-                                                            "name": name,
-                                                            "class": rdclass,
-                                                            "type": rdtype,
-                                                            "TTL": ttl,
-                                                            "data": ip_str
-                                                        }));
+                                                        data = serde_json::Value::String(ip_str);
                                                     } else {
                                                         res.set_status(StatusCode::InternalServerError);
                                                         res.set_content_type(Self::mime_txt());
@@ -661,16 +659,8 @@ impl DNSOverHTTP {
                                                             return res;
                                                         };
 
-                                                        let rdclass: u16 = rr.dns_class().into();
-                                                        let rdtype: u16 = rdtype.into();
+                                                        data = txt_data;
 
-                                                        answers.push(serde_json::json!({
-                                                            "name": name,
-                                                            "class": rdclass,
-                                                            "type": rdtype,
-                                                            "TTL": ttl,
-                                                            "data": txt_data,
-                                                        }));
                                                     } else {
                                                         res.set_status(StatusCode::InternalServerError);
                                                         res.set_content_type(Self::mime_txt());
@@ -679,9 +669,22 @@ impl DNSOverHTTP {
                                                     }
                                                 },
                                                 _ => {
-                                                    todo!("other format")
+                                                    data = serde_json::json!({"error": "WIP not implemented"});
                                                 }
                                             } // match rdtype
+
+                                            let rdclass: u16 = rr.dns_class().into();
+                                            let rdtype: u16 = rdtype.into();
+
+                                            answers.push(
+                                                serde_json::json!({
+                                                    "name": name,
+                                                    "class": rdclass,
+                                                    "type": rdtype,
+                                                    "TTL": ttl,
+                                                    "data": data,
+                                                })
+                                            );
                                         } // for each answers
 
                                         res.set_content_type(Self::mime_json());
