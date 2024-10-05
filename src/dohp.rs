@@ -9,6 +9,8 @@ use smol::net::TcpListener;
 
 use base64::prelude::*;
 
+use bytes::Bytes;
+
 #[derive(Debug)]
 pub struct DNSOverHTTP {
     listener: TcpListener,
@@ -354,20 +356,29 @@ impl DNSOverHTTP {
                                         }
                                     }
 
+                                    // version=0: latest version (currently v3)
                                     // version=1: original format from Google, defaults to this if not specified or it is not a unsigned 16-bit integer.
                                     // version=2: hitdns modified version, such as TXT array
+                                    // version=3: for each TXT record, use bytes escape instead of String::from_utf8_lossy
                                     // 
                                     // other version is reserved for future use.
                                     //
                                     // NOTE: because ?class= does not breaking compatibility, so it will be accepted by v1 format
-                                    let version: u16 = maybe_version.unwrap_or(String::new()).parse().unwrap_or(1);
+                                    let version = {
+                                        let mut ver: u16 = maybe_version.unwrap_or(String::new()).parse().unwrap_or(1);
+                                        if ver == 0 {
+                                            ver = 3;
+                                        }
+                                        ver
+                                    };
+                                    
 
                                     match version {
-                                        1 | 2 => {},
+                                        1 | 2 | 3 => {},
                                         _ => {
                                             res.set_status(StatusCode::BadRequest);
                                             res.set_content_type(Self::mime_txt());
-                                            res.set_body(format!("unknown version, it should be 1 or 2"));
+                                            res.set_body(format!("unknown version, it should be 1, 2, or 3"));
                                             return res;
                                         }
                                     }
@@ -495,6 +506,7 @@ impl DNSOverHTTP {
                                                   match version {
                                                       1 => "Google",
                                                       2 => "GoogleModified",
+                                                      3 => "GoogleModifiedBytesEscape",
                                                       _ => { unreachable!() }
                                                   }
                                               ),
@@ -534,6 +546,7 @@ impl DNSOverHTTP {
                                         let status: u16 = dns_res.response_code().into();
 
                                         let mut json = serde_json::json!({
+                                            "Version": version,
                                             "Status": status,
 
                                             "TC": dns_res.truncated(),
@@ -673,13 +686,28 @@ fn records_iter_helper<'a>(
                 if let Some(txt) = rdata.as_txt() {
                     match version {
                         // modified: returns array of TXT data, instead of use "a""b"
-                        2 => {
+                        3 | 2 => {
                             let mut txt_strings = vec![];
                             for td in txt.iter() {
+                                let t =
+                                    match version {
+                                        3 => { // escaped bytes
+                                            let t = format!("{:?}", Bytes::from(td.to_vec()));
+
+                                            // remove b" and "
+                                            let mut t: String = t.chars().skip(2).collect();
+                                            t.pop();
+
+                                            t
+                                        },
+                                        2 => { // UTF-8 lossy
+                                            String::from_utf8_lossy(td).into_owned()
+                                        },
+                                        _ => { unreachable!(); }
+                                    };
+
                                 txt_strings.push(
-                                    serde_json::Value::String(
-                                        String::from_utf8_lossy(td).into_owned()
-                                    )
+                                    serde_json::Value::String(t)
                                 );
                             }
 
@@ -821,7 +849,31 @@ fn records_iter_helper<'a>(
                     );
             },
             HINFO => {
-                todo!()
+                if let Some(hinfo) = rdata.as_hinfo() {
+                    let cpu = hinfo.cpu().to_vec();
+                    let os = hinfo.os().to_vec();
+
+                    data =
+                        serde_json::Value::String(
+                            format!(
+                                "{} {}",
+
+                                if let Ok(v) = String::from_utf8(cpu.clone()) {
+                                    v
+                                } else {
+                                    format!("{:?}", Bytes::from(cpu))
+                                },
+
+                                if let Ok(v) = String::from_utf8(os.clone()) {
+                                    v
+                                } else {
+                                    format!("{:?}", Bytes::from(os))
+                                }
+                            )
+                        );
+                } else {
+                    anyhow::bail!("unexpected upstream DNS resolver respond HINFO record with non-HINFO rdata");
+                }
             },
             _ => {
                 data = serde_json::json!({"error": "WIP not implemented"});
