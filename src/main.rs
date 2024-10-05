@@ -22,6 +22,10 @@ pub use hosts::*;
 pub mod protocol;
 pub use protocol::*;
 
+// dohp.rs
+pub mod dohp;
+pub use dohp::*;
+
 // api.rs
 pub mod api;
 pub use api::*;

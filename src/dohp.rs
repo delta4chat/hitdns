@@ -645,7 +645,7 @@ fn records_iter_helper<'a>(
                 anyhow::bail!("unexpected upstream DNS resolver respond Record without RDATA: {rr:?}");
             };
 
-        let mut data;
+        let data;
         match rdtype {
             A | AAAA => {
                 let ip_str: String =

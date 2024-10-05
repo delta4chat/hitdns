@@ -2,10 +2,6 @@
 pub mod doh;
 pub use doh::*;
 
-// dohp.rs
-pub mod dohp;
-pub use dohp::*;
-
 //pub mod pool; // compile error
 
 // dot.rs
