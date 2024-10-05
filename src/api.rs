@@ -182,7 +182,7 @@ GET /stats         ->  get DNS query analysis
                         } // async move block
                     }, // move closure
                     async_h1b::ServerOptions::new()
-                        .with_headers_timeout(Duration::from_secs(60))
+                        //.with_headers_timeout(Duration::from_secs(60))
                         .with_default_host("unspecified.invalid")
                 ) // async_h1b::accept_with_opts
             ).detach(); // smolscale2::spawn
