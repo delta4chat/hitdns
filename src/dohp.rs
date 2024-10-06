@@ -365,10 +365,12 @@ impl DNSOverHTTP {
                                     // version=1: original format from Google, defaults to this if not specified or it is not a unsigned 16-bit integer.
                                     // version=2: hitdns modified version, such as TXT array
                                     // version=3: for each TXT record, use bytes escape instead of String::from_utf8_lossy
+                                    // version=4: structural data instead of encode all parts to single string
                                     // 
                                     // other version is reserved for future use.
                                     //
-                                    // NOTE: because ?class= does not breaking compatibility, so it will be accepted by v1 format
+                                    // NOTE: because ?class= does not breaking compatibility, so it will be accepted by v1 format.
+                                    //       any new fields will be handled the same way.
                                     let version = {
                                         let mut ver: u16 = maybe_version.unwrap_or(String::new()).parse().unwrap_or(1);
                                         if ver == 0 {
@@ -749,7 +751,7 @@ fn records_iter_helper<'a>(
                     anyhow::bail!("unexpected upstream DNS resolver respond TXT record without text: {rr:?}");
                 }
             },
-            CNAME | NS | PTR => {
+            CNAME | NS | PTR | ANAME => {
                 if let Some(rdata) = rr.data() {
                     if let Some(cname) = rdata.as_cname() {
                         data = serde_json::Value::String(cname.0.to_ascii());
@@ -757,11 +759,13 @@ fn records_iter_helper<'a>(
                         data = serde_json::Value::String(ns.0.to_ascii());
                     } else if let Some(ptr) = rdata.as_ptr() {
                         data = serde_json::Value::String(ptr.0.to_ascii());
+                    } else if let Some(aname) = rdata.as_aname() {
+                        data = serde_json::Value::String(aname.0.to_ascii());
                     } else {
-                        anyhow::bail!("unexpected upstream DNS resolver respond CNAME/NS/PTR record with it's rdata");
+                        anyhow::bail!("unexpected upstream DNS resolver respond CNAME/NS/PTR/ANAME record with it's rdata");
                     }
                 } else {
-                    anyhow::bail!("unexpected upstream DNS resolver respond CNAME/NS/PTR record without domain: {rr:?}");
+                    anyhow::bail!("unexpected upstream DNS resolver respond CNAME/NS/PTR/ANAME record without domain: {rr:?}");
                 }
             },
             MX => {
@@ -822,7 +826,7 @@ fn records_iter_helper<'a>(
                     anyhow::bail!("unexpected upstream DNS resolver respond SOA record with non-SOA rdata");
                 }
             },
-            SRV => {
+            SRV => { // not tested TODO
                 if let Some(srv) = rdata.as_srv() {
                     data =
                         match version {
@@ -1289,6 +1293,41 @@ fn records_iter_helper<'a>(
                     }
                 } else {
                     anyhow::bail!("unexpected upstream DNS resolver respond DNSSEC-like record with non-DNSSEC rdata");
+                }
+            },
+            CAA => {
+                if let Some(caa) = rdata.as_caa() {
+                    let string = format!("{caa}");
+
+                    data =
+                        match version {
+                            4 => {
+                                let mut v = format!("{}", caa.value());
+                                v.remove(0); v.pop(); // remove ""
+                                serde_json::json!({
+                                    "string": string,
+
+                                    "issuer_critical": caa.issuer_critical(),
+                                    "tag": caa.tag().as_str(),
+                                    "value": v
+                                })
+                            },
+                            _ => {
+                                serde_json::Value::String(string)
+                            }
+                        };
+                } else {
+                    anyhow::bail!("unexpected upstream DNS resolver respond CAA record with non-CAA rdata");
+                }
+            },
+            OPENPGPKEY => { // not tested: rarely seen in public dns
+                if let Some(openpgpkey) = rdata.as_openpgpkey() {
+                    data =
+                        serde_json::Value::String(
+                            format!("{openpgpkey}")
+                        );
+                } else {
+                    anyhow::bail!("unexpected upstream DNS resolver respond OPENPGPKEY record with non-OPENPGPKEY rdata");
                 }
             },
             _ => {
