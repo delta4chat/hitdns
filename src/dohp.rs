@@ -356,7 +356,7 @@ impl DNSOverHTTP {
                                         }
                                     }
 
-                                    // version=0: latest version (currently v3)
+                                    // version=0: latest version (currently v4)
                                     // version=1: original format from Google, defaults to this if not specified or it is not a unsigned 16-bit integer.
                                     // version=2: hitdns modified version, such as TXT array
                                     // version=3: for each TXT record, use bytes escape instead of String::from_utf8_lossy
@@ -367,18 +367,18 @@ impl DNSOverHTTP {
                                     let version = {
                                         let mut ver: u16 = maybe_version.unwrap_or(String::new()).parse().unwrap_or(1);
                                         if ver == 0 {
-                                            ver = 3;
+                                            ver = 4;
                                         }
                                         ver
                                     };
                                     
 
                                     match version {
-                                        1 | 2 | 3 => {},
+                                        1 | 2 | 3 | 4 => {},
                                         _ => {
                                             res.set_status(StatusCode::BadRequest);
                                             res.set_content_type(Self::mime_txt());
-                                            res.set_body(format!("unknown version, it should be 1, 2, or 3"));
+                                            res.set_body(format!("unknown version: it should be 1, 2, 3, or 4"));
                                             return res;
                                         }
                                     }
@@ -506,7 +506,8 @@ impl DNSOverHTTP {
                                                   match version {
                                                       1 => "Google",
                                                       2 => "GoogleModified",
-                                                      3 => "GoogleModifiedBytesEscape",
+                                                      3 => "GoogleModified-BytesEscape",
+                                                      4 => "GoogleModified-BytesEscape-StructuralData",
                                                       _ => { unreachable!() }
                                                   }
                                               ),
@@ -686,12 +687,12 @@ fn records_iter_helper<'a>(
                 if let Some(txt) = rdata.as_txt() {
                     match version {
                         // modified: returns array of TXT data, instead of use "a""b"
-                        3 | 2 => {
+                        4 | 3 | 2 => {
                             let mut txt_strings = vec![];
                             for td in txt.iter() {
                                 let t =
                                     match version {
-                                        3 => { // escaped bytes
+                                        4 | 3 => { // escaped bytes
                                             let t = format!("{:?}", Bytes::from(td.to_vec()));
 
                                             // remove b" and "
@@ -761,13 +762,23 @@ fn records_iter_helper<'a>(
             MX => {
                 if let Some(mx) = rdata.as_mx() {
                     data =
-                        serde_json::Value::String(
-                            format!(
-                                "{} {}",
-                                mx.preference(),
-                                mx.exchange().to_ascii()
-                            )
-                        );
+                        match version {
+                            4 => {
+                                serde_json::json!({
+                                    "preference": mx.preference(),
+                                    "exchange": mx.exchange().to_ascii()
+                                })
+                            },
+                            _ => {
+                                serde_json::Value::String(
+                                    format!(
+                                        "{} {}",
+                                        mx.preference(),
+                                        mx.exchange().to_ascii()
+                                    )
+                                )
+                            }
+                        };
                 } else {
                     anyhow::bail!("unexpected upstream DNS resolver respond MX record with non-MX rdata");
                 }
@@ -775,18 +786,33 @@ fn records_iter_helper<'a>(
             SOA => {
                 if let Some(soa) = rdata.as_soa() {
                     data =
-                        serde_json::Value::String(
-                            format!(
-                                "{} {} {} {} {} {} {}",
-                                soa.mname().to_ascii(),
-                                soa.rname().to_ascii(),
-                                soa.serial(),
-                                soa.refresh(),
-                                soa.retry(),
-                                soa.expire(),
-                                soa.minimum()
-                            )
-                        );
+                        match version {
+                            4 => {
+                                serde_json::json!({
+                                    "mname": soa.mname().to_ascii(),
+                                    "rname": soa.rname().to_ascii(),
+                                    "serial": soa.serial(),
+                                    "refresh": soa.refresh(),
+                                    "retry": soa.retry(),
+                                    "expire": soa.expire(),
+                                    "minimum": soa.minimum()
+                                })
+                            },
+                            _ => {
+                                serde_json::Value::String(
+                                    format!(
+                                        "{} {} {} {} {} {} {}",
+                                        soa.mname().to_ascii(),
+                                        soa.rname().to_ascii(),
+                                        soa.serial(),
+                                        soa.refresh(),
+                                        soa.retry(),
+                                        soa.expire(),
+                                        soa.minimum()
+                                    )
+                                )
+                            }
+                        };
                 } else {
                     anyhow::bail!("unexpected upstream DNS resolver respond SOA record with non-SOA rdata");
                 }
@@ -794,15 +820,27 @@ fn records_iter_helper<'a>(
             SRV => {
                 if let Some(srv) = rdata.as_srv() {
                     data =
-                        serde_json::Value::String(
-                            format!(
-                                "{} {} {} {}",
-                                srv.priority(),
-                                srv.weight(),
-                                srv.port(),
-                                srv.target().to_ascii()
-                            )
-                        );
+                        match version {
+                            4 => {
+                                serde_json::json!({
+                                    "priority": srv.priority(),
+                                    "weight": srv.weight(),
+                                    "port": srv.port(),
+                                    "target": srv.target().to_ascii()
+                                })
+                            },
+                            _ => {
+                                serde_json::Value::String(
+                                    format!(
+                                        "{} {} {} {}",
+                                        srv.priority(),
+                                        srv.weight(),
+                                        srv.port(),
+                                        srv.target().to_ascii()
+                                    )
+                                )
+                            }
+                        };
                 } else {
                     anyhow::bail!("unexpected upstream DNS resolver respond SRV record with non-SRV rdata");
                 }
@@ -818,35 +856,58 @@ fn records_iter_helper<'a>(
                     };
 
                 data =
-                    serde_json::Value::String(
-                        format!(
-                            "{} {} {}",
-                            svcb.svc_priority(),
-                            svcb.target_name(),
-
-                            svcb.svc_params().iter().map(
-                                |(key, val)| {
+                    match version {
+                        4 => {
+                            let mut sp = Vec::new();
+                            for (key, val) in svcb.svc_params().iter() {
+                                let obj =
                                     if val.is_no_default_alpn() {
-                                        // NO_DEFAULT_ALPN is does not have it's value
-                                        format!("{key}")
+                                        serde_json::json!({
+                                            "key": format!("{key}")
+                                        })
                                     } else {
-                                        let mut val = val.to_string();
+                                        serde_json::json!({
+                                            "key": format!("{key}"),
+                                            "value": format!("{val}")
+                                        })
+                                    };
+                                sp.push(obj);
+                            }
 
-                                        while val.contains(",,") {
-                                            val = val.replace(",,", ",");
-                                        }
-                                        while val.ends_with(",") {
-                                            val.pop();
-                                        }
+                            serde_json::Value::Array(sp)
+                        },
+                        _ => {
+                            serde_json::Value::String(
+                                format!(
+                                    "{} {} {}",
+                                    svcb.svc_priority(),
+                                    svcb.target_name(),
 
-                                        format!("{key}={val}")
-                                    }
-                                }
+                                    svcb.svc_params().iter().map(
+                                        |(key, val)| {
+                                            if val.is_no_default_alpn() {
+                                                // NO_DEFAULT_ALPN is does not have it's value
+                                                format!("{key}")
+                                            } else {
+                                                let mut val = val.to_string();
+
+                                                while val.contains(",,") {
+                                                    val = val.replace(",,", ",");
+                                                }
+                                                while val.ends_with(",") {
+                                                    val.pop();
+                                                }
+
+                                                format!("{key}={val}")
+                                            }
+                                        }
+                                    )
+                                    .collect::<Vec<String>>()
+                                    .join(" ")
+                                )
                             )
-                            .collect::<Vec<String>>()
-                            .join(" ")
-                        )
-                    );
+                        }
+                    };
             },
             HINFO => {
                 if let Some(hinfo) = rdata.as_hinfo() {
