@@ -9,7 +9,7 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 
 ## add a config file instead of command line arguments
 * [x] completed TOML config file
-<br/>
+
 ~~1. use YAML, TOML, or JSON?~~
 
 ## more useful API operations
@@ -23,7 +23,7 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 3. [ ] add support for LAN devices lookups, for example `.local` / `.lan` domains. (should forward it to gateway DNS such as `192.168.1.1`?)
 4. [x] add hosts support for DNS resolving
 5. [ ] \(optional) add network offline detects?
-6. [ ] \(optional) add automatic update expired cache entry?
+6. [x] \(optional) ~~add automatic update expired cache entry?~~ implements API endpoint for requesting Record expire. instead of "automatic update" (which uses a lot of bandwidth due to refreshing ALL dns queries received in the past, and may be exploited by DDoS attacks as a traffic reflection amplifier)
 7. [ ] CI: build.yml: use matrix instead of duplicate codes
 8. [ ] implement [RFC 8427](https://www.rfc-editor.org/rfc/rfc8427) JSON output
 9. [ ] add more rdtype output in dohp `/resolve`
