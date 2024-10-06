@@ -64,6 +64,7 @@ pub mod dns {
         dns_class::DNSClass,
         record_type::RecordType,
         record_data::RData,
+        dnssec::rdata::key::{KeyTrust, KeyUsage},
         rdata,
         Record,
     };
@@ -1165,11 +1166,14 @@ impl DefaultServers {
             "https://45.11.45.11/dns-query",
             "https://185.222.222.222/dns-query",
 
-            // Adguard DNS Un-filtered
+            // [?] Adguard DNS Un-filtered
             "https://94.140.14.140/dns-query",
 
             // [CH] dns.switch.ch
-            //"https://130.59.31.248/dns-query",
+            "https://130.59.31.248/dns-query",
+            "https://130.59.31.251/dns-query",
+            "https://[2001:620:0:ff::2]/dns-query",
+            "https://[2001:620:0:ff::3]/dns-query",
         ];
 
         let mut list: Vec<Arc<dyn DNSResolver>> = vec![];

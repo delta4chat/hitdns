@@ -1,5 +1,7 @@
 // DNS over HTTP plaintext
 
+#![allow(deprecated)]
+
 use crate::*;
 
 use core::str::FromStr;
@@ -7,7 +9,10 @@ use core::str::FromStr;
 use http_types::{Mime, Response, StatusCode, Method};
 use smol::net::TcpListener;
 
-use base64::prelude::*;
+use data_encoding::{
+    BASE64, BASE64URL_NOPAD, BASE32_NOPAD,
+    HEXUPPER as HEX_UPPER,
+};
 
 use bytes::Bytes;
 
@@ -196,7 +201,7 @@ impl DNSOverHTTP {
                                                 };
 
                                             let dns_req =
-                                                match BASE64_URL_SAFE_NO_PAD.decode(dns) {
+                                                match BASE64URL_NOPAD.decode(dns.as_bytes()) {
                                                     Ok(wire) => {
                                                         match dns::Message::from_vec(&wire) {
                                                             Ok(val) => val,
@@ -915,25 +920,375 @@ fn records_iter_helper<'a>(
                     let os = hinfo.os().to_vec();
 
                     data =
-                        serde_json::Value::String(
-                            format!(
-                                "{} {}",
+                        match version {
+                            4 => {
+                                let cpu = {
+                                    let c = format!("{:?}", Bytes::from(cpu));
 
-                                if let Ok(v) = String::from_utf8(cpu.clone()) {
-                                    v
-                                } else {
-                                    format!("{:?}", Bytes::from(cpu))
-                                },
+                                    // remove b" and "
+                                    let mut c: String = c.chars().skip(2).collect();
+                                    c.pop();
 
-                                if let Ok(v) = String::from_utf8(os.clone()) {
-                                    v
-                                } else {
-                                    format!("{:?}", Bytes::from(os))
-                                }
-                            )
-                        );
+                                    c
+                                };
+                                let os = {
+                                    let o = format!("{:?}", Bytes::from(os));
+
+                                    // remove b" and "
+                                    let mut o: String = o.chars().skip(2).collect();
+                                    o.pop();
+
+                                    o
+                                };
+
+                                serde_json::json!({
+                                    "cpu": cpu,
+                                    "os": os
+                                })
+                            },
+                            _ => {
+                                serde_json::Value::String(
+                                    format!(
+                                        "{} {}",
+
+                                        if let Ok(v) = String::from_utf8(cpu.clone()) {
+                                            v
+                                        } else {
+                                            format!("{:?}", Bytes::from(cpu))
+                                        },
+
+                                        if let Ok(v) = String::from_utf8(os.clone()) {
+                                            v
+                                        } else {
+                                            format!("{:?}", Bytes::from(os))
+                                        }
+                                    )
+                                )
+                            }
+                        };
                 } else {
                     anyhow::bail!("unexpected upstream DNS resolver respond HINFO record with non-HINFO rdata");
+                }
+            },
+            _ if rdtype.is_dnssec() => {
+                if let Some(dnssec) = rdata.as_dnssec() {
+                    if dnssec.is_dnskey() || dnssec.is_cdnskey() {
+                        let dnskey =
+                            if let Some(dnskey) = dnssec.as_dnskey() {
+                                dnskey
+                            } else if let Some(cdnskey) = dnssec.as_cdnskey() {
+                                cdnskey.deref()
+                            } else {
+                                anyhow::bail!("unexpected upstream DNS resolver respond DNSKEY record with non-DNSKEY rdata");
+                            };
+
+                        const DNSKEY_PROTOCOL: u8 = 0x03;
+
+                        data =
+                            match version {
+                                4 => {
+                                    serde_json::json!({
+                                        "string": format!("{dnskey}"),
+
+                                        "flags": {
+                                            "uint16": dnskey.flags(),
+                                            "info": {
+                                                "zone_key": dnskey.zone_key(),
+                                                "secure_entry_point": dnskey.secure_entry_point(),
+                                                "revoke": dnskey.revoke(),
+                                            },
+                                        },
+                                        "protocol": DNSKEY_PROTOCOL,
+                                        "algorithm": u8::from(dnskey.algorithm()),
+                                        "public_key": BASE64.encode(dnskey.public_key())
+                                    })
+                                },
+                                _ => {
+                                    serde_json::Value::String(
+                                        format!(
+                                            "{} {} {} {}",
+                                            dnskey.flags(),
+                                            DNSKEY_PROTOCOL,
+                                            u8::from(dnskey.algorithm()),
+                                            BASE64.encode(dnskey.public_key())
+                                        )
+                                    )
+                                }
+                            };
+                    } else if dnssec.is_ds() || dnssec.is_cds() {
+                        let ds =
+                            if let Some(ds) = dnssec.as_ds() {
+                                ds
+                            } else if let Some(cds) = dnssec.as_cds() {
+                                cds.deref()
+                            } else {
+                                anyhow::bail!("unexpected upstream DNS resolver respond DS record with non-DS rdata");
+                            };
+
+                        data =
+                            match version {
+                                4 => {
+                                    serde_json::json!({
+                                        "string": format!("{ds}"),
+
+                                        "key_tag": ds.key_tag(),
+                                        "algorithm": u8::from(ds.algorithm()),
+                                        "digest_type": u8::from(ds.digest_type()),
+                                        "digest": HEX_UPPER.encode(ds.digest())
+                                    })
+                                },
+                                _ => {
+                                    serde_json::Value::String(
+                                        format!(
+                                            "{} {} {} {}",
+                                            ds.key_tag(),
+                                            u8::from(ds.algorithm()),
+                                            u8::from(ds.digest_type()),
+                                            HEX_UPPER.encode(ds.digest())
+                                        )
+                                    )
+                                }
+                            };
+                    } else if dnssec.is_sig() || dnssec.is_rrsig() { // only SIG is not tested: rarely seen in public dns
+                        let sig =
+                            if let Some(sig) = dnssec.as_sig() {
+                                sig
+                            } else if let Some(rrsig) = dnssec.as_rrsig() {
+                                rrsig.deref()
+                            } else {
+                                anyhow::bail!("unexpected upstream DNS resolver respond SIG record with non-SIG rdata");
+                            };
+
+                        let type_covered = sig.type_covered();
+                        let string =
+                            format!(
+                                "{} {} {} {} {} {} {} {} {}",
+
+                                if let Unknown(tc) = type_covered {
+                                    tc.to_string()
+                                } else {
+                                    format!("{type_covered}")
+                                },
+                                u8::from(sig.algorithm()),
+                                sig.num_labels(),
+                                sig.original_ttl(),
+                                sig.sig_expiration(),
+                                sig.sig_inception(),
+                                sig.key_tag(),
+                                sig.signer_name().to_ascii(),
+                                BASE64.encode(sig.sig())
+                            );
+
+                        data =
+                            match version {
+                                4 => {
+                                    serde_json::json!({
+                                        "string": string,
+
+                                        "type_covered": u16::from(sig.type_covered()),
+                                        "algorithm": u8::from(sig.algorithm()),
+                                        "num_labels": sig.num_labels(),
+                                        "original_ttl": sig.original_ttl(),
+                                        "sig_expiration": sig.sig_expiration(),
+                                        "sig_inception": sig.sig_inception(),
+                                        "key_tag": sig.key_tag(),
+                                        "signer_name": sig.signer_name().to_ascii(),
+                                        "sig": BASE64.encode(sig.sig())
+                                    })
+                                },
+                                _ => {
+                                    serde_json::Value::String(string)
+                                }
+                            };
+                    } else if let Some(tsig) = dnssec.as_tsig() { // not tested: difficult to it is not easy to build query that can trigger such responses
+                        data =
+                            match version {
+                                4 => {
+                                    serde_json::json!({
+                                        "string": format!("{tsig}"),
+
+                                        "algorithm": tsig.algorithm().to_name().to_ascii(),
+                                        "time": tsig.time().to_string(), // u64::MAX is not "safe integer" in javascript
+                                        "fudge": tsig.fudge(),
+                                        "mac": HEX_UPPER.encode(tsig.mac()),
+                                    })
+                                },
+                                _ => {
+                                    serde_json::Value::String(
+                                        format!("{tsig}")
+                                    )
+                                }
+                            };
+                    } else if let Some(key) = dnssec.as_key() { // not tested: it is deprecated by RFC 3007, and rarely seen in public dns
+                        data =
+                            match version {
+                                4 => {
+                                    use dns::KeyTrust::*;
+                                    use dns::KeyUsage::*;
+
+                                    let si = key.signatory();
+
+                                    serde_json::json!({
+                                        "string": format!("{key}"),
+
+                                        "flags": {
+                                            "uint16": key.flags(),
+                                            "info": {
+                                                "key_trust":
+                                                    match key.key_trust() {
+                                                        NotAuth => "NOT_AUTH",
+                                                        NotPrivate => "NOT_PRIVATE",
+                                                        AuthOrPrivate => "AUTH_OR_PRIVATE",
+                                                        DoNotTrust => "DO_NOT_TRUST",
+                                                    },
+                                                "key_usage":
+                                                    match key.key_usage() {
+                                                        Host => "HOST",
+                                                        Zone => "ZONE",
+                                                        Entity => "ENTITY",
+                                                        Reserved => "RESERVED",
+                                                    },
+                                                "signatory": {
+                                                    "zone": si.zone,
+                                                    "strong": si.strong,
+                                                    "unique": si.unique,
+                                                    "general": si.general,
+                                                },
+                                            },
+                                        },
+                                        "protocol": u8::from(key.protocol()),
+                                        "algorithm": u8::from(key.algorithm()),
+                                        "public_key": BASE64.encode(key.public_key())
+                                    })
+                                },
+                                _ => {
+                                    serde_json::Value::String(
+                                        format!(
+                                            "{} {} {} {}",
+                                            key.flags(),
+                                            u8::from(key.protocol()),
+                                            u8::from(key.algorithm()),
+                                            BASE64.encode(key.public_key())
+                                        )
+                                    )
+                                }
+                            };
+                    } else if let Some(nsec) = dnssec.as_nsec() {
+                        let string =
+                            format!(
+                                "{} {}",
+                                nsec.next_domain_name().to_ascii(),
+                                nsec.type_bit_maps().iter().map(
+                                    |rdtype| {
+                                        if let Unknown(rt) = rdtype {
+                                            rt.to_string()
+                                        } else {
+                                            format!("{rdtype}")
+                                        }
+                                    }
+                                ).collect::<Vec<String>>().join(" ")
+                            );
+
+                        data =
+                            match version {
+                                4 => {
+                                    serde_json::json!({
+                                        "string": string,
+
+                                        "next_domain_name": nsec.next_domain_name().to_ascii(),
+                                        "type_bit_maps": nsec.type_bit_maps().iter().map(|v| { u16::from(*v) }).collect::<Vec<u16>>(),
+                                    })
+                                },
+                                _ => {
+                                    serde_json::Value::String(string)
+                                }
+                            };
+                    } else if let Some(nsec3) = dnssec.as_nsec3() { // not tested: how to make a query that returns this record?
+                        let salt = nsec3.salt();
+
+                        let string =
+                            format!(
+                                "{} {} {} {} {} {}",
+                                u8::from(nsec3.hash_algorithm()),
+                                nsec3.flags(),
+                                nsec3.iterations(),
+                                if salt.is_empty() { String::from("-") } else { BASE32_NOPAD.encode(salt) },
+                                BASE32_NOPAD.encode(nsec3.next_hashed_owner_name()),
+                                nsec3.type_bit_maps().iter().map(
+                                    |rdtype| {
+                                        if let Unknown(rt) = rdtype {
+                                            rt.to_string()
+                                        } else {
+                                            format!("{rdtype}")
+                                        }
+                                    }
+                                ).collect::<Vec<String>>().join(" ")
+                            );
+
+                        data =
+                            match version {
+                                4 => {
+                                    serde_json::json!({
+                                        "string": string,
+
+                                        "hash_algorithm": u8::from(nsec3.hash_algorithm()),
+                                        "flags": {
+                                            "uint8": nsec3.flags(),
+                                            "info": {
+                                                "opt_out": nsec3.opt_out(),
+                                            }
+                                        },
+                                        "iterations": nsec3.iterations(),
+                                        "salt": BASE32_NOPAD.encode(nsec3.salt()),
+                                        "next_hashed_owner_name": BASE32_NOPAD.encode(nsec3.next_hashed_owner_name()),
+                                        "type_bit_maps": nsec3.type_bit_maps().iter().map(|v| { u16::from(*v) }).collect::<Vec<u16>>(),
+                                    })
+                                },
+                                _ => {
+                                    serde_json::Value::String(string)
+                                }
+                            };
+                    } else if let Some(nsec3param) = dnssec.as_nsec3param() {
+                        let salt = nsec3param.salt();
+
+                        let string =
+                            format!(
+                                "{} {} {} {}",
+                                u8::from(nsec3param.hash_algorithm()),
+                                nsec3param.flags(),
+                                nsec3param.iterations(),
+                                if salt.is_empty() { String::from("-") } else { BASE32_NOPAD.encode(salt) },
+                            );
+
+                        data =
+                            match version {
+                                4 => {
+                                    serde_json::json!({
+                                        "string": string,
+
+                                        "hash_algorithm": u8::from(nsec3param.hash_algorithm()),
+                                        "flags": {
+                                            "uint8": nsec3param.flags(),
+                                            "info": {
+                                                "opt_out": nsec3param.opt_out(),
+                                            }
+                                        },
+                                        "iterations": nsec3param.iterations(),
+                                        "salt": BASE32_NOPAD.encode(nsec3param.salt()),
+                                    })
+                                },
+                                _ => {
+                                    serde_json::Value::String(string)
+                                }
+                            };
+                    } else if let Some(_unknown) = dnssec.as_unknown() {
+                        log::warn!("upstream DNS resolver returns unknown DNSSEC-like record: {rdata:?}");
+                        data = serde_json::Value::Null;
+                    } else {
+                        unreachable!();
+                    }
+                } else {
+                    anyhow::bail!("unexpected upstream DNS resolver respond DNSSEC-like record with non-DNSSEC rdata");
                 }
             },
             _ => {
