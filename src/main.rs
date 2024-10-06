@@ -1167,7 +1167,8 @@ impl DefaultServers {
             "https://185.222.222.222/dns-query",
 
             // [?] Adguard DNS Un-filtered
-            "https://94.140.14.140/dns-query",
+            // NOTE: disabled: missing google.com AAAA record
+            //"https://94.140.14.140/dns-query",
 
             // [CH] dns.switch.ch
             "https://130.59.31.248/dns-query",

@@ -174,6 +174,17 @@ impl DNSCacheEntry {
         }
     }
 
+    pub async fn expire(&self) -> bool {
+        let maybe_ade = &mut *self.entry.write().await;
+        if let Some(ade) = maybe_ade {
+            let de = Arc::make_mut(ade);
+            de.expire = SystemTime::UNIX_EPOCH;
+            true
+        } else {
+            false
+        }
+    }
+
     /// (if caller does not provide a resolver, this method just query cached DNSEntry and any Cache Miss will cause Error.)
     ///
     /// if DNSEntry does not exipre, return immediately.
@@ -441,6 +452,65 @@ impl DNSCache {
 
         Ok(())
     } // pub(crate) async fn load()
+
+    pub async fn expire(
+        &self,
+        name: impl ToString,
+        maybe_rdclass: Option<u16>,
+        maybe_rdtype: Option<u16>
+    ) -> u128 {
+        let name = {
+            let mut n = name.to_string();
+            if ! n.ends_with(".") {
+                n.push('.');
+            }
+            n
+        };
+
+        let mut count = 0;
+
+        if maybe_rdclass.is_some() && maybe_rdtype.is_some() {
+            let query = DNSQuery {
+                name: name,
+                rdclass: maybe_rdclass.unwrap(),
+                rdtype: maybe_rdtype.unwrap()
+            };
+            if let Some(dce) = self.memory.get_async(&query).await {
+                if dce.expire().await {
+                    count += 1;
+                }
+            }
+            return count;
+        }
+
+        let mut maybe_cur = self.memory.first_entry_async().await;
+        while ! maybe_cur.is_none() {
+            let cur = maybe_cur.unwrap();
+
+            loop {
+                if cur.query.name != name {
+                    break;
+                }
+                if let Some(rdclass) = maybe_rdclass {
+                    if cur.query.rdclass != rdclass {
+                        break;
+                    }
+                }
+                if let Some(rdtype) = maybe_rdtype {
+                    if cur.query.rdtype != rdtype {
+                        break;
+                    }
+                }
+
+                cur.expire().await;
+                count += 1;
+                break;
+            }
+
+            maybe_cur = cur.next_async().await;
+        }
+        count
+    }
 
     // cached query (oldapi)
     pub async fn query(&self, req: dns::Message) -> anyhow::Result<dns::Message> {

@@ -36,7 +36,7 @@ static DOH_CLIENT: Lazy<reqwest::Client> =
         .pool_idle_timeout(None)
         .pool_max_idle_per_host(5)
 
-        // for all DNS resove from reqwest, should redirecting to static name mapping (hosts.txt)
+        // for all DNS resolve from reqwest, should redirecting to static name mapping (hosts.txt)
         .dns_resolver(Arc::new(&*HOSTS))
 
         // build client
@@ -158,7 +158,7 @@ impl<'a> DNSOverHTTPS {
         let start = Instant::now();
         let result = self._orig_dns_resolve(query).await;
         let latency = start.elapsed();
-        log::info!("DoH un-cached Result: (elapsed={latency:?}) {result:?}");
+        log::info!("DoH un-cached Result: (server={} latency={latency:?}) {result:?}", &self.url);
 
         let ok = result.is_ok();
 
@@ -175,10 +175,7 @@ impl<'a> DNSOverHTTPS {
 
         result
     }
-    async fn _orig_dns_resolve(
-        &self,
-        query: &DNSQuery,
-    ) -> anyhow::Result<dns::Message> {
+    async fn _orig_dns_resolve(&self, query: &DNSQuery) -> anyhow::Result<dns::Message> {
         let req: dns::Message =
             query.try_into().log_warn()?;
 

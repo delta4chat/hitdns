@@ -115,6 +115,81 @@ impl HitdnsAPI {
                                     res
                                 },
 
+                                "/expire-records" => {
+                                    let mut res = Response::new(StatusCode::Ok);
+                                    res.set_content_type(Self::mime_txt());
+
+                                    let mut maybe_domain = None;
+                                    let mut maybe_rdclass = None;
+                                    let mut maybe_rdtype = None;
+                                    for (key, val) in url.query_pairs() {
+                                        match key.into_owned().to_ascii_lowercase().as_str() {
+                                            "domain" => {
+                                                if maybe_domain.is_none() {
+                                                    maybe_domain = Some(val.into_owned());
+                                                }
+                                            },
+                                            "rdclass" => {
+                                                if maybe_rdclass.is_none() {
+                                                    maybe_rdclass = Some(val.into_owned());
+                                                }
+                                            }
+                                            "rdtype" => {
+                                                if maybe_rdtype.is_none() {
+                                                    maybe_rdtype = Some(val.into_owned());
+                                                }
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+
+                                    let domain =
+                                        if let Some(d) = maybe_domain {
+                                            d
+                                        } else {
+                                            res.set_status(StatusCode::BadRequest);
+                                            res.set_body("missing 'domain' in URL query string");
+                                            return res;
+                                        };
+
+                                    let maybe_rdclass =
+                                        if let Some(rc) = maybe_rdclass {
+                                            let c: u16 =
+                                                match rc.parse() {
+                                                    Ok(val) => val,
+                                                    Err(err) => {
+                                                        res.set_status(StatusCode::BadRequest);
+                                                        res.set_body(format!("unable parse 'rdclass' as unsigned 16-bit integer: {err:?}"));
+                                                        return res;
+                                                    }
+                                                };
+                                            Some(c)
+                                        } else {
+                                            None
+                                        };
+
+                                    let maybe_rdtype =
+                                        if let Some(rt) = maybe_rdtype {
+                                            let t: u16 =
+                                                match rt.parse() {
+                                                    Ok(val) => val,
+                                                    Err(err) => {
+                                                        res.set_status(StatusCode::BadRequest);
+                                                        res.set_body(format!("unable parse 'rdtype' as unsigned 16-bit integer: {err:?}"));
+                                                        return res;
+                                                    }
+                                                };
+                                            Some(t)
+                                        } else {
+                                            None
+                                        };
+
+                                    let count = daemon.context.cache.expire(domain, maybe_rdclass, maybe_rdtype).await;
+                                    res.set_body(format!("successfully expire {count} records"));
+
+                                    res
+                                },
+
                                 #[cfg(feature = "rsinfo")]
                                 "/info" => {
                                     let mut res = Response::new(StatusCode::Ok);
@@ -166,13 +241,14 @@ impl HitdnsAPI {
                                     res.set_body(
 "
 List of avaliable commands:
-GET /snap          ->  take a snapshot of database.
-GET /metrics       ->  get all metrics for each resolvers.
-GET /reload-cache  ->  reload DNS cache entries from disk database.
-GET /version       ->  current version
-GET /nonce         ->  a fixed nonce during between lifetime of this process.
-GET /info          ->  get build info
-GET /stats         ->  get DNS query analysis
+GET /snap            ->  take a snapshot of database.
+GET /metrics         ->  get all metrics for each resolvers.
+GET /reload-cache    ->  reload DNS cache entries from disk database.
+GET /expire-records  ->  make the cached results for a domain (and optional rdclass/rdtype) expires immediately.
+GET /version         ->  current version.
+GET /nonce           ->  a fixed nonce during between lifetime of this process.
+GET /info            ->  get build info.
+GET /stats           ->  get DNS query analysis.
 "
                                     );
                                     res.set_content_type(Self::mime_txt());
