@@ -2,46 +2,48 @@ use crate::*;
 
 static DOH_CLIENT: Lazy<reqwest::Client> =
     Lazy::new(|| {
+        let mut cs = RUSTLS_CLIENT_CONFIG.clone();
+        cs.alpn_protocols = vec![ b"h2".to_vec() ];
+
         reqwest::Client::builder()
+            // log::trace
+            .connection_verbose(true)
 
-        // log::trace
-        .connection_verbose(true)
+            // use HTTPS(rustls) only
+            .use_rustls_tls()
+            .min_tls_version(reqwest::tls::Version::TLS_1_2)
+            .https_only(true)
+            .tls_sni( HOSTS.map.len() > 0 )
+            .use_preconfigured_tls(cs)
 
-        // use HTTPS(rustls) only
-        .use_rustls_tls()
-        .min_tls_version(reqwest::tls::Version::TLS_1_2)
-        .https_only(true)
-        .tls_sni( HOSTS.map.len() > 0 )
-        .use_preconfigured_tls(RUSTLS_CLIENT_CONFIG.clone())
-
-        // User-Agent
-        .user_agent(
-            format!(
-                "hitdns/{}",
-                option_env!("CARGO_PKG_VERSION").unwrap_or("NA")
+            // User-Agent
+            .user_agent(
+                format!(
+                    "hitdns/{}",
+                    option_env!("CARGO_PKG_VERSION").unwrap_or("NA")
+                )
             )
-        )
 
-        // HTTP/2 setting
-        .http2_prior_knowledge() // use HTTP/2 only
-        .http2_adaptive_window(false)
-        .http2_max_frame_size(Some(65535))
-        .http2_keep_alive_interval(Some(Duration::from_secs(10)))
-        .http2_keep_alive_timeout(Duration::from_secs(10))
-        .http2_keep_alive_while_idle(true)
-        .referer(false) // do not send Referer / Referrer
-        .redirect(reqwest::redirect::Policy::none()) // do not follow redirects
+            // HTTP/2 setting
+            .http2_prior_knowledge() // use HTTP/2 only
+            .http2_adaptive_window(false)
+            .http2_max_frame_size(Some(65535))
+            .http2_keep_alive_interval(Some(Duration::from_secs(10)))
+            .http2_keep_alive_timeout(Duration::from_secs(10))
+            .http2_keep_alive_while_idle(true)
+            .referer(false) // do not send Referer / Referrer
+            .redirect(reqwest::redirect::Policy::none()) // do not follow redirects
 
-        // connection settings
-        .tcp_nodelay(true)
-        .pool_idle_timeout(None)
-        .pool_max_idle_per_host(5)
+            // connection settings
+            .tcp_nodelay(true)
+            .pool_idle_timeout(None)
+            .pool_max_idle_per_host(5)
 
-        // for all DNS resolve from reqwest, should redirecting to static name mapping (hosts.txt)
-        .dns_resolver(Arc::new(&*HOSTS))
+            // for all DNS resolve from reqwest, should redirecting to static name mapping (hosts.txt)
+            .dns_resolver(Arc::new(&*HOSTS))
 
-        // build client
-        .build().unwrap()
+            // build client
+            .build().unwrap()
     });
 
 #[derive(Debug, Clone)]
