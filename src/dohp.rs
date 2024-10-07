@@ -401,7 +401,17 @@ impl DNSOverHTTP {
                                         if ! n.ends_with(".") {
                                             n.push('.');
                                         }
-                                        n
+                                        match dns::Name::from_utf8(n) {
+                                            Ok(dn) => {
+                                                dn.to_ascii()
+                                            },
+                                            Err(err) => {
+                                                res.set_status(StatusCode::BadRequest);
+                                                res.set_content_type(Self::mime_txt());
+                                                res.set_body(format!("provided invalid 'name' in URL query string: {err:?}"));
+                                                return res;
+                                            }
+                                        }
                                     };
 
                                     let rdclass: u16 =

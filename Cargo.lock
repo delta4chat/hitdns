@@ -203,8 +203,6 @@ dependencies = [
 [[package]]
 name = "async-h1b"
 version = "3.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b07ed11797818c5e5a3e5353dc019fceef8de6b24bb5f1b219b6e833653a8181"
 dependencies = [
  "async-channel 1.9.0",
  "async-dup",
