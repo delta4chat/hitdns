@@ -1212,9 +1212,9 @@ async fn main_async() -> anyhow::Result<()> {
     let opt = HITDNS_OPT.clone();
 
     #[cfg(feature = "rsinfo")]
-    if opt.info == Some(true) {
-        let info = rsinfo::all_info();
-        println!("{info:#?}");
+    if opt.info {
+        let info = env!("RSINFO_JSON");
+        println!("{info}");
         return Ok(());
     }
 

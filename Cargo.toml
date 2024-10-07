@@ -19,7 +19,7 @@ sqlite = [ "dep:sqlx" ]
 sled = [ "dep:sled" ]
 ftlog = [ "dep:ftlog2", "dep:anstyle", "dep:time" ]
 
-rsinfo = [ "dep:rsinfo" ]
+rsinfo = [ "dep:rsinfo", "dep:vergen" ]
 
 [dependencies]
 anyhow = "1.0.79"
@@ -85,11 +85,14 @@ sqlx = { optional = true, version = "0.8.2", features = ["runtime-async-std", "s
 sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"], default-features = false }
 #sled = { optional = true, version = "1.0.0-alpha.120" }
 
-rsinfo = { optional = true, version = "0.1.3" }
-
 event-listener = { version = "5.3.1", features = ["portable-atomic"] }
 toml-env = { version = "1.2.0", features = ["log"] }
 data-encoding = "2.6.0"
+
+[build-dependencies]
+#rsinfo = { version = "0.1.3", features = ["vergen-all"] }
+rsinfo = { optional = true, path = "../rsinfo", features = ["vergen-all"] }
+vergen = { optional = true, version = "8.3.2", features = ["build", "cargo", "git", "gitoxide", "rustc", "si"] }
 
 [profile.dev]
 panic = "unwind"
@@ -112,4 +115,5 @@ overflow-checks = true
 debug-assertions = false
 debug = 1
 incremental = false
+
 

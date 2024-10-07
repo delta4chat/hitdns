@@ -195,7 +195,7 @@ impl HitdnsAPI {
                                     let mut res = Response::new(StatusCode::Ok);
                                     res.set_content_type(Self::mime_json());
                                     res.set_body(
-                                        format!("{:#}", rsinfo::ALL_INFO.to_json())
+                                        format!("{}", env!("RSINFO_JSON"))
                                     );
                                     res
                                 },
