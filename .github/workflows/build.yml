@@ -19,11 +19,13 @@ jobs:
 
       - name: Show system info
         run: |
+          set +e
           set -x
-          uname -a || true
-          ifconfig -a || true
-          free -h || free || true
-          uptime || true
+          uname -a ; sleep 1
+          ifconfig -a ; sleep 1
+          free -h || free ; sleep 1
+          uptime ; sleep 1
+          cat /proc/cpuinfo
 
       - name: Create binary directory for this job
         run: |
@@ -81,12 +83,13 @@ jobs:
       
       - name: Show system info
         run: |
+          set +e
           set -x
-          uname -a || true
-          ifconfig -a || true
-          free -h || free || true
-          uptime || true
-          cat /proc/cpuinfo || true
+          uname -a ; sleep 1
+          ifconfig -a ; sleep 1
+          free -h || free ; sleep 1
+          uptime ; sleep 1
+          cat /proc/cpuinfo
 
       - name: Create binary directory for this job
         run: |
@@ -277,30 +280,6 @@ jobs:
           cargo clean
           docker image prune -a -f
 
-      - name: Cross Build WebAssembly
-        continue-on-error: true
-        run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target wasm32-unknown-emscripten --verbose && break;done;  ls -hl target/wasm32-unknown-emscripten/release/
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hitdns.wasm32-unknown-emscripten
-          path: target/wasm32-unknown-emscripten/release/hitdns
-      - name: Upload binary of wasm32-unknown-emscripten
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        run: |
-          git switch bin
-          git pull origin bin
-          if cp -v target/wasm32-unknown-emscripten/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.wasm32-unknown-emscripten
-          then
-            git add -A
-            git commit -m "[${{github.sha}}] upload binary of hitdns wasm32-unknown-emscripten"
-            git push origin bin
-          fi
-          git switch this
-          git reset --hard ${{github.sha}}
-          cargo clean
-          docker image prune -a -f
-
   amd64-linux-musl:
     needs: amd64-linux
     runs-on: ubuntu-latest
@@ -311,12 +290,13 @@ jobs:
 
       - name: Show system info
         run: |
+          set +e
           set -x
-          uname -a || true
-          ifconfig -a || true
-          free -h || free || true
-          uptime || true
-          cat /proc/cpuinfo || true
+          uname -a ; sleep 1
+          ifconfig -a ; sleep 1
+          free -h || free ; sleep 1
+          uptime ; sleep 1
+          cat /proc/cpuinfo
 
       - name: Create binary directory for this job
         run: |
@@ -366,18 +346,21 @@ jobs:
 
       - name: Show system info (bash)
         run: |
+          set +e
           set -x
-          uname -a || true
-          ifconfig -a || true
-          free -h || free || true
-          uptime || true
-          cat /proc/cpuinfo || true
+          uname -a ; sleep 1
+          ifconfig -a ; sleep 1
+          free -h || free ; sleep 1
+          uptime ; sleep 1
+          cat /proc/cpuinfo
         shell: bash
 
       - name: Show system info (cmd)
         run: |
           ver
+          ping -n 2 127.0.0.1 >nul 2>nul
           systeminfo
+          ping -n 2 127.0.0.1 >nul 2>nul
           ipconfig /all
         shell: cmd
 
@@ -427,11 +410,13 @@ jobs:
 
       - name: Show system info
         run: |
+          set +e
           set -x
-          uname -a || true
-          ifconfig -a || true
-          free -h || free || true
-          uptime || true
+          uname -a ; sleep 1
+          ifconfig -a ; sleep 1
+          free -h || free ; sleep 1
+          uptime ; sleep 1
+          cat /proc/cpuinfo
 
       - name: Create binary directory for this job
         run: |
@@ -481,11 +466,13 @@ jobs:
 
       - name: Show system info
         run: |
+          set +e
           set -x
-          uname -a || true
-          ifconfig -a || true
-          free -h || free || true
-          uptime || true
+          uname -a ; sleep 1
+          ifconfig -a ; sleep 1
+          free -h || free ; sleep 1
+          uptime ; sleep 1
+          cat /proc/cpuinfo
 
       - name: Create binary directory for this job
         run: |
