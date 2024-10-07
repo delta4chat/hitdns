@@ -19,13 +19,13 @@ jobs:
 
       - name: Show system info
         run: |
-          set +e
+          w(){ eval $* || true; }
           set -x
-          uname -a ; sleep 1
-          ifconfig -a ; sleep 1
-          free -h || free ; sleep 1
-          uptime ; sleep 1
-          cat /proc/cpuinfo
+          w uname -a ; w sleep 1
+          w ifconfig -a ; w sleep 1
+          w free -h || w free ; w sleep 1
+          w uptime ; w sleep 1
+          w cat /proc/cpuinfo
 
       - name: Create binary directory for this job
         run: |
@@ -83,13 +83,13 @@ jobs:
       
       - name: Show system info
         run: |
-          set +e
+          w(){ eval $* || true; }
           set -x
-          uname -a ; sleep 1
-          ifconfig -a ; sleep 1
-          free -h || free ; sleep 1
-          uptime ; sleep 1
-          cat /proc/cpuinfo
+          w uname -a ; w sleep 1
+          w ifconfig -a ; w sleep 1
+          w free -h || w free ; w sleep 1
+          w uptime ; w sleep 1
+          w cat /proc/cpuinfo
 
       - name: Create binary directory for this job
         run: |
@@ -290,13 +290,13 @@ jobs:
 
       - name: Show system info
         run: |
-          set +e
+          w(){ eval $* || true; }
           set -x
-          uname -a ; sleep 1
-          ifconfig -a ; sleep 1
-          free -h || free ; sleep 1
-          uptime ; sleep 1
-          cat /proc/cpuinfo
+          w uname -a ; w sleep 1
+          w ifconfig -a ; w sleep 1
+          w free -h || w free ; w sleep 1
+          w uptime ; w sleep 1
+          w cat /proc/cpuinfo
 
       - name: Create binary directory for this job
         run: |
@@ -346,13 +346,13 @@ jobs:
 
       - name: Show system info (bash)
         run: |
-          set +e
+          w(){ eval $* || true; }
           set -x
-          uname -a ; sleep 1
-          ifconfig -a ; sleep 1
-          free -h || free ; sleep 1
-          uptime ; sleep 1
-          cat /proc/cpuinfo
+          w uname -a ; w sleep 1
+          w ifconfig -a ; w sleep 1
+          w free -h || w free ; w sleep 1
+          w uptime ; w sleep 1
+          w cat /proc/cpuinfo
         shell: bash
 
       - name: Show system info (cmd)
@@ -410,13 +410,12 @@ jobs:
 
       - name: Show system info
         run: |
-          set +e
+          w(){ eval $* || true; }
           set -x
-          uname -a ; sleep 1
-          ifconfig -a ; sleep 1
-          free -h || free ; sleep 1
-          uptime ; sleep 1
-          cat /proc/cpuinfo
+          w uname -a ; w sleep 1
+          w ifconfig -a ; w sleep 1
+          w free -h || w free ; w sleep 1
+          w uptime ; w sleep 1
 
       - name: Create binary directory for this job
         run: |
@@ -466,13 +465,12 @@ jobs:
 
       - name: Show system info
         run: |
-          set +e
+          w(){ eval $* || true; }
           set -x
-          uname -a ; sleep 1
-          ifconfig -a ; sleep 1
-          free -h || free ; sleep 1
-          uptime ; sleep 1
-          cat /proc/cpuinfo
+          w uname -a ; w sleep 1
+          w ifconfig -a ; w sleep 1
+          w free -h || w free ; w sleep 1
+          w uptime ; w sleep 1
 
       - name: Create binary directory for this job
         run: |
