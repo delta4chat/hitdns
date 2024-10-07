@@ -92,8 +92,8 @@ toml-env = { version = "1.2.0", features = ["log"] }
 data-encoding = "2.6.0"
 
 [build-dependencies]
-#rsinfo = { version = "0.1.3", features = ["vergen-all"] }
-rsinfo = { optional = true, path = "../rsinfo", features = ["vergen-all"] }
+rsinfo = { optional = true, version = "0.1.3", features = ["vergen-all"] }
+#rsinfo = { optional = true, path = "../rsinfo", features = ["vergen-all"] }
 vergen = { optional = true, version = "8.3.2", features = ["build", "cargo", "git", "gitoxide", "rustc", "si"] }
 
 [profile.dev]
