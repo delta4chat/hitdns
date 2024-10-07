@@ -190,7 +190,8 @@ impl DNSCacheEntry {
     /// if DNSEntry does not exipre, return immediately.
     /// if DNSEntry exists and expired, starting a background task for updating that, then return expired result.
     /// if DNSEntry does not exists, start a foreground task, waiting until it successfully or timed out.
-    /// this method promises never starting multi task for cache miss.
+    ///
+    /// NOTE: this method promises that a new update task is never started repeatedly while another task is running, so only one task will be running at same time.
     pub async fn update(
         &self,
         maybe_resolver: Option<Arc<dyn DNSResolver>>,
@@ -232,12 +233,13 @@ impl DNSCacheEntry {
             let update_event = self.update_event.clone();
 
             let task = smolscale2::spawn(async move {
+                let _guard = {
+                    let u = updating.clone();
+                    Defer::new(Box::new(move || {
+                        u.store(false, SeqCst);
+                    }))
+                };
                 updating.store(true, SeqCst);
-
-                let updating2 = updating.clone();
-                let _guard = Defer::new(Box::new(move || {
-                    updating2.store(false, SeqCst);
-                }));
 
                 let upstream = resolver.dns_upstream();
 

@@ -75,6 +75,8 @@ pub mod dns {
     pub use RecordType as RdType;
 }
 
+pub use portable_atomic::AtomicUsize;
+
 pub use smol::lock::RwLock;
 
 pub use bytes::Bytes;
@@ -165,34 +167,9 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             opt.max_ttl = Some(604800); // 7 days
         }
 
-        if opt.no_api.is_none() {
-            opt.no_api = Some(false);
-        }
-
-        if opt.no_dohp.is_none() {
-            opt.no_dohp = Some(false);
-        }
-
-        if opt.debug.is_none() {
-            opt.debug = Some(false);
-        }
-
-        if opt.use_system_hosts.is_none() {
-            opt.use_system_hosts = Some(false);
-        }
-
-        if opt.no_default_servers.is_none() {
-            opt.no_default_servers = Some(false);
-        }
-
-        #[cfg(feature = "rsinfo")]
-        if opt.info.is_none() {
-            opt.info = Some(false);
-        }
-
         /* ============= */
 
-        if opt.use_system_hosts == Some(true) && opt.hosts.is_none() {
+        if opt.use_system_hosts && opt.hosts.is_none() {
             let filename =
                 if cfg!(target_vendor = "apple") {
                     "/private/etc/hosts".to_string()
@@ -217,7 +194,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
         }
 
 
-        if opt.no_dohp == Some(false) {
+        if ! opt.no_dohp {
             if opt.dohp_listen.is_none() && opt.listen.is_some() {
                 let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
                 dyna.set_port(opt.listen.unwrap().port());
@@ -236,7 +213,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             }
         }
 
-        if opt.no_api == Some(false) {
+        if ! opt.no_api {
             if opt.api_listen.is_none() && opt.listen.is_some() {
                 let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
                 dyna.set_port(opt.listen.unwrap().port());
@@ -446,7 +423,7 @@ fn dns_hosts_hook(
     })
 }
 
-fn dns_stats_hook(
+fn dns_ch_hook(
     info: &DNSQueryInfo,
     opt: HitdnsOpt,
 ) -> PinFut<Option<dns::Message>> {
@@ -504,6 +481,8 @@ fn dns_stats_hook(
 pub type DNSHook =
     fn(&DNSQueryInfo, HitdnsOpt) -> PinFut<Option<dns::Message>>;
 
+static HOOK_ID_COUNTER: AtomicUsize = AtomicUsize::new(1000);
+
 #[derive(Debug, Clone)]
 pub struct DNSHookArray {
     // id -> (nice, hook)
@@ -518,30 +497,34 @@ impl DNSHookArray {
         }
     }
 
-    pub async fn add(
-        &self,
-        nice: i8,
-        hook: Arc<DNSHook>,
-    ) -> usize {
-        let mut id = self.hooks.len();
+    pub async fn add(&self, nice: i8, hook: Arc<DNSHook>) -> usize {
         let val = (nice, hook);
-        while self
-            .hooks
-            .insert_async(id, val.clone())
-            .await
-            .is_err()
-        {
-            id += 1;
+
+        let mut len = self.hooks.len();
+        let mut id = HOOK_ID_COUNTER.fetch_add(1, Relaxed);
+        while self.hooks.insert_async(id, val.clone()).await.is_err() {
+            let mut incr = 1;
+
+            let newlen = self.hooks.len();
+            if newlen > len {
+                incr += newlen - len;
+            }
+            len = newlen;
+
+            id = HOOK_ID_COUNTER.fetch_add(incr, Relaxed);
         }
 
         id
+    }
+    pub async fn del(&self, id: usize) -> bool {
+        self.hooks.remove_async(&id).await.is_some()
     }
 
     /// if there is needs to overwrite this DNS Query message,
     /// it will return Some with override result.
     ///
     /// anyway, this function will calls ALL associated middleware,
-    /// but only the first valid response (with minimal nice value) will be return.
+    /// but only "the response with minimal nice value" will be return. (if milti hook with same nice value, then return first one)
     pub async fn via(
         &self,
         info: &DNSQueryInfo,
@@ -550,11 +533,7 @@ impl DNSHookArray {
             return None;
         }
 
-        let mut maybe_res: Option<(
-            usize,
-            i8,
-            dns::Message,
-        )> = None;
+        let mut maybe_res: Option<(usize, i8, dns::Message)> = None;
 
         let mut hooks = vec![];
         self.hooks
@@ -567,9 +546,8 @@ impl DNSHookArray {
             let (cur_nice, hook) = val;
 
             if let Some(cur_res) = (hook)(info, self.opt.clone()).await {
-                if let Some((prev_id, prev_nice, _)) = maybe_res {
-                    if *cur_nice > prev_nice // && prev_id < *cur_id
-                    {
+                if let Some((_, prev_nice, _)) = maybe_res {
+                    if *cur_nice >= prev_nice {
                         continue;
                     }
                 }
@@ -579,7 +557,7 @@ impl DNSHookArray {
         }
 
         if let Some((id, nice, res)) = maybe_res {
-            log::info!("selected hook: (id={id}) | (nice={nice}) | (res) = {res}");
+            log::info!("selected hook: id={id} | nice={nice} | res = {res}");
             Some(res)
         } else {
             None
@@ -671,7 +649,7 @@ impl DNSDaemon {
             }
 
             if x.is_empty() {
-                if opt.no_default_servers == Some(false) {
+                if ! opt.no_default_servers {
                     x = DefaultServers::global();
                     log::info!("no upstream specified. use default servers: {x:#?}");
                 }
@@ -687,12 +665,12 @@ impl DNSDaemon {
         };
 
         let cache = Arc::new(
-            DNSCache::new(resolvers, opt.debug.unwrap()).await?,
+            DNSCache::new(resolvers, opt.debug).await?,
         );
 
         let hooks = Arc::new(DNSHookArray::new(opt.clone()));
         hooks.add(-1, Arc::new(dns_hosts_hook)).await;
-        hooks.add(0, Arc::new(dns_stats_hook)).await;
+        hooks.add(0, Arc::new(dns_ch_hook)).await;
 
         let mut context = DNSDaemonContext {
             socket: DNSDaemonSocket {
@@ -721,8 +699,8 @@ impl DNSDaemon {
                 Arc::new(
                     DNSOverHTTP::new(dl, context.clone()).await?
                 );
-            context.socket.http = Some(dohp.clone());
 
+            context.socket.http = Some(dohp.clone());
             task.http = Some(
                 smolscale2::spawn(async move {
                     dohp.run().await
@@ -746,7 +724,7 @@ impl DNSDaemon {
         let cache = &ctx.cache;
         let opt = &ctx.opt;
 
-        if opt.no_api == Some(false) {
+        if ! opt.no_api {
             if let Some(api_listen) = opt.api_listen {
                 if let Ok(api) =
                     HitdnsAPI::new(api_listen, this.clone())
@@ -762,7 +740,7 @@ impl DNSDaemon {
         }
 
         loop {
-            if opt.debug == Some(true) {
+            if opt.debug {
                 log::trace!(
                     "cache status: {:?}",
                     &cache.memory
@@ -793,7 +771,7 @@ impl DNSDaemon {
                 task.udp
             );
 
-            if opt.debug == Some(true) {
+            if opt.debug {
                 let mut x = vec![];
                 for r in cache.resolvers.list.iter() {
                     x.push(r.dns_metrics().await);
@@ -804,14 +782,18 @@ impl DNSDaemon {
                 );
             }
 
-            if this.task.udp.is_finished() || this.task.tcp.is_finished()
-            {
-                log::error!("one of listener tasks died");
+            if this.task.udp.is_finished() || this.task.tcp.is_finished() {
+                log::error!("UDP or TCP listener tasks died");
                 return;
             }
+            if let Some(ref ht) = this.task.http {
+                if ht.is_finished() {
+                    log::error!("DOHP listener task died");
+                    return;
+                }
+            }
 
-            smol::Timer::after(Duration::from_secs(10))
-                .await;
+            smol::Timer::after(Duration::from_secs(10)).await;
         }
     }
 }
@@ -1047,7 +1029,7 @@ pub struct HitdnsOpt {
     #[cfg(feature = "rsinfo")]
     /// show build information then quit program.
     #[arg(long)]
-    pub info: Option<bool>,
+    pub info: bool,
 
     /// Dumps all cache entry from disk database file.
     /// if filename is "-", prints to standard output.
@@ -1061,7 +1043,7 @@ pub struct HitdnsOpt {
 
     /// debug mode.
     #[arg(long)]
-    pub debug: Option<bool>,
+    pub debug: bool,
 
     /// Minimum TTL of cached DNS entry.
     /// default to 3 minutes.
@@ -1083,13 +1065,13 @@ pub struct HitdnsOpt {
 
     /// Whether try to find system-side hosts.txt
     #[arg(long)]
-    pub use_system_hosts: Option<bool>,
+    pub use_system_hosts: bool,
 
     /// Whether enable TLS SNI extension.
     /// if this is unspecified, default disable SNI (for bypass internet censorship in few totalitarian countries)
     /// if you specified --tls-sni or --hosts or --use-system-hosts, then TLS SNI will enabled by default.
     #[arg(long)]
-    pub tls_sni: Option<bool>,
+    pub tls_sni: bool,
 
     /// Listen address of RFC 1035 plaintext DNS server (UDP and TCP).
     #[arg(long)]
@@ -1098,13 +1080,13 @@ pub struct HitdnsOpt {
     /// Listen address of localhost plaintext DoH server.
     /// for now this server supports HTTP/1.1 and HTTP/1.0
     ///
-    /// if the API is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 1 (if the port number is in use, then continue decrementing until an available port number is found)
+    /// if the DOHP is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 1 (if the port number is in use, then continue decrementing until an available port number is found)
     #[arg(long)]
     pub dohp_listen: Option<SocketAddr>,
 
     /// disable the localhost plaintext DoH server.
     #[arg(long)]
-    pub no_dohp: Option<bool>,
+    pub no_dohp: bool,
 
     /// Specify the localhost HTTP API listen address, currently it can only be bound to 127.0.0.1 (for security reasons).
     ///
@@ -1116,7 +1098,7 @@ pub struct HitdnsOpt {
 
     /// disable the localhost HTTP API.
     #[arg(long)]
-    pub no_api: Option<bool>,
+    pub no_api: bool,
 
     /// upstream URL of DoH servers.
     /// DNS over HTTPS (RFC 8484)
@@ -1125,7 +1107,7 @@ pub struct HitdnsOpt {
 
     /// without built-in default list of global DNS resolvers.
     #[arg(long)]
-    pub no_default_servers: Option<bool>,
+    pub no_default_servers: bool,
 
     #[cfg(feature = "dot")]
     /// *Experimental*
