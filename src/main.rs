@@ -193,7 +193,6 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             }
         }
 
-
         if ! opt.no_dohp {
             if opt.dohp_listen.is_none() && opt.listen.is_some() {
                 let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
@@ -240,7 +239,9 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             }
         }
 
-        assert!(opt.api_listen != opt.dohp_listen);
+        if opt.listen.is_some() {
+            assert!(opt.api_listen != opt.dohp_listen);
+        }
 
         opt
     }) // smol::block_on
@@ -1029,6 +1030,7 @@ pub struct HitdnsOpt {
     #[cfg(feature = "rsinfo")]
     /// show build information then quit program.
     #[arg(long)]
+    #[serde(default)]
     pub info: bool,
 
     /// Dumps all cache entry from disk database file.
@@ -1043,6 +1045,7 @@ pub struct HitdnsOpt {
 
     /// debug mode.
     #[arg(long)]
+    #[serde(default)]
     pub debug: bool,
 
     /// Minimum TTL of cached DNS entry.
@@ -1065,17 +1068,19 @@ pub struct HitdnsOpt {
 
     /// Whether try to find system-side hosts.txt
     #[arg(long)]
+    #[serde(default)]
     pub use_system_hosts: bool,
 
     /// Whether enable TLS SNI extension.
     /// if this is unspecified, default disable SNI (for bypass internet censorship in few totalitarian countries)
     /// if you specified --tls-sni or --hosts or --use-system-hosts, then TLS SNI will enabled by default.
     #[arg(long)]
+    #[serde(default)]
     pub tls_sni: bool,
 
     /// Listen address of RFC 1035 plaintext DNS server (UDP and TCP).
     #[arg(long)]
-    pub listen: Option<SocketAddr>,
+    pub listen: Option<SocketAddr>, // this is optional because --dump/--load does not need to run DNS server
 
     /// Listen address of localhost plaintext DoH server.
     /// for now this server supports HTTP/1.1 and HTTP/1.0
@@ -1086,6 +1091,7 @@ pub struct HitdnsOpt {
 
     /// disable the localhost plaintext DoH server.
     #[arg(long)]
+    #[serde(default)]
     pub no_dohp: bool,
 
     /// Specify the localhost HTTP API listen address, currently it can only be bound to 127.0.0.1 (for security reasons).
@@ -1098,15 +1104,18 @@ pub struct HitdnsOpt {
 
     /// disable the localhost HTTP API.
     #[arg(long)]
+    #[serde(default)]
     pub no_api: bool,
 
     /// upstream URL of DoH servers.
     /// DNS over HTTPS (RFC 8484)
     #[arg(long)]
+    #[serde(default)]
     pub doh_upstream: Vec<String>,
 
     /// without built-in default list of global DNS resolvers.
     #[arg(long)]
+    #[serde(default)]
     pub no_default_servers: bool,
 
     #[cfg(feature = "dot")]
