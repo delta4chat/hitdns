@@ -1071,6 +1071,18 @@ pub struct HitdnsOpt {
     #[serde(default)]
     pub use_system_hosts: bool,
 
+    /// Whether use AES cipher suite in TLS.
+    /// if this is unspecified, default disable AES cipher (only use Chacha20 Poly1305)
+    #[arg(long)]
+    #[serde(default)]
+    pub tls_aes: bool,
+
+    /// Whether use RSA asymmetric cryptographic in TLS.
+    /// if this is unspecified, default disable RSA (only use ECDSA)
+    #[arg(long)]
+    #[serde(default)]
+    pub tls_rsa: bool,
+
     /// Whether enable TLS SNI extension.
     /// if this is unspecified, default disable SNI (for bypass internet censorship in few totalitarian countries)
     /// if you specified --tls-sni or --hosts or --use-system-hosts, then TLS SNI will enabled by default.

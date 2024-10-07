@@ -12,6 +12,7 @@ static DOH_CLIENT: Lazy<reqwest::Client> =
         .min_tls_version(reqwest::tls::Version::TLS_1_2)
         .https_only(true)
         .tls_sni( HOSTS.map.len() > 0 )
+        .use_preconfigured_tls(RUSTLS_CLIENT_CONFIG.clone())
 
         // User-Agent
         .user_agent(

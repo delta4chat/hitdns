@@ -12,7 +12,7 @@ repository = "https://github.com/delta4chat/hitdns"
 [features]
 default = [ "sqlite", "ftlog" ]
 
-doq = [ "dep:quinn", "dep:rustls", "dep:webpki-roots" ]
+doq = [ "dep:quinn" ]
 dot = [ "dep:async-tls" ]
 
 sqlite = [ "dep:sqlx" ]
@@ -56,16 +56,18 @@ time    = { optional = true, version = "0.3.36", features = ["alloc", "formattin
 
 once_cell = "1.19.0"
 
+# TLS library for DoH/DoT
+rustls = { version = "0.23.14", features = ["custom-provider", "ring", "std", "tls12"], default-features = false }
+
 # HTTPS library for DoH client
 reqwest = { version = "0.12.5", features = ["rustls-tls", "http2"], default-features = false }
 #hyper = { version = "0.14.21", features = ["client"], default-features = false }
 
 # QUIC library for DoQ client
 quinn  = { optional = true, version = "0.10.2", features = ["tls-rustls", "runtime-async-std"], default-features = false }
-rustls = { optional = true, version = "0.23.12", default-features = false }
 
 # builtin Root CA list
-webpki-roots = { optional = true, version = "0.26.1" }
+webpki-roots = { version = "0.26.6" }
 
 scc = { version = "2.1.18", features = ["serde"] }
 fastrand = "2.1.0"
