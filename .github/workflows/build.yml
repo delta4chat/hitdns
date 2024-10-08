@@ -51,7 +51,7 @@ jobs:
       - name: Build Linux
         run: |
           export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
-          for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
+          bash upx.sh cargo build --release --verbose
 
 #      - name: Run tests
 #        run: cargo test --release --verbose -- --nocapture
@@ -112,7 +112,7 @@ jobs:
 
       - name: Cross Build aarch64 android
         continue-on-error: true
-        run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target aarch64-linux-android --verbose && break;done;
+        run: bash upx.sh cross build --release --target aarch64-linux-android --verbose
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.aarch64-android
@@ -136,7 +136,7 @@ jobs:
 
       - name: Cross Build x86 android (64-bit)
         continue-on-error: true
-        run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target x86_64-linux-android --verbose && break;done;
+        run: bash upx.sh cross build --release --target x86_64-linux-android --verbose
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-android
@@ -160,7 +160,7 @@ jobs:
 
       - name: Cross Build aarch64 linux
         continue-on-error: true
-        run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target aarch64-unknown-linux-gnu --verbose && break;done;
+        run: bash upx.sh cross build --release --target aarch64-unknown-linux-gnu --verbose
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.aarch64-linux
@@ -184,7 +184,7 @@ jobs:
 
       - name: Cross Build aarch64 linux (musl)
         continue-on-error: true
-        run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target aarch64-unknown-linux-musl --verbose && break;done;
+        run: bash upx.sh cross build --release --target aarch64-unknown-linux-musl --verbose
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.aarch64-linux-musl
@@ -208,7 +208,7 @@ jobs:
 
       - name: Cross Build amd64 FreeBSD
         continue-on-error: true
-        run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target x86_64-unknown-freebsd --verbose && break;done;
+        run: bash upx.sh cross build --release --target x86_64-unknown-freebsd --verbose
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-freebsd
@@ -234,7 +234,7 @@ jobs:
         continue-on-error: true
         run: |
           export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
-          for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target x86_64-unknown-netbsd --verbose && break;done;
+          bash upx.sh cross build --release --target x86_64-unknown-netbsd --verbose
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-netbsd
@@ -258,7 +258,7 @@ jobs:
 
       - name: Cross Build mips-el Linux musl
         continue-on-error: true
-        run: for i in {1..3};do echo try build $i; bash upx.sh cross build --release --target mipsel-unknown-linux-musl --no-default-features --features sled,ftlog --verbose -Z build-std=core,std,alloc,proc_macro && break;done;
+        run: bash upx.sh cross build --release --target mipsel-unknown-linux-musl --verbose -Z build-std=core,std,alloc,proc_macro || bash upx.sh cross build --release --target mipsel-unknown-linux-musl --no-default-features --features sled,ftlog --verbose -Z build-std=core,std,alloc,proc_macro
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.mipsel-linux-musl
@@ -317,7 +317,7 @@ jobs:
         run: rustup target add x86_64-unknown-linux-musl
 
       - name: Build Linux (Musl)
-        run: for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --target x86_64-unknown-linux-musl --verbose && break;done;
+        run: bash upx.sh cargo build --release --target x86_64-unknown-linux-musl --verbose
 
       - uses: actions/upload-artifact@v4
         with:
@@ -379,7 +379,7 @@ jobs:
         shell: bash
 
       - name: Build (windows)
-        run: for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
+        run: bash upx.sh cargo build --release --verbose
         shell: bash
 
       - uses: actions/upload-artifact@v4
@@ -430,7 +430,7 @@ jobs:
           git reset --hard ${{github.sha}}
       
       - name: Build (mac)
-        run: for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
+        run: bash upx.sh cargo build --release --verbose
 
       - uses: actions/upload-artifact@v4
         with:
@@ -485,7 +485,7 @@ jobs:
           git reset --hard ${{github.sha}}
       
       - name: Build (mac)
-        run: for i in {1..3};do echo try build $i; bash upx.sh cargo build --release --verbose && break;done;
+        run: bash upx.sh cargo build --release --verbose
 
       - uses: actions/upload-artifact@v4
         with:

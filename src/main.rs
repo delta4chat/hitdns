@@ -1045,6 +1045,10 @@ pub struct HitdnsOpt {
     #[arg(long)]
     pub load: Option<PathBuf>,
 
+    /// Log file location
+    #[arg(long)]
+    pub log_file: Option<PathBuf>,
+
     /// debug mode.
     #[arg(long)]
     #[serde(default)]
@@ -1298,6 +1302,8 @@ static ENV_FILTER: Lazy<Option<env_filter::Filter>> =
     });
 
 fn main() -> anyhow::Result<()> {
+    let opt = HITDNS_OPT.clone();
+
     #[cfg(not(feature = "ftlog"))]
     {
         let _ret = env_logger::builder().try_init();
@@ -1400,15 +1406,12 @@ fn main() -> anyhow::Result<()> {
 
                     if file.len() > short_file.len() {
                         if file.ends_with(short_file) {
-                            file =
-                                format!("@{short_file}")
+                            file = format!("@{short_file}")
                         }
                     }
                 }
 
-                let out = format!(
-          "[{level}] |{thread}| ({file}{line}): {args}"
-        );
+                let out = format!("[{level}] |{thread}| ({file}{line}): {args}");
                 Box::new(out)
             }
         }
@@ -1420,17 +1423,27 @@ fn main() -> anyhow::Result<()> {
             flb = flb.max_log_level(filter_lv);
         }
 
+        if let Some(ref lf) = opt.log_file {
+            use ftlog2::appender::Duration;
+            use ftlog2::appender::file::{Period, FileAppender};
+            flb = flb.root(
+                FileAppender::rotate_with_expire(
+                    lf,
+                    Period::Day,
+                    Duration::days(7)
+                )
+            );
+            flb = flb.bounded(65535, false);
+        } else {
+            // prevent to spam terminal
+            flb = flb.bounded(4096, false);
+        }
+
         let _ret =
             flb
             .utc()
-            .time_format(
-                TIME_FMT_JS.clone(),
-            )
-
-            // prevent to spam terminal
-            .bounded(2048, false)
+            .time_format(TIME_FMT_JS.clone())
             .print_omitted_count(true)
-
             .format(MyFmt{})
             .try_init();
 
