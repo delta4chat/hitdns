@@ -110,6 +110,30 @@ jobs:
       - name: Install Cross
         run: cargo install cross
 
+      - name: Cross Build mips-el Linux musl
+        continue-on-error: true
+        run: bash upx.sh cross build --release --target mipsel-unknown-linux-musl --verbose -Z build-std=core,std,alloc,proc_macro || bash upx.sh cross build --release --target mipsel-unknown-linux-musl --no-default-features --features sled,ftlog --verbose -Z build-std=core,std,alloc,proc_macro
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hitdns.mipsel-linux-musl
+          path: target/mipsel-unknown-linux-musl/release/hitdns
+      - name: Upload binary of mipsel linux musl
+        if: ${{ github.event_name != 'pull_request' }}
+        continue-on-error: true
+        run: |
+          git switch bin
+          git pull origin bin
+          if cp -v target/mipsel-unknown-linux-musl/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.mipsel-linux-musl
+          then
+            git add -A
+            git commit -m "[${{github.sha}}] upload binary of hitdns mipsel linux musl"
+            git push origin bin
+          fi
+          git switch this
+          git reset --hard ${{github.sha}}
+          cargo clean
+          docker image prune -a -f
+
       - name: Cross Build aarch64 android
         continue-on-error: true
         run: bash upx.sh cross build --release --target aarch64-linux-android --verbose
@@ -249,30 +273,6 @@ jobs:
           then
             git add -A
             git commit -m "[${{github.sha}}] upload binary of hitdns amd64 netbsd"
-            git push origin bin
-          fi
-          git switch this
-          git reset --hard ${{github.sha}}
-          cargo clean
-          docker image prune -a -f
-
-      - name: Cross Build mips-el Linux musl
-        continue-on-error: true
-        run: bash upx.sh cross build --release --target mipsel-unknown-linux-musl --verbose -Z build-std=core,std,alloc,proc_macro || bash upx.sh cross build --release --target mipsel-unknown-linux-musl --no-default-features --features sled,ftlog --verbose -Z build-std=core,std,alloc,proc_macro
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hitdns.mipsel-linux-musl
-          path: target/mipsel-unknown-linux-musl/release/hitdns
-      - name: Upload binary of mipsel linux musl
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        run: |
-          git switch bin
-          git pull origin bin
-          if cp -v target/mipsel-unknown-linux-musl/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.mipsel-linux-musl
-          then
-            git add -A
-            git commit -m "[${{github.sha}}] upload binary of hitdns mipsel linux musl"
             git push origin bin
           fi
           git switch this
