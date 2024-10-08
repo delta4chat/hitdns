@@ -12,6 +12,7 @@ use smol::net::TcpListener;
 use data_encoding::{
     BASE64, BASE64URL_NOPAD, BASE32_NOPAD,
     HEXUPPER as HEX_UPPER,
+    HEXLOWER as HEX_LOWER,
 };
 
 use bytes::Bytes;
@@ -650,6 +651,19 @@ GET  /resolve?name=[domain]&type=[rdtype]  -> query DNS using JSON API (modified
     }
 }
 
+fn escaped_bytes(bytes: &[u8], strip: bool) -> String {
+    let out = format!("{:?}", Bytes::copy_from_slice(bytes));
+
+    if strip {
+        // remove b" and "
+        let mut out: String = out.chars().skip(2).collect();
+        out.pop();
+        return out;
+    }
+
+    out
+}
+
 fn records_iter_helper<'a>(
     version: u16,
     input: impl Iterator<Item=&'a dns::Record>,
@@ -709,14 +723,8 @@ fn records_iter_helper<'a>(
                             for td in txt.iter() {
                                 let t =
                                     match version {
-                                        4 | 3 => { // escaped bytes
-                                            let t = format!("{:?}", Bytes::from(td.to_vec()));
-
-                                            // remove b" and "
-                                            let mut t: String = t.chars().skip(2).collect();
-                                            t.pop();
-
-                                            t
+                                        4 | 3 => {
+                                            escaped_bytes(td, true)
                                         },
                                         2 => { // UTF-8 lossy
                                             String::from_utf8_lossy(td).into_owned()
@@ -1195,7 +1203,7 @@ fn records_iter_helper<'a>(
                                 nsec.type_bit_maps().iter().map(
                                     |rdtype| {
                                         if let Unknown(rt) = rdtype {
-                                            rt.to_string()
+                                            format!("TYPE{rt}")
                                         } else {
                                             format!("{rdtype}")
                                         }
@@ -1231,7 +1239,7 @@ fn records_iter_helper<'a>(
                                 nsec3.type_bit_maps().iter().map(
                                     |rdtype| {
                                         if let Unknown(rt) = rdtype {
-                                            rt.to_string()
+                                            format!("TYPE{rt}")
                                         } else {
                                             format!("{rdtype}")
                                         }
@@ -1340,8 +1348,155 @@ fn records_iter_helper<'a>(
                     anyhow::bail!("unexpected upstream DNS resolver respond OPENPGPKEY record with non-OPENPGPKEY rdata");
                 }
             },
+            TLSA => { // not tested: rarely seen in public dns
+                if let Some(tlsa) = rdata.as_tlsa() {
+                    let string = format!("{tlsa}");
+
+                    data =
+                        match version {
+                            4 => {
+                                serde_json::json!({
+                                    "string": string,
+
+                                    "cert_usage": u8::from(tlsa.cert_usage()),
+                                    "selector": u8::from(tlsa.selector()),
+                                    "matching": u8::from(tlsa.matching()),
+                                    "cert_data": HEX_LOWER.encode(tlsa.cert_data()),
+                                })
+                            },
+                            _ => {
+                                serde_json::Value::String(string)
+                            }
+                        };
+                } else {
+                    anyhow::bail!("unexpected upstream DNS resolver respond TLSA record with non-TLSA rdata");
+                }
+            },
+            SSHFP => { // not tested: rarely seen in public dns
+                if let Some(sshfp) = rdata.as_sshfp() {
+                    let string = format!("{sshfp}");
+
+                    data =
+                        match version {
+                            4 => {
+                                serde_json::json!({
+                                    "string": string,
+
+                                    "algorithm": u8::from(sshfp.algorithm()),
+                                    "fingerprint_type": u8::from(sshfp.fingerprint_type()),
+                                    "fingerprint": HEX_LOWER.encode(sshfp.fingerprint()),
+                                })
+                            },
+                            _ => {
+                                serde_json::Value::String(string)
+                            }
+                        };
+                } else {
+                    anyhow::bail!("unexpected upstream DNS resolver respond SSHFP record with non-SSHFP rdata");
+                }
+            },
+            NAPTR => { // not tested: rarely seen in public dns
+                if let Some(naptr) = rdata.as_naptr() {
+                    let string =
+                        format!(
+                            "{} {} {} {} {} {}",
+
+                            naptr.order(),
+                            naptr.preference(),
+                            escaped_bytes(naptr.flags(), false),
+                            escaped_bytes(naptr.services(), false),
+                            escaped_bytes(naptr.regexp(), false),
+                            naptr.replacement().to_ascii(),
+                        );
+
+                    data =
+                        match version {
+                            4 => {
+                                serde_json::json!({
+                                    "string": string,
+
+                                    "order": naptr.order(),
+                                    "preference": naptr.preference(),
+                                    "flags": escaped_bytes(naptr.flags(), true),
+                                    "services": escaped_bytes(naptr.services(), true),
+                                    "regexp": escaped_bytes(naptr.regexp(), true),
+                                    "replacement": naptr.replacement().to_ascii(),
+                                })
+                            },
+                            _ => {
+                                serde_json::Value::String(string)
+                            }
+                        };
+                } else {
+                    anyhow::bail!("unexpected upstream DNS resolver respond NAPTR record with non-NAPTR rdata");
+                }
+            },
+            CSYNC => { // not tested: rarely seen in public dns
+                if let Some(csync) = rdata.as_csync() {
+                    // hack to get soa_serial due to no public getter for it
+                    let soa_serial = {
+                        use dns::BinEncodable;
+                        let mut buf = [0u8; 4];
+                        buf.copy_from_slice(csync.to_bytes()?[..4].as_ref());
+                        u32::from_be_bytes(buf)
+                    };
+
+                    let string =
+                        format!(
+                            "{} {} {}",
+                            soa_serial,
+                            csync.flags(),
+                            csync.type_bit_maps().iter().map(
+                                |rdtype| {
+                                    if let Unknown(rt) = rdtype {
+                                        format!("TYPE{rt}")
+                                    } else {
+                                        format!("{rdtype}")
+                                    }
+                                }
+                            ).collect::<Vec<String>>().join(" ")
+                        );
+
+                    data =
+                        match version {
+                            4 => {
+                                serde_json::json!({
+                                    "string": string,
+
+                                    "soa_serial": soa_serial,
+                                    "flags": csync.flags(),
+                                    "type_bit_maps": csync.type_bit_maps().iter().map(|v| { u16::from(*v) }).collect::<Vec<u16>>(),
+                                })
+                            },
+                            _ => {
+                                serde_json::Value::String(string)
+                            }
+                        };
+                } else {
+                    anyhow::bail!("unexpected upstream DNS resolver respond CSYNC record with non-CSYNC rdata");
+                }
+            },
+            NULL => { // not tested
+                if let Some(null) = rdata.as_null() {
+                    data =
+                        serde_json::Value::String(
+                            format!("{null}")
+                        );
+                } else {
+                    anyhow::bail!("unexpected upstream DNS resolver respond NULL record with non-NULL rdata");
+                }
+            },
+            OPT => {
+                data = serde_json::json!({
+                    "error": "OPT pseudo-section is not supported now",
+                    "rdata": format!("{rdata:?}"),
+                });
+            },
             _ => {
-                data = serde_json::json!({"error": "WIP not implemented"});
+                data = serde_json::json!({
+                    "error": "WIP not implemented",
+                    "rdata": format!("{rdata:?}"),
+                });
             }
         } // match rdtype
 

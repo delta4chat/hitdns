@@ -69,6 +69,8 @@ pub mod dns {
         Record,
     };
 
+    pub use hickory_proto::serialize::binary::BinEncodable;
+
     pub use DNSClass as Class;
     pub use DNSClass as RdClass;
     pub use RecordType as Type;
