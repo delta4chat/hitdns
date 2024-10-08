@@ -41,7 +41,7 @@ env_logger = "0.11.1"
 
 #async-h1 = "2.3.4"
 
-async-h1b = "3.0.5"
+async-h1b = "3.0.7"
 #async-h1b = { path = "../async-h1" }
 
 http-types = { version = "2.12.0", default-features = false }
