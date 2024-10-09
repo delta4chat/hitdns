@@ -236,19 +236,34 @@ impl HitdnsAPI {
                                     res
                                 },
 
+                                "/uptime" => {
+                                    let uptime = STARTED.elapsed();
+
+                                    let mut res = Response::new(StatusCode::Ok);
+                                    res.set_content_type(Self::mime_txt());
+                                    res.set_body(format!("{uptime:?}"));
+
+                                    res
+                                },
+
                                 _ => {
                                     let mut res = Response::new(StatusCode::NotFound);
                                     res.set_body(
 "
 List of avaliable commands:
+GET /version         ->  current version.
+GET /uptime          ->  the uptime of this process.
+GET /nonce           ->  a fixed nonce during between lifetime of this process.
+
 GET /snap            ->  take a snapshot of database.
 GET /metrics         ->  get all metrics for each resolvers.
+GET /stats           ->  get DNS query analysis.
+
 GET /reload-cache    ->  reload DNS cache entries from disk database.
 GET /expire-records  ->  make the cached results for a domain (and optional rdclass/rdtype) expires immediately.
-GET /version         ->  current version.
-GET /nonce           ->  a fixed nonce during between lifetime of this process.
+
 GET /info            ->  get build info.
-GET /stats           ->  get DNS query analysis.
+
 "
                                     );
                                     res.set_content_type(Self::mime_txt());

@@ -11,6 +11,8 @@ type AtomicU64 = Arc<portable_atomic::AtomicU64>;
 type AtomicU128 = Arc<portable_atomic::AtomicU128>;
 type AtomicF64 = Arc<portable_atomic::AtomicF64>;
 
+pub(crate) static STATS_FULL: AtomicBool = AtomicBool::new(false);
+
 #[derive(Debug, Clone, Default)]
 pub struct DNSQueryData {
     // last generate time in unix secs
@@ -28,8 +30,8 @@ pub struct DNSQueryData {
     queries_24h: AtomicU128,
     queries_total: AtomicU128,
 
-    // average used time (Duration::as_secs_f64) for processing DNS query (contains upstream query time if cache missing)
-    avg_delay: AtomicF64,
+    // average latency (Duration::as_secs_f64) for processing DNS query (contains upstream query time if cache missing)
+    avg_latency: AtomicF64,
 
     // total queries via UDP
     udp_queries: AtomicU128,
@@ -58,19 +60,27 @@ pub struct DNSQueryData {
 }
 impl DNSQueryData {
     pub async fn to_json(&self) -> anyhow::Result<serde_json::Value> {
+        let full = STATS_FULL.load(Relaxed);
+
         if self.last_update.load(Relaxed) == 0 {
             anyhow::bail!("no data avaliable: no any update");
         }
 
-        let mut domains = serde_json::Map::new();
-        self.domains.scan_async(|domain, count|{
-            let key: String = domain.into();
+        let domains =
+            if full {
+                let mut domains = serde_json::Map::new();
+                self.domains.scan_async(|domain, count|{
+                    let key: String = domain.into();
 
-            let val: serde_json::Value =
-                count.load(Relaxed).to_string().into();
+                    let val: serde_json::Value =
+                        count.load(Relaxed).to_string().into();
 
-            domains.insert(key, val);
-        }).await;
+                    domains.insert(key, val);
+                }).await;
+                serde_json::Value::Object(domains)
+            } else {
+                serde_json::Value::Null
+            };
 
         let mut rdtypes = serde_json::Map::new();
         self.rdtypes.scan_async(|rdtype, count|{
@@ -110,35 +120,28 @@ impl DNSQueryData {
                 ts as i64
             )?;
 
+        let queries_within =
+            if full {
+                serde_json::json!({
+                    "1m": self.queries_1m.load(Relaxed).to_string(),
+                    "5m": self.queries_5m.load(Relaxed).to_string(),
+                    "15m": self.queries_15m.load(Relaxed).to_string(),
+                    "60m": self.queries_60m.load(Relaxed).to_string(),
+                    "12h": self.queries_12h.load(Relaxed).to_string(),
+                    "24h": self.queries_24h.load(Relaxed).to_string(),
+                    "total": self.queries_total.load(Relaxed).to_string(),
+                })
+            } else {
+                serde_json::Value::Null
+            };
+
         Ok(serde_json::json!({
             "last_update": {
                 "timestamp": ts.to_string(),
                 "string": dt.format(&TIME_FMT_JS)?,
             },
             "freq": self.freq.load(Relaxed),
-            "queries_within": {
-                "1m": self.queries_1m.load(Relaxed)
-                                     .to_string(),
-
-                "5m": self.queries_5m.load(Relaxed)
-                                     .to_string(),
-
-                "15m": self.queries_15m.load(Relaxed)
-                                       .to_string(),
-
-                "60m": self.queries_60m.load(Relaxed)
-                                       .to_string(),
-
-                "12h": self.queries_12h.load(Relaxed)
-                                       .to_string(),
-
-                "24h": self.queries_24h.load(Relaxed)
-                                       .to_string(),
-
-                "total":
-                    self.queries_total.load(Relaxed)
-                                      .to_string()
-            },
+            "queries_within": queries_within, 
             "queries_from": {
                 "udp": self.udp_queries.load(Relaxed)
                                        .to_string(),
@@ -160,7 +163,7 @@ impl DNSQueryData {
                     self.cache_miss.load(Relaxed)
                                    .to_string(),
             },
-            "avg_delay": self.avg_delay.load(Relaxed),
+            "avg_latency": self.avg_latency.load(Relaxed),
 
             "queries": {
                 "domains": domains,
@@ -233,8 +236,7 @@ impl DNSQueryStats {
                     used_times.push(ut.as_secs_f64());
                 }
 
-                let elapsed_secs =
-                    time.elapsed().as_secs();
+                let elapsed_secs = time.elapsed().as_secs();
 
                 if elapsed_secs <= 60 {
                     queries_1m += 1;
@@ -258,10 +260,9 @@ impl DNSQueryStats {
             // guard dropping now
         }
 
-        let avg_delay: f64 =
-            used_times.iter().sum::<f64>() / (used_times.len() as f64);
+        let avg_latency: f64 = used_times.iter().sum::<f64>() / (used_times.len() as f64);
 
-        self.data.avg_delay.store(avg_delay, Relaxed);
+        self.data.avg_latency.store(avg_latency, Relaxed);
 
         self.data.queries_1m.store(queries_1m, Relaxed);
         self.data.queries_5m.store(queries_5m, Relaxed);
@@ -283,14 +284,17 @@ impl DNSQueryStats {
         );
     }
 
-    pub async fn add_query(
-                     &self,
-                     info: &DNSQueryInfo,
-                 ) -> anyhow::Result<()>
-    {
-        let query: DNSQuery = info.query_msg
-                                  .clone()
-                                  .try_into()?;
+    pub fn add_query(&self, info: DNSQueryInfo) {
+        let this = self.clone();
+        smolscale2::spawn(async move {
+            this._add_query(info).await.unwrap();
+        }).detach();
+    }
+
+    pub async fn _add_query(&self, info: DNSQueryInfo) -> anyhow::Result<()> {
+        let full = STATS_FULL.load(Relaxed);
+
+        let query: DNSQuery = info.query_msg.clone().try_into()?;
 
         let domain = query.name.clone();
         let rdtype = query.rdtype;
@@ -304,42 +308,44 @@ impl DNSQueryStats {
             self.data.dohp_queries.fetch_add(1, Relaxed);
         }
 
-        let mut ret = Ok(());
-        for _ in 0..10 {
-            ret = self.queries
-                      .insert_async(
-                           Instant::now(),
-                           info.clone()
-                      ).await;
+        if full {
+            let mut ret = Ok(());
+            for _ in 0..10 {
+                ret = self.queries
+                          .insert_async(
+                               Instant::now(),
+                               info.clone()
+                          ).await;
 
-            if ret.is_ok() {
-                break;
+                if ret.is_ok() {
+                    break;
+                }
             }
-        };
-        if ret.is_err() {
-            log::warn!("cannot insert to scc::HashMap!");
+            if ret.is_err() {
+                log::warn!("cannot insert to scc::HashMap!");
+            }
+
+            self.data.domains.entry_async(domain).await
+                // Entry
+                .or_default()
+                .get()
+                // AtomicU128
+                .fetch_add(1, Relaxed);
         }
 
-        self.data.domains.entry_async(domain).await
-                    // Entry
-                    .or_default()
-                    .get()
-                    // AtomicU128
-                    .fetch_add(1, Relaxed);
-
         self.data.rdtypes.entry_async(rdtype).await
-                    // Entry
-                    .or_default()
-                    .get()
-                    // AtomicU128
-                    .fetch_add(1, Relaxed);
+            // Entry
+            .or_default()
+            .get()
+            // AtomicU128
+            .fetch_add(1, Relaxed);
 
         self.data.rdclasses.entry_async(rdclass).await
-                      // Entry
-                      .or_default()
-                      .get()
-                      // AtomicU128
-                      .fetch_add(1, Relaxed);
+            // Entry
+            .or_default()
+            .get()
+            // AtomicU128
+            .fetch_add(1, Relaxed);
 
         if let Some(status) = &info.cache_status {
             use DNSCacheStatus::*;

@@ -841,11 +841,11 @@ impl DNSDaemonContext {
         match result {
             Ok((res, status)) => {
                 info.cache_status = Some(status);
-                let _=self.stats.add_query(&info).await;
+                self.stats.add_query(info.clone());
                 Ok(res)
             },
             Err(e) => {
-                let _=self.stats.add_query(&info).await;
+                self.stats.add_query(info.clone());
                 Err(e)
             }
         }
@@ -1125,6 +1125,11 @@ pub struct HitdnsOpt {
     #[serde(default)]
     pub no_api: bool,
 
+    /// whether enable full stats (with all query domains)
+    #[arg(long)]
+    #[serde(default)]
+    pub stats_full: bool,
+
     /// upstream URL of DoH servers.
     /// DNS over HTTPS (RFC 8484)
     #[arg(long)]
@@ -1301,8 +1306,16 @@ static ENV_FILTER: Lazy<Option<env_filter::Filter>> =
         }
     });
 
+pub static STARTED: Lazy<Instant> = Lazy::new(Instant::now);
+
 fn main() -> anyhow::Result<()> {
+    Lazy::force(&STARTED);
+
     let opt = HITDNS_OPT.clone();
+
+    if opt.stats_full {
+        STATS_FULL.store(true, Relaxed);
+    }
 
     #[cfg(not(feature = "ftlog"))]
     {

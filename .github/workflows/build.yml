@@ -112,7 +112,9 @@ jobs:
 
       - name: Cross Build mips-el Linux musl
         continue-on-error: true
-        run: bash upx.sh cross build --release --target mipsel-unknown-linux-musl --verbose -Z build-std=core,std,alloc,proc_macro || bash upx.sh cross build --release --target mipsel-unknown-linux-musl --no-default-features --features sled,ftlog --verbose -Z build-std=core,std,alloc,proc_macro
+        run: |
+          export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
+          bash upx.sh cross build --release --target mipsel-unknown-linux-musl --verbose -Z build-std=core,std,alloc,proc_macro || bash upx.sh cross build --release --target mipsel-unknown-linux-musl --no-default-features --features sled,ftlog --verbose -Z build-std=core,std,alloc,proc_macro
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.mipsel-linux-musl
@@ -256,9 +258,7 @@ jobs:
 
       - name: Cross Build amd64 NetBSD
         continue-on-error: true
-        run: |
-          export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
-          bash upx.sh cross build --release --target x86_64-unknown-netbsd --verbose
+        run: bash upx.sh cross build --release --target x86_64-unknown-netbsd --verbose
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-netbsd
