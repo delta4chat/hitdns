@@ -115,22 +115,22 @@ impl DNSQueryData {
         }).await;
 
         let ts = self.last_update.load(Relaxed);
-        let dt =
-            time::OffsetDateTime::from_unix_timestamp(
-                ts as i64
-            )?;
+        let dt = time::OffsetDateTime::from_unix_timestamp(ts as i64)?;
 
         let queries_within =
+            serde_json::json!({
+                "1m": self.queries_1m.load(Relaxed).to_string(),
+                "5m": self.queries_5m.load(Relaxed).to_string(),
+                "15m": self.queries_15m.load(Relaxed).to_string(),
+                "60m": self.queries_60m.load(Relaxed).to_string(),
+                "12h": self.queries_12h.load(Relaxed).to_string(),
+                "24h": self.queries_24h.load(Relaxed).to_string(),
+                "total": self.queries_total.load(Relaxed).to_string(),
+            });
+
+        let avg_latency =
             if full {
-                serde_json::json!({
-                    "1m": self.queries_1m.load(Relaxed).to_string(),
-                    "5m": self.queries_5m.load(Relaxed).to_string(),
-                    "15m": self.queries_15m.load(Relaxed).to_string(),
-                    "60m": self.queries_60m.load(Relaxed).to_string(),
-                    "12h": self.queries_12h.load(Relaxed).to_string(),
-                    "24h": self.queries_24h.load(Relaxed).to_string(),
-                    "total": self.queries_total.load(Relaxed).to_string(),
-                })
+                self.avg_latency.load(Relaxed).to_string().into()
             } else {
                 serde_json::Value::Null
             };
@@ -163,7 +163,7 @@ impl DNSQueryData {
                     self.cache_miss.load(Relaxed)
                                    .to_string(),
             },
-            "avg_latency": self.avg_latency.load(Relaxed),
+            "avg_latency": avg_latency,
 
             "queries": {
                 "domains": domains,
@@ -181,7 +181,7 @@ pub struct DNSQueryStats {
     elapsed: AtomicF64,
 
     // all of queries with timestamp
-    queries: Arc<scc::TreeIndex<Instant, DNSQueryInfo>>,
+    queries: Arc<scc::TreeIndex<Instant, Option<DNSQueryInfo>>>,
 
     // inner data that can `derive(Default)`
     data: DNSQueryData,
@@ -192,16 +192,12 @@ impl DNSQueryStats {
         Self {
             started: Instant::now(),
             elapsed: Default::default(),
-
             queries: Default::default(),
-
             data: Default::default(),
         }
     }
 
-    pub async fn to_json(&self)
-        -> anyhow::Result<serde_json::Value>
-    {
+    pub async fn to_json(&self) -> anyhow::Result<serde_json::Value> {
         self.data.to_json().await
     }
 
@@ -213,8 +209,8 @@ impl DNSQueryStats {
         };
 
         /* update .freq */
-        let queries = self.queries.len();
-        let freq = (queries as f64) / elapsed;
+        let queries_total = self.data.queries_total.load(Relaxed);
+        let freq = (queries_total as f64) / elapsed;
         self.data.freq.store(freq, Relaxed);
 
         /* update queries_1m/5m/15m/60m/12h/1d */
@@ -230,30 +226,27 @@ impl DNSQueryStats {
         {
             let g = scc::ebr::Guard::new();
             for entry in self.queries.iter(&g) {
-                let (time, info) = entry;
+                let (time, maybe_info) = entry;
 
-                if let Some(ut) = info.used_time {
-                    used_times.push(ut.as_secs_f64());
+                if let Some(ref info) = maybe_info {
+                    if let Some(ut) = info.used_time {
+                        used_times.push(ut.as_secs_f64());
+                    }
                 }
 
                 let elapsed_secs = time.elapsed().as_secs();
 
                 if elapsed_secs <= 60 {
                     queries_1m += 1;
-                }
-                else if elapsed_secs <= 60*5 {
+                } else if elapsed_secs <= 60*5 {
                     queries_5m += 1;
-                }
-                else if elapsed_secs <= 60*15 {
+                } else if elapsed_secs <= 60*15 {
                     queries_15m += 1;
-                }
-                else if elapsed_secs <= 60*60 {
+                } else if elapsed_secs <= 60*60 {
                     queries_60m += 1;
-                }
-                else if elapsed_secs <= 60*60*12 {
+                } else if elapsed_secs <= 60*60*12 {
                     queries_12h += 1;
-                }
-                else if elapsed_secs <= 60*60*24 {
+                } else if elapsed_secs <= 60*60*24 {
                     queries_24h += 1;
                 }
             }
@@ -270,8 +263,6 @@ impl DNSQueryStats {
         self.data.queries_60m.store(queries_60m, Relaxed);
         self.data.queries_12h.store(queries_12h, Relaxed);
         self.data.queries_24h.store(queries_24h, Relaxed);
-
-        self.data.queries_total.store(queries as u128, Relaxed);
 
         /* store .last_update */
         self.data.last_update.store(
@@ -291,7 +282,7 @@ impl DNSQueryStats {
         }).detach();
     }
 
-    pub async fn _add_query(&self, info: DNSQueryInfo) -> anyhow::Result<()> {
+    async fn _add_query(&self, info: DNSQueryInfo) -> anyhow::Result<()> {
         let full = STATS_FULL.load(Relaxed);
 
         let query: DNSQuery = info.query_msg.clone().try_into()?;
@@ -299,6 +290,8 @@ impl DNSQueryStats {
         let domain = query.name.clone();
         let rdtype = query.rdtype;
         let rdclass = query.rdclass;
+
+        self.data.queries_total.fetch_add(1, Relaxed);
 
         if info.peer.starts_with("udp://") {
             self.data.udp_queries.fetch_add(1, Relaxed);
@@ -308,23 +301,26 @@ impl DNSQueryStats {
             self.data.dohp_queries.fetch_add(1, Relaxed);
         }
 
-        if full {
-            let mut ret = Ok(());
-            for _ in 0..10 {
-                ret = self.queries
-                          .insert_async(
-                               Instant::now(),
-                               info.clone()
-                          ).await;
-
-                if ret.is_ok() {
-                    break;
+        let mut ret = Ok(());
+        for _ in 0..10 {
+            ret = self.queries.insert_async(
+                Instant::now(),
+                if full {
+                    Some(info.clone())
+                } else {
+                    None
                 }
-            }
-            if ret.is_err() {
-                log::warn!("cannot insert to scc::HashMap!");
-            }
+            ).await;
 
+            if ret.is_ok() {
+                break;
+            }
+        }
+        if ret.is_err() {
+            log::warn!("cannot insert to scc::HashMap!");
+        }
+
+        if full {
             self.data.domains.entry_async(domain).await
                 // Entry
                 .or_default()
@@ -364,7 +360,6 @@ impl DNSQueryStats {
 
         /* all done */
         let new_elapsed = self.started.elapsed().as_secs_f64();
-
         self.elapsed.store(new_elapsed, Relaxed);
 
         let now = SystemTime::now()
