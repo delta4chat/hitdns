@@ -50,13 +50,13 @@ pub struct DNSQueryData {
     cache_expired: AtomicU128,
 
     // query numbers of specified domain
-    domains: scc::HashMap<String, AtomicU128>,
+    domains: Arc<scc::HashMap<String, AtomicU128>>,
 
     // query numbers of specified RdType (usually 90% of A, AAAA)
-    rdtypes: scc::HashMap<u16, AtomicU128>,
+    rdtypes: Arc<scc::HashMap<u16, AtomicU128>>,
 
     // query numbers of specified DNS Class (usually IN - Internet)
-    rdclasses: scc::HashMap<u16, AtomicU128>,
+    rdclasses: Arc<scc::HashMap<u16, AtomicU128>>,
 }
 impl DNSQueryData {
     pub async fn to_json(&self) -> anyhow::Result<serde_json::Value> {
@@ -181,7 +181,7 @@ pub struct DNSQueryStats {
     elapsed: AtomicF64,
 
     // all of queries with timestamp
-    queries: scc::TreeIndex<Instant, DNSQueryInfo>,
+    queries: Arc<scc::TreeIndex<Instant, DNSQueryInfo>>,
 
     // inner data that can `derive(Default)`
     data: DNSQueryData,
