@@ -1029,6 +1029,10 @@ pub struct HitdnsOpt {
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
 
+    /// specify the work thread number of async runtime. if not specified, will use same number of CPUs
+    #[arg(long)]
+    pub threads: Option<usize>,
+
     #[cfg(feature = "rsinfo")]
     /// show build information then quit program.
     #[arg(long)]
@@ -1299,7 +1303,7 @@ static ENV_FILTER: Lazy<Option<env_filter::Filter>> =
             Some(
                 env_filter::Builder::new()
                     .parse(env)
-                    .build(),
+                    .build()
             )
         } else {
             None
@@ -1315,6 +1319,10 @@ fn main() -> anyhow::Result<()> {
 
     if opt.stats_full {
         STATS_FULL.store(true, Relaxed);
+    }
+
+    if let Some(thrs) = opt.threads {
+        smolscale2::set_threads(thrs);
     }
 
     #[cfg(not(feature = "ftlog"))]
