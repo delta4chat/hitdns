@@ -751,7 +751,7 @@ impl DNSDaemon {
             }
             log::debug!(
                 "cache length: {:?}",
-                cache.memory.len()
+                cache.memory.entry_count()
             );
 
             log::debug!(

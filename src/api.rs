@@ -99,7 +99,7 @@ impl HitdnsAPI {
                                     res.set_content_type(Self::mime_txt());
 
                                     let t = Instant::now();
-                                    let ret = daemon.context.cache.load().await;
+                                    let ret = daemon.context.cache.load_all().await;
                                     let t = t.elapsed();
 
                                     match ret {
