@@ -1780,7 +1780,7 @@ dependencies = [
  "hickory-proto",
  "http-types",
  "log",
- "moka",
+ "moka2",
  "once_cell",
  "portable-atomic",
  "quinn 0.10.2",
@@ -2181,21 +2181,20 @@ dependencies = [
 ]
 
 [[package]]
-name = "moka"
-version = "0.12.8"
+name = "moka2"
+version = "0.12.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32cf62eb4dd975d2dde76432fb1075c49e3ee2331cf36f1f8fd4b66550d32b6f"
+checksum = "cc277a6c1d4239b9c644c7b7f8eb87bd1262ce3f1193a7f4873932647d399387"
 dependencies = [
  "async-lock 3.4.0",
- "async-trait",
  "crossbeam-channel",
  "crossbeam-epoch",
  "crossbeam-utils",
  "event-listener 5.3.1",
  "futures-util",
  "log",
- "once_cell",
  "parking_lot 0.12.3",
+ "portable-atomic",
  "quanta",
  "rustc_version",
  "smallvec",

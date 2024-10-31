@@ -349,12 +349,12 @@ impl DNSCacheEntry {
 /* ========== DNS Cache ========== */
 #[derive(Debug, Clone)]
 pub struct DNSCache {
-    pub(crate) memory: Arc<moka::future::Cache<DNSQuery, DNSCacheEntry>>,
+    pub(crate) memory: Arc<moka2::future::Cache<DNSQuery, DNSCacheEntry>>,
     load_negatives: Arc<scc::HashSet<DNSQuery>>,
     pub(crate) resolvers: Arc<DNSResolverArray>,
     pub(crate) debug: bool,
 }
-/// SAFETY: backend by scc::HashMap or moka::future::Cache
+/// SAFETY: backend by scc::HashSet / moka2::future::Cache
 unsafe impl Sync for DNSCache {}
 unsafe impl Send for DNSCache {}
 
@@ -362,13 +362,13 @@ impl DNSCache {
     pub(crate) fn init() -> Self {
         let memory =
             Arc::new(
-                moka::future::Cache::builder()
+                moka2::future::Cache::builder()
                 .max_capacity(10485760)
                 .time_to_idle(Duration::from_secs(60*60)) // one hour for time-to-idle
                 .time_to_live(Duration::from_secs(60*60*24*365*100)) // 100 years for time-to-live
                 .async_eviction_listener(|query, _entry, cause| {
                     Box::pin(async move {
-                        use moka::notification::RemovalCause::*;
+                        use moka2::notification::RemovalCause::*;
 
                         if cause != Expired {
                             return;
