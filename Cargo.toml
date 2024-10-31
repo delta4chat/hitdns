@@ -91,7 +91,7 @@ sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"]
 event-listener = { version = "5.3.1", features = ["portable-atomic"] }
 toml-env = { version = "1.2.0", features = ["log"] }
 data-encoding = "2.6.0"
-moka = { version = "0.12.8", default-features = false, features = ["atomic64", "future", "logging", "quanta"] }
+moka = { version = "0.12.8", default-features = false, features = ["future", "logging", "quanta"] }
 
 [build-dependencies]
 rsinfo = { optional = true, version = "0.1.3", features = ["vergen-all"] }
