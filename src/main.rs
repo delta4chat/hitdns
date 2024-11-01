@@ -742,6 +742,8 @@ impl DNSDaemon {
             }
         }
 
+        Lazy::force(&HITDNS_SQLITE_POOL);
+
         loop {
             if opt.debug {
                 log::trace!(

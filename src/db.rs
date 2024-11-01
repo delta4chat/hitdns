@@ -1,16 +1,47 @@
 use crate::*;
 
-pub static HITDNS_SQLITE_FILENAME: Lazy<PathBuf> =
+pub static HITDNS_SQLITE_FILENAME_OLD: Lazy<PathBuf> =
     Lazy::new(|| {
         let mut buf = HITDNS_DIR.clone();
         buf.push("cache.sqlx.sqlite.db");
         buf
     });
 
+pub static HITDNS_SQLITE_FILENAME: Lazy<PathBuf> =
+    Lazy::new(|| {
+        let mut buf = HITDNS_DIR.clone();
+        buf.push("hitdns.sqlx.sqlite3.db");
+        buf
+    });
+
 pub static HITDNS_SQLITE_POOL: Lazy<SqlitePool> =
     Lazy::new(|| {
-        let file = &*HITDNS_SQLITE_FILENAME;
         smol::block_on(async move {
+            let mut file = &*HITDNS_SQLITE_FILENAME;
+            let file_old = &*HITDNS_SQLITE_FILENAME_OLD;
+
+            if file_old.try_exists().unwrap() {
+                log::warn!("OLD DATABASE FILE ({file_old:?}) FOUND! try to rename to new filename ({file:?})!");
+                if file.try_exists().unwrap() {
+                    log::error!("UNABLE TO RENAME! USE OLD FILENAME NOW! because new filename already exists, please migration manually.");
+                    file = file_old;
+                } else {
+                    let mut file = file.clone();
+                    let mut file_old = file_old.clone();
+                    smol::fs::rename(&file_old, &file).await.expect("unable to rename .db from old to new!");
+
+                    file.set_extension("db-shm");
+                    file_old.set_extension("db-shm");
+                    let _ = smol::fs::rename(&file_old, &file).await.expect("unable to rename .db-shm from old to new!");
+
+                    file.set_extension("db-wal");
+                    file_old.set_extension("db-wal");
+                    let _ = smol::fs::rename(file_old, file).await.expect("unable to rename .db-wal from old to new!");
+
+                    // this is not a bug due to shadow-let just affect this spoce, so original one leaves un-modified
+                }
+            }
+
             let pool =
                 SqlitePoolOptions::new()
                 .max_connections(1)
