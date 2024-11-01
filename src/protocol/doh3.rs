@@ -1,17 +1,17 @@
 use crate::*;
 
-static DOH_CLIENT: Lazy<reqwest::Client> =
+static DOH3_CLIENT: Lazy<reqwest_h3::Client> =
     Lazy::new(|| {
         let mut cs = RUSTLS_CLIENT_CONFIG.clone();
-        cs.alpn_protocols = vec![ b"h2".to_vec() ];
+        cs.alpn_protocols = vec![ b"h3".to_vec() ];
 
-        reqwest::Client::builder()
+        reqwest_h3::Client::builder()
             // log::trace
             .connection_verbose(true)
 
             // use HTTPS(rustls) only
             .use_rustls_tls()
-            .min_tls_version(reqwest::tls::Version::TLS_1_2)
+            .min_tls_version(reqwest_h3::tls::Version::TLS_1_3)
             .https_only(true)
             .tls_sni( HOSTS.map.len() > 0 )
             .use_preconfigured_tls(cs)
@@ -24,15 +24,18 @@ static DOH_CLIENT: Lazy<reqwest::Client> =
                 )
             )
 
-            // HTTP/2 setting
-            .http2_prior_knowledge() // use HTTP/2 only
+            // HTTP/3 setting
+            .http3_prior_knowledge() // use HTTP/3 only
+            .http3_max_idle_timeout(Duration::from_secs(60))
+            /*
             .http2_adaptive_window(false)
             .http2_max_frame_size(Some(65535))
             .http2_keep_alive_interval(Some(Duration::from_secs(10)))
             .http2_keep_alive_timeout(Duration::from_secs(10))
             .http2_keep_alive_while_idle(true)
+            */
             .referer(false) // do not send Referer / Referrer
-            .redirect(reqwest::redirect::Policy::none()) // do not follow redirects
+            .redirect(reqwest_h3::redirect::Policy::none()) // do not follow redirects
 
             // connection settings
             .tcp_nodelay(true)
@@ -47,14 +50,14 @@ static DOH_CLIENT: Lazy<reqwest::Client> =
     });
 
 #[derive(Debug, Clone)]
-pub struct DNSOverHTTPS {
-    client: reqwest::Client,
-    url: reqwest::Url,
+pub struct DNSOverH3 {
+    client: reqwest_h3::Client,
+    url: reqwest_h3::Url,
     metrics: Arc<RwLock<DNSMetrics>>,
     _task: Arc<smol::Task<()>>,
 }
 
-impl<'a> DNSOverHTTPS {
+impl<'a> DNSOverH3 {
     const CONTENT_TYPE: &'static str = "application/dns-message";
 
     pub fn new(
@@ -66,9 +69,9 @@ impl<'a> DNSOverHTTPS {
     ) -> anyhow::Result<Self> {
         let url: String = url.to_string();
 
-        let url = reqwest::Url::parse(&url).log_warn()?;
+        let url = reqwest_h3::Url::parse(&url).log_warn()?;
         if url.scheme() != "https" {
-            anyhow::bail!("DoH server URL scheme invalid.");
+            anyhow::bail!("DoH3 server URL scheme invalid.");
         }
 
         /*
@@ -79,7 +82,7 @@ impl<'a> DNSOverHTTPS {
         }
         */
 
-        let client = DOH_CLIENT.clone();
+        let client = DOH3_CLIENT.clone();
 
         let metrics = Arc::new(RwLock::new(DNSMetrics::from(&url)));
 
@@ -100,8 +103,8 @@ impl<'a> DNSOverHTTPS {
     }
 
     async fn _metrics_task(
-        client: reqwest::Client,
-        url: reqwest::Url,
+        client: reqwest_h3::Client,
+        url: reqwest_h3::Url,
         metrics: Arc<RwLock<DNSMetrics>>,
     ) {
         let mut start;
@@ -140,14 +143,14 @@ impl<'a> DNSOverHTTPS {
                 if let Some(ret) = &maybe_ret {
                     if ret.is_ok() {
                         ret.log_trace();
-                        log::debug!("DoH server {url_} working. latency={latency:?}");
+                        log::debug!("DoH3 server {url_} working. latency={latency:?}");
                         m.up(latency);
                     } else {
-                        log::warn!("DoH server {url_} down. used time: {latency:?}, ret={ret:?}");
+                        log::warn!("DoH3 server {url_} down. used time: {latency:?}, ret={ret:?}");
                         m.down();
                     }
                 } else {
-                    log::warn!("DoH server {url_} not working! timed out.");
+                    log::warn!("DoH3 server {url_} not working! timed out.");
                     m.down();
                 }
 
@@ -157,11 +160,11 @@ impl<'a> DNSOverHTTPS {
 
     // un-cached DNS Query
     async fn _dns_resolve(&self, query: &DNSQuery) -> anyhow::Result<dns::Message> {
-        log::info!("DoH un-cached Query: {query:?}");
+        log::info!("DoH3 un-cached Query: {query:?}");
         let start = Instant::now();
         let result = self._orig_dns_resolve(query).await;
         let latency = start.elapsed();
-        log::info!("DoH un-cached Result: (server={} latency={latency:?}) {result:?}", &self.url);
+        log::info!("DoH3 un-cached Result: (server={} latency={latency:?}) {result:?}", &self.url);
 
         let ok = result.is_ok();
 
@@ -196,21 +199,21 @@ impl<'a> DNSOverHTTPS {
             .log_info()?;
 
         if http_res.status().as_u16() != 200 {
-            anyhow::bail!("DoH server {url} returns non-200 HTTP status code: {http_res:?}");
+            anyhow::bail!("DoH3 server {url} returns non-200 HTTP status code: {http_res:?}");
         }
 
         if let Some(ct) = http_res.headers().get("Content-Type") {
             if ct.as_bytes().to_ascii_lowercase() != Self::CONTENT_TYPE.as_bytes() {
-                anyhow::bail!("DoH server {url} returns invalid Content-Type header: {http_res:?}");
+                anyhow::bail!("DoH3 server {url} returns invalid Content-Type header: {http_res:?}");
             }
         } else {
-            anyhow::bail!("DoH server {url} does not specify Content-Type header: {http_res:?}");
+            anyhow::bail!("DoH3 server {url} does not specify Content-Type header: {http_res:?}");
         }
 
         let res: Bytes = http_res.bytes().await.log_warn()?;
 
         if res.len() > 65535 {
-            anyhow::bail!("unexpected received too large response from DoH server {url}");
+            anyhow::bail!("unexpected received too large response from DoH3 server {url}");
         }
 
         let response = dns::Message::from_vec(&res).log_warn()?;
@@ -219,7 +222,7 @@ impl<'a> DNSOverHTTPS {
     }
 }
 
-impl DNSResolver for DNSOverHTTPS {
+impl DNSResolver for DNSOverH3 {
     fn dns_resolve(
         &self,
         query: &DNSQuery,
@@ -235,7 +238,7 @@ impl DNSResolver for DNSOverHTTPS {
     }
 
     fn dns_protocol(&self) -> &'static str {
-        "DNS over HTTP/2 over TLS over TCP"
+        "DNS over HTTP/3 over QUIC over UDP"
     }
 
     fn dns_metrics(&self) -> PinFut<DNSMetrics> {

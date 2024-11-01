@@ -14,6 +14,8 @@ default = [ "sqlite", "ftlog" ]
 
 low-memory = []
 
+doh3 = [ "dep:reqwest-h3" ]
+
 doq = [ "dep:quinn" ]
 dot = [ "dep:async-tls" ]
 
@@ -62,6 +64,8 @@ rustls = { version = "0.23.14", features = ["custom-provider", "ring", "std", "t
 
 # HTTPS library for DoH client
 reqwest = { version = "0.12.5", features = ["rustls-tls", "http2"], default-features = false }
+reqwest-h3 = { optional = true, version = "0.13.0", features = ["rustls-tls", "unstable", "http3"], default-features = false }
+
 #hyper = { version = "0.14.21", features = ["client"], default-features = false }
 
 # QUIC library for DoQ client
@@ -91,7 +95,7 @@ sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"]
 event-listener = { version = "5.3.1", features = ["portable-atomic"] }
 toml-env = { version = "1.2.0", features = ["log"] }
 data-encoding = "2.6.0"
-moka2 = { version = "0.12.8", default-features = false, features = ["future", "logging", "quanta"] }
+moka2 = { version = "0.12.9", default-features = false, features = ["future", "logging", "quanta"] }
 
 [build-dependencies]
 rsinfo = { optional = true, version = "0.1.3", features = ["vergen-all"] }

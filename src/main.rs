@@ -282,6 +282,24 @@ pub trait Average<  T: Default + Copy + From<u64>  > {
 }
 */
 
+pub fn randchr() -> char {
+    const TEMPLATE: &[char] = &[
+        'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+        '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'
+    ];
+    const TEMPLATE_LEN: usize = TEMPLATE.len();
+
+    return TEMPLATE[fastrand::usize(0..TEMPLATE_LEN)];
+}
+pub fn randstr(len: usize) -> String {
+    let mut out = String::new();
+    for _ in 0..len {
+        out.push(randchr());
+    }
+    out
+}
+
 pub fn average<T>(set: &[T]) -> T
 where
     T: Default
@@ -633,6 +651,17 @@ impl DNSDaemon {
                 )?));
             }
 
+            #[cfg(feature = "doh3")]
+            for doh3_url in opt.doh3_upstream.iter() {
+                x.push(Arc::new(DNSOverH3::new(
+                    doh3_url,
+                    /*
+                    opt.hosts.is_some(),
+                    opt.tls_sni,
+                    */
+                )?));
+            }
+
             #[cfg(feature = "dot")]
             for dot_addr in opt.dot_upstream.iter() {
                 x.push(Arc::new(
@@ -646,9 +675,7 @@ impl DNSDaemon {
 
             #[cfg(feature = "doq")]
             for doq_addr in opt.doq_upstream.iter() {
-                x.push(Arc::new(DNSOverQUIC::new(
-                    doq_addr,
-                )?));
+                x.push(Arc::new(DNSOverQUIC::new(doq_addr)?));
             }
 
             if x.is_empty() {
@@ -659,17 +686,13 @@ impl DNSDaemon {
             }
 
             if x.is_empty() {
-                anyhow::bail!(
-                    "No DNS Upstream provided."
-                );
+                anyhow::bail!("No DNS Upstream provided.");
             }
 
             DNSResolverArray::from(x)
         };
 
-        let cache = Arc::new(
-            DNSCache::new(resolvers, opt.debug).await?,
-        );
+        let cache = Arc::new(DNSCache::new(resolvers, opt.debug).await?);
 
         let hooks = Arc::new(DNSHookArray::new(opt.clone()));
         hooks.add(-1, Arc::new(dns_hosts_hook)).await;
@@ -1142,6 +1165,19 @@ pub struct HitdnsOpt {
     #[serde(default)]
     pub doh_upstream: Vec<String>,
 
+    #[cfg(feature = "doh3")]
+    /// upstream URL of DoH3 servers.
+    /// DNS over HTTP/3
+    #[arg(long)]
+    #[serde(default)]
+    pub doh3_upstream: Vec<String>,
+
+    #[cfg(feature = "doh3")]
+    /// only use HTTP/3 for all DoH servers
+    #[arg(long)]
+    #[serde(default)]
+    pub doh3_only: bool,
+
     /// without built-in default list of global DNS resolvers.
     #[arg(long)]
     #[serde(default)]
@@ -1166,6 +1202,8 @@ pub struct DefaultServers;
 impl DefaultServers {
     /// Global servers.
     pub fn global() -> Vec<Arc<dyn DNSResolver>> {
+        let mut list: Vec<Arc<dyn DNSResolver>> = vec![];
+
         let doh_server_urls = vec![
             // [Anycast] Cloudflare DNS
             "https://1.0.0.1/dns-query",
@@ -1196,13 +1234,33 @@ impl DefaultServers {
             "https://[2001:620:0:ff::2]/dns-query",
             "https://[2001:620:0:ff::3]/dns-query",
         ];
-
-        let mut list: Vec<Arc<dyn DNSResolver>> = vec![];
-
         for doh_url in doh_server_urls.iter() {
             list.push(Arc::new(
                 DNSOverHTTPS::new(doh_url).unwrap(),
             ));
+        }
+
+        #[cfg(feature = "doh3")]
+        {
+            let doh3_server_urls = vec![
+                // [Anycast] Cloudflare DNS
+                "https://1.0.0.1/dns-query",
+                "https://1.1.1.1/dns-query",
+                "https://[2606:4700:4700::1001]/dns-query",
+                "https://[2606:4700:4700::1111]/dns-query",
+
+                // [DE] dns.sb
+                "https://45.11.45.11/dns-query",
+                "https://185.222.222.222/dns-query",
+
+                // [?] Adguard DNS Un-filtered
+                "https://94.140.14.140/dns-query",
+            ];
+            for doh3_url in doh3_server_urls.iter() {
+                list.push(Arc::new(
+                    DNSOverH3::new(doh3_url).unwrap(),
+                ));
+            }
         }
 
         list

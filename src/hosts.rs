@@ -120,11 +120,12 @@ impl Hosts {
 
     fn _reqwest_resolve(
         &self,
-        domain: reqwest::dns::Name,
+        domain: impl ToString,
     ) -> reqwest::dns::Resolving {
+        let domain = domain.to_string();
         Box::pin(async move {
             let maybe_ips =
-                HOSTS.lookup(domain.as_str()).await;
+                HOSTS.lookup(&domain).await;
 
             if let Some(ips) = maybe_ips {
                 let addrs: Vec<SocketAddr> = {
@@ -168,7 +169,7 @@ impl reqwest::dns::Resolve for Hosts {
         &self,
         domain: reqwest::dns::Name,
     ) -> reqwest::dns::Resolving {
-        self._reqwest_resolve(domain)
+        self._reqwest_resolve(domain.as_str())
     }
 }
 impl reqwest::dns::Resolve for &Hosts {
@@ -176,6 +177,29 @@ impl reqwest::dns::Resolve for &Hosts {
         &self,
         domain: reqwest::dns::Name,
     ) -> reqwest::dns::Resolving {
-        self._reqwest_resolve(domain)
+        self._reqwest_resolve(domain.as_str())
+    }
+}
+
+#[cfg(feature = "doh3")]
+mod _impl_h3 {
+    use super::*;
+
+    impl reqwest_h3::dns::Resolve for Hosts {
+        fn resolve(
+            &self,
+            domain: reqwest_h3::dns::Name,
+        ) -> reqwest_h3::dns::Resolving {
+            self._reqwest_resolve(domain.as_str())
+        }
+    }
+
+    impl reqwest_h3::dns::Resolve for &Hosts {
+        fn resolve(
+            &self,
+            domain: reqwest_h3::dns::Name,
+        ) -> reqwest_h3::dns::Resolving {
+            self._reqwest_resolve(domain.as_str())
+        }
     }
 }
