@@ -190,13 +190,10 @@ impl HitdnsAPI {
                                     res
                                 },
 
-                                #[cfg(feature = "rsinfo")]
                                 "/info" => {
                                     let mut res = Response::new(StatusCode::Ok);
                                     res.set_content_type(Self::mime_json());
-                                    res.set_body(
-                                        format!("{}", env!("RSINFO_JSON"))
-                                    );
+                                    res.set_body(format!("{:#}", &*HITDNS_INFO));
                                     res
                                 },
 

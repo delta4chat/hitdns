@@ -10,7 +10,7 @@ repository = "https://github.com/delta4chat/hitdns"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = [ "sqlite", "ftlog", "doh3" ]
+default = [ "vergen", "sqlite", "ftlog", "doh3" ]
 
 doh3 = []
 
@@ -20,7 +20,7 @@ dot = [ "dep:async-tls" ]
 sqlite = [ "dep:sqlx" ]
 ftlog = [ "dep:ftlog2", "dep:anstyle", "dep:time" ]
 
-rsinfo = [ "dep:rsinfo", "dep:vergen" ]
+vergen = [ "dep:vergen" ]
 
 [dependencies]
 anyhow = "1.0.79"
@@ -96,9 +96,7 @@ data-encoding = "2.6.0"
 moka2 = { version = "0.12.9", default-features = false, features = ["future", "logging", "quanta"] }
 
 [build-dependencies]
-rsinfo = { optional = true, version = "0.1.3", features = ["vergen-all"] }
-#rsinfo = { optional = true, path = "../rsinfo", features = ["vergen-all"] }
-vergen = { optional = true, version = "8.3.2", features = ["build", "cargo", "git", "gitoxide", "rustc", "si"] }
+vergen = { optional = true, version = "8.3.2", features = ["build", "cargo", "cargo_metadata", "cfg-if", "git", "gitoxide", "gix", "regex", "rustc", "rustc_version", "si", "sysinfo", "time"], default-features = false }
 
 [profile.dev]
 panic = "unwind"

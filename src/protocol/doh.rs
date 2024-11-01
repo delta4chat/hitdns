@@ -1,5 +1,22 @@
 use crate::*;
 
+static USER_AGENT: Lazy<String> =
+    Lazy::new(|| {
+        let mut ua = String::from("hitdns");
+
+        let info = &*HITDNS_INFO;
+        if ! info.version.is_empty() {
+            ua.push('/');
+            ua.push_str(info.version);
+        }
+        if ! info.commit.is_empty() {
+            ua.push('+');
+            ua.push_str(info.commit);
+        }
+
+        ua
+    });
+
 static DOH2_CLIENT: Lazy<reqwest_h3::Client> =
     Lazy::new(|| {
         let mut cs = RUSTLS_CLIENT_CONFIG.clone();
@@ -17,12 +34,7 @@ static DOH2_CLIENT: Lazy<reqwest_h3::Client> =
             .use_preconfigured_tls(cs)
 
             // User-Agent
-            .user_agent(
-                format!(
-                    "hitdns/{}",
-                    option_env!("CARGO_PKG_VERSION").unwrap_or("NA")
-                )
-            )
+            .user_agent(&*USER_AGENT)
 
             // HTTP/2 setting
             .http2_prior_knowledge() // use HTTP/2 only
@@ -64,12 +76,7 @@ static DOH3_CLIENT: Lazy<reqwest_h3::Client> =
             .use_preconfigured_tls(cs)
 
             // User-Agent
-            .user_agent(
-                format!(
-                    "hitdns/{}",
-                    option_env!("CARGO_PKG_VERSION").unwrap_or("NA")
-                )
-            )
+            .user_agent(&*USER_AGENT)
 
             // HTTP/3 setting
             .http3_prior_knowledge() // use HTTP/3 only

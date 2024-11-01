@@ -1830,7 +1830,6 @@ dependencies = [
  "quinn 0.10.2",
  "quoted_printable",
  "reqwest-h3",
- "rsinfo",
  "rustls 0.23.16",
  "scc",
  "serde",
@@ -2908,16 +2907,6 @@ dependencies = [
  "spin 0.9.8",
  "untrusted 0.9.0",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "rsinfo"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84edf9078694d05cf42dfe44c97520e6941f8814eeefaaec3db20df1961624b8"
-dependencies = [
- "serde_json",
- "vergen",
 ]
 
 [[package]]

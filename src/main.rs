@@ -1039,9 +1039,77 @@ impl DNSDaemonContext {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub struct HitdnsInfo {
+    pub name: &'static str,
+    pub version: &'static str,
+    pub commit: &'static str,
+    pub time: &'static str,
+    pub target: &'static str,
+    pub features: &'static str,
+}
+impl core::fmt::Display for HitdnsInfo {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+        let json = serde_json::json!(self);
+        if f.alternate() {
+            write!(f, "{json:#}")
+        } else {
+            write!(f, "{json}")
+        }
+    }
+}
+
+pub static HITDNS_INFO: Lazy<HitdnsInfo> =
+    Lazy::new(||{
+        let mut info =
+            HitdnsInfo {
+                name: "HitDNS",
+                version: "",
+                commit: "",
+                time: "",
+                target: "",
+                features: "",
+            };
+
+        if let Some(ver) = option_env!("CARGO_PKG_VERSION") {
+            info.version = ver;
+        }
+        if let Some(t) = option_env!("VERGEN_GIT_COMMIT_TIMESTAMP") {
+            let z = t.ends_with("Z");
+            let mut t = t.split(".").next().unwrap_or(t).to_string();
+            if z {
+                if ! t.ends_with("Z") {
+                    t.push('Z');
+                }
+            }
+            info.time = Box::leak(Box::new(t));
+        }
+        if let Some(sha) = option_env!("VERGEN_GIT_SHA") {
+            info.commit = sha;
+        }
+        if let Some(t) = option_env!("VERGEN_CARGO_TARGET_TRIPLE") {
+            info.target = t;
+        }
+        if let Some(f) = option_env!("VERGEN_CARGO_FEATURES") {
+            info.features = f;
+        }
+
+        info
+    });
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, clap::Parser)]
-#[command(author, version, about, long_about)]
+#[command(author, about, long_about)]
 pub struct HitdnsOpt {
+    /// show version
+    #[arg(long)]
+    #[serde(default)]
+    pub version: bool,
+
+    /// show build information then quit program.
+    #[arg(long)]
+    #[serde(default)]
+    pub info: bool,
+
     /// specify the location of TOML-formatted config file. if not specified, will use command line args.
     ///
     /// NOTICE: if specified and the config file is valid, the config file will override all command line args.
@@ -1057,12 +1125,6 @@ pub struct HitdnsOpt {
     /// specify the work thread number of async runtime. if not specified, will use same number of CPUs
     #[arg(long)]
     pub threads: Option<usize>,
-
-    #[cfg(feature = "rsinfo")]
-    /// show build information then quit program.
-    #[arg(long)]
-    #[serde(default)]
-    pub info: bool,
 
     /// Dumps all cache entry from disk database file.
     /// if filename is "-", prints to standard output.
@@ -1299,10 +1361,18 @@ impl DefaultServers {
 async fn main_async() -> anyhow::Result<()> {
     let opt = HITDNS_OPT.clone();
 
-    #[cfg(feature = "rsinfo")]
     if opt.info {
-        let info = env!("RSINFO_JSON");
-        println!("{info}");
+        println!("{:#}", &*HITDNS_INFO);
+        return Ok(());
+    }
+
+    if opt.version {
+        let v = HITDNS_INFO.version;
+        if v.is_empty() {
+            println!("N/A");
+        } else {
+            println!("{v}");
+        }
         return Ok(());
     }
 
