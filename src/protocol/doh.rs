@@ -138,6 +138,9 @@ impl AsRef<reqwest_h3::Client> for ClientKind {
     }
 }
 
+#[cfg(feature = "doh3")]
+pub(crate) static DOH3_ONLY: AtomicBool = AtomicBool::new(false);
+
 #[derive(Debug, Clone)]
 pub struct DNSOverHTTPS {
     client: ClientKind,
@@ -184,7 +187,12 @@ impl<'a> DNSOverHTTPS {
         }
         */
 
-        let client = ClientKind::H2(DOH2_CLIENT.clone());
+        let client =
+            if DOH3_ONLY.load(Relaxed) {
+                ClientKind::H3(DOH3_CLIENT.clone())
+            } else {
+                ClientKind::H2(DOH2_CLIENT.clone())
+            };
 
         let metrics = Arc::new(RwLock::new(DNSMetrics::from(&url)));
 

@@ -1378,6 +1378,11 @@ fn main() -> anyhow::Result<()> {
 
     let opt = HITDNS_OPT.clone();
 
+    #[cfg(feature = "doh3")]
+    if opt.doh3_only {
+        DOH3_ONLY.store(true, Relaxed);
+    }
+
     if opt.stats_full {
         STATS_FULL.store(true, Relaxed);
     }
