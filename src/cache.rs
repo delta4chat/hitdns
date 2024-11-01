@@ -479,7 +479,7 @@ impl DNSCache {
                 rdclass: maybe_rdclass.unwrap(),
                 rdtype: maybe_rdtype.unwrap()
             };
-            if let Some(dce) = self.memory.remove(&query).await {
+            if let Some(dce) = self.memory.get(&query).await {
                 if dce.expire().await {
                     count += 1;
                 }
@@ -487,7 +487,7 @@ impl DNSCache {
             return count;
         }
 
-        for (q, cur) in self.memory.iter() {
+        for (_, cur) in self.memory.iter() {
             if cur.query.name != name {
                 continue;
             }
@@ -502,9 +502,9 @@ impl DNSCache {
                 }
             }
 
-            cur.expire().await;
-            self.memory.remove(&q).await;
-            count += 1;
+            if cur.expire().await {
+                count += 1;
+            }
         }
         count
     }

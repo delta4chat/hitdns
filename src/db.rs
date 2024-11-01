@@ -2,7 +2,7 @@ use crate::*;
 
 pub static HITDNS_SQLITE_FILENAME: Lazy<PathBuf> =
     Lazy::new(|| {
-        let mut buf = (*HITDNS_DIR).clone();
+        let mut buf = HITDNS_DIR.clone();
         buf.push("cache.sqlx.sqlite.db");
         buf
     });
@@ -20,26 +20,16 @@ pub static HITDNS_SQLITE_POOL: Lazy<SqlitePool> =
                 .idle_timeout(None)
                 .connect_with(
                     SqliteConnectOptions::new()
-                        .filename(file)
-                        .create_if_missing(true)
-                        .read_only(false)
-                        .journal_mode(
-                            SqliteJournalMode::Wal
-                        )
-                        .locking_mode(
-                            SqliteLockingMode::Normal
-                        )
-                        .synchronous(
-                            SqliteSynchronous::Normal
-                        ),
-                ).await
-                .expect("sqlx cannot connect to sqlite db");
+                    .filename(file)
+                    .create_if_missing(true)
+                    .read_only(false)
+                    .journal_mode(SqliteJournalMode::Wal)
+                    .locking_mode(SqliteLockingMode::Normal)
+                    .synchronous(SqliteSynchronous::Normal)
+                ).await.expect("sqlx cannot connect to sqlite db");
 
-            sqlx::query(
-                "CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT"
-            )
-            .execute(&pool).await
-            .expect("sqlx cannot create table in opened sqlite db");
+            sqlx::query("CREATE TABLE IF NOT EXISTS hitdns_cache_v1 (query BLOB NOT NULL UNIQUE, entry BLOB NOT NULL) STRICT")
+            .execute(&pool).await.expect("sqlx cannot create table in opened sqlite db");
 
             pool
         })
