@@ -194,6 +194,7 @@ impl<'a> DNSOverHTTPS {
         }
         */
 
+        #[allow(unused_mut)]
         let mut client = ClientKind::H2(DOH2_CLIENT.clone());
 
         #[cfg(feature = "doh3")]
