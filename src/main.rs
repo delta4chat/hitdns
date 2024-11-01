@@ -653,7 +653,7 @@ impl DNSDaemon {
 
             #[cfg(feature = "doh3")]
             for doh3_url in opt.doh3_upstream.iter() {
-                x.push(Arc::new(DNSOverH3::new(
+                x.push(Arc::new(DNSOverHTTPS::new_h3(
                     doh3_url,
                     /*
                     opt.hosts.is_some(),
@@ -1166,6 +1166,7 @@ pub struct HitdnsOpt {
     pub doh_upstream: Vec<String>,
 
     #[cfg(feature = "doh3")]
+    /// ** Experimental **
     /// upstream URL of DoH3 servers.
     /// DNS over HTTP/3
     #[arg(long)]
@@ -1258,7 +1259,7 @@ impl DefaultServers {
             ];
             for doh3_url in doh3_server_urls.iter() {
                 list.push(Arc::new(
-                    DNSOverH3::new(doh3_url).unwrap(),
+                    DNSOverHTTPS::new_h3(doh3_url).unwrap(),
                 ));
             }
         }

@@ -2,12 +2,6 @@
 pub mod doh;
 pub use doh::*;
 
-// doh3.rs
-#[cfg(feature = "doh3")]
-pub mod doh3;
-#[cfg(feature = "doh3")]
-pub use doh3::*;
-
 //pub mod pool; // compile error
 
 // dot.rs
