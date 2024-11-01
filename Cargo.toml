@@ -10,7 +10,8 @@ repository = "https://github.com/delta4chat/hitdns"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = [ "vergen", "sqlite", "ftlog", "doh3" ]
+default = [ "vergen", "sqlite", "ftlog" ]
+#default = [ "vergen", "sqlite", "ftlog", "doh3" ]
 
 doh3 = []
 
@@ -62,7 +63,9 @@ rustls = { version = "0.23.14", features = ["custom-provider", "ring", "std", "t
 
 # HTTPS library for DoH client
 #reqwest = { version = "0.12.5", features = ["rustls-tls", "http2"], default-features = false }
-reqwest-h3 = { version = "0.13.0", features = ["rustls-tls", "http2", "unstable", "http3"], default-features = false }
+
+reqwest-h3 = { version = "0.13.1", features = ["rustls-tls", "http2", "unstable", "http3"], default-features = false }
+#reqwest-h3 = { path = "../reqwest", features = ["rustls-tls", "http2", "unstable", "http3"], default-features = false }
 
 #hyper = { version = "0.14.21", features = ["client"], default-features = false }
 

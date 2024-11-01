@@ -1298,6 +1298,11 @@ impl DefaultServers {
             "https://[2001:620:0:ff::3]/dns-query",
         ];
         for doh_url in doh_server_urls.iter() {
+            #[cfg(feature = "doh3")]
+            if DOH3_ONLY.load(Relaxed) {
+                break;
+            }
+
             list.push(Arc::new(
                 DNSOverHTTPS::new(doh_url).unwrap(),
             ));
@@ -1367,12 +1372,24 @@ async fn main_async() -> anyhow::Result<()> {
     }
 
     if opt.version {
-        let v = HITDNS_INFO.version;
+        let mut ver = String::from("HitDNS");
+
+        let v = (&*HITDNS_INFO).version;
+        let s = (&*HITDNS_INFO).commit;
+
         if v.is_empty() {
-            println!("N/A");
+            ver.push_str(" (version N/A)");
         } else {
-            println!("{v}");
+            ver.push_str(&format!(" v{v}"));
         }
+
+        if s.is_empty() {
+            ver.push_str(" (Commit N/A)");
+        } else {
+            ver.push_str(&format!(" [{s}]"));
+        }
+
+        println!("{ver}");
         return Ok(());
     }
 

@@ -92,7 +92,7 @@ static DOH3_CLIENT: Lazy<reqwest_h3::Client> =
             .redirect(reqwest_h3::redirect::Policy::none()) // do not follow redirects
 
             // connection settings
-            .tcp_nodelay(true)
+            //.local_address(Some("::".parse().unwrap()))
             .pool_idle_timeout(None)
             .pool_max_idle_per_host(5)
 
@@ -194,12 +194,12 @@ impl<'a> DNSOverHTTPS {
         }
         */
 
-        let client =
-            if DOH3_ONLY.load(Relaxed) {
-                ClientKind::H3(DOH3_CLIENT.clone())
-            } else {
-                ClientKind::H2(DOH2_CLIENT.clone())
-            };
+        let mut client = ClientKind::H2(DOH2_CLIENT.clone());
+
+        #[cfg(feature = "doh3")]
+        if DOH3_ONLY.load(Relaxed) {
+            client = ClientKind::H3(DOH3_CLIENT.clone());
+        }
 
         let metrics = Arc::new(RwLock::new(DNSMetrics::from(&url)));
 

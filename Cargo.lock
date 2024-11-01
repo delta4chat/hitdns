@@ -2834,9 +2834,9 @@ checksum = "2b15c43186be67a4fd63bee50d0303afffcef381492ebe2c5d87f324e1b8815c"
 
 [[package]]
 name = "reqwest-h3"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cd44e87a2b9dd48acdaf77b83d5a6951a37415bedd94779ea06dac490b791a8"
+checksum = "5103ae3535e99f83ae19268589d51c1b1009b67da490c2cf0ef479c8fcbf6a90"
 dependencies = [
  "base64 0.22.1",
  "bytes",
