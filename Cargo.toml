@@ -53,7 +53,7 @@ http-types = { version = "2.12.0", default-features = false }
 ftlog2 = { optional = true, version = "0.3.1", features = ["tsc"] }
 #ftlog2 = { optional = true, version = "0.3.1", path = "../ftlog", features = ["tsc"] }
 
-anstyle = { optional = true, version = "1.0.6" }
+anstyle = { optional = true, version = "1.0.10" }
 time    = { optional = true, version = "0.3.36", features = ["alloc", "formatting"] }
 
 once_cell = "1.19.0"
