@@ -366,7 +366,7 @@ impl DNSCache {
                 .max_capacity(10485760)
                 .time_to_idle(Duration::from_secs(60*60)) // one hour for time-to-idle
                 .time_to_live(Duration::from_secs(60*60*24*365*100)) // 100 years for time-to-live
-                .async_eviction_listener(|query, _entry, cause| {
+                .async_eviction_listener(|_query, _entry, cause| {
                     Box::pin(async move {
                         use moka2::notification::RemovalCause::*;
 
@@ -374,6 +374,7 @@ impl DNSCache {
                             return;
                         }
 
+                        /*
                         match bincode::serialize(&query) {
                             Ok(query) => {
                                 let _ =
@@ -384,6 +385,7 @@ impl DNSCache {
                             }
                             _ => {}
                         }
+                        */
                     })
                 })
                 .build()
