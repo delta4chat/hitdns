@@ -76,7 +76,7 @@ quinn  = { optional = true, version = "0.10.2", features = ["tls-rustls", "runti
 webpki-roots = { version = "0.26.6" }
 
 scc = { version = "2.2.1", features = ["serde"] }
-fastrand = "2.1.0"
+fastrand = "2.2.0"
 
 smol = "2.0.0"
 smol-timeout = "0.6.0"
