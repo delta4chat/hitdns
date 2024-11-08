@@ -6,6 +6,8 @@ import subprocess
 import json
 import os
 
+from typing import OrderedDict
+
 def _deps():
     process = subprocess.Popen(['cargo', 'check', '--message-format=json'], stdin=None, stdout=subprocess.PIPE, stderr=None)
     decoder = json.JSONDecoder()
@@ -24,12 +26,12 @@ def _deps():
         line = process.stdout.readline()
 
 def deps():
-    dep = {}
+    dep = OrderedDict()
     for pkg, ver in _deps():
         if pkg not in dep:
-            dep[pkg] = set()
+            dep[pkg] = OrderedDict()
         
-        dep[pkg].add(ver)
+        dep[pkg][ver]=None
 
     return dep
 
@@ -50,5 +52,5 @@ for pkg in dep:
 
 for pkg, vers in dep.items():
     print('[', pkg, '] =', sep='')
-    print(' '*(ml+3), repr(vers))
+    print(' '*(ml+3), ' | '.join(vers.keys()))
     print('='*(ml*3), os.linesep)
