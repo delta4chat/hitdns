@@ -615,9 +615,9 @@ impl DNSDaemon {
         let listen = match opt.listen {
             Some(v) => v,
             None => {
-                anyhow::bail!(
-                    "no listen address specified!"
-                );
+                //anyhow::bail!("no listen address specified!");
+
+                "0.0.0.0:1053".parse().unwrap()
             },
         };
 
