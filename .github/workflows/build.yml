@@ -30,18 +30,19 @@ jobs:
       - name: Create binary directory for this job
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
-          git switch -C this
 
+          git switch -C this
           git switch --orphan bin && git pull origin bin
-          git switch bin
-          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/
           git switch this
+
           git reset --hard ${{github.sha}}
+
           if git log -1 | grep -F "auto-submit}"
           then
             echo "Skip any auto commit by bots"
             exit 100
           fi
+
           if git log -1 | grep -F "#NOCI"
           then
             echo "This commit Disable CI"
@@ -65,13 +66,26 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         run: |
           git switch bin
-          git pull origin bin
-          cp -v target/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-linux
-          git add -A
-          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux"
-          git push origin bin
-          git switch this
-          git reset --hard ${{github.sha}}
+
+          DIR="bin/$(git log -1 --format='%cd' --date=format:'%Y-%m-%d_%H-%M-%S' ${{github.sha}})__${{github.sha}}/"
+          retries=0
+          while true
+          do
+              mkdir -p "$DIR"
+              cp -v target/release/hitdns "${DIR}/hitdns.amd64-linux"
+              git add -A
+              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux"
+
+              if git push origin bin
+              then
+                  exit 0
+              elif test $[++retries] -gt 10
+              then
+                  exit 1
+              else
+                  git pull origin bin --rebase true
+              fi
+          done
 
   cross:
     needs: amd64-linux
@@ -131,11 +145,9 @@ jobs:
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
           git switch -C this
-
           git switch --orphan bin && git pull origin bin
-          git switch bin
-          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
-          git switch this  
+          git switch this
+
           git reset --hard ${{github.sha}}
 
       - name: Install Cross
@@ -163,13 +175,26 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         run: |
           git switch bin
-          git pull origin bin
-          if cp -v target/${{matrix.target}}/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/${{matrix.filename}}
-          then
-            git add -A
-            git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}"
-            git push origin bin
-          fi
+
+          DIR="bin/$(git log -1 --format='%cd' --date=format:'%Y-%m-%d_%H-%M-%S' ${{github.sha}})__${{github.sha}}/"
+          retries=0
+          while true
+          do
+              mkdir -p "$DIR"
+              cp -v target/${{matrix.target}}/release/hitdns "${DIR}/hitdns.${{matrix.filename}}"
+              git add -A
+              git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}"
+
+              if git push origin bin
+              then
+                  exit 0
+              elif test $[++retries] -gt 10
+              then
+                  exit 1
+              else
+                  git pull origin bin --rebase true
+              fi
+          done
 
   amd64-linux-musl:
     needs: amd64-linux
@@ -194,11 +219,9 @@ jobs:
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
           git switch -C this
-
           git switch --orphan bin && git pull origin bin
-          git switch bin
-          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
           git switch this
+
           git reset --hard ${{github.sha}}
 
       - name: Update apt and install Musl
@@ -219,13 +242,26 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         run: |
           git switch bin
-          git pull origin bin
-          cp -v target/x86_64-unknown-linux-musl/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-linux-musl
-          git add -A
-          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)"
-          git push origin bin
-          git switch this
-          git reset --hard ${{github.sha}}
+
+          DIR="bin/$(git log -1 --format='%cd' --date=format:'%Y-%m-%d_%H-%M-%S' ${{github.sha}})__${{github.sha}}/"
+          retries=0
+          while true
+          do
+              mkdir -p "$DIR"
+              cp -v target/x86_64-unknown-linux-musl/release/hitdns "${DIR}/hitdns.amd64-linux"
+              git add -A
+              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)"
+
+              if git push origin bin
+              then
+                  exit 0
+              elif test $[++retries] -gt 10
+              then
+                  exit 1
+              else
+                  git pull origin bin --rebase true
+              fi
+          done
 
   amd64-windows:
     needs: amd64-linux
@@ -257,15 +293,12 @@ jobs:
 
       - name: Create binary directory for this job
         run: |
-          git config --global user.name github-actions
-          git config --global user.email github-actions@github.com
+          git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
           git switch -C this
-
           git switch --orphan bin && git pull origin bin
-          git switch bin
-          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
           git switch this
+
           git reset --hard ${{github.sha}}
         shell: bash
 
@@ -282,13 +315,26 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         run: |
           git switch bin
-          git pull origin bin
-          cp target/release/hitdns.exe bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-windows.exe
-          git add -A
-          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows"
-          git push origin bin
-          git switch this
-          git reset --hard ${{github.sha}}
+
+          DIR="bin/$(git log -1 --format='%cd' --date=format:'%Y-%m-%d_%H-%M-%S' ${{github.sha}})__${{github.sha}}/"
+          retries=0
+          while true
+          do
+              mkdir -p "$DIR"
+              cp -v target/release/hitdns.exe "${DIR}/hitdns.amd64-windows.exe"
+              git add -A
+              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows"
+
+              if git push origin bin
+              then
+                  exit 0
+              elif test $[++retries] -gt 10
+              then
+                  exit 1
+              else
+                  git pull origin bin --rebase true
+              fi
+          done
         shell: bash
 
   amd64-mac:
@@ -313,14 +359,12 @@ jobs:
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
           git switch -C this
-
           git switch --orphan bin && git pull origin bin
-          git switch bin
-          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
           git switch this
+
           git reset --hard ${{github.sha}}
       
-      - name: Build (mac)
+      - name: Build Mac (amd64)
         run: bash upx.sh cargo build --release --jobs 20 --verbose
 
       - uses: actions/upload-artifact@v4
@@ -332,19 +376,26 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         run: |
           git switch bin
-          git pull origin bin
-          cp -v target/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-mac
-          git add -A
-          git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac"
 
-          for i in {1..5}
+          DIR="bin/$(git log -1 --format='%cd' --date=format:'%Y-%m-%d_%H-%M-%S' ${{github.sha}})__${{github.sha}}/"
+          retries=0
+          while true
           do
-              echo try push $i
-              git push origin bin && break || true # why this rejected by github?   ! [rejected] bin -> bin (fetch first) error: failed to push some refs to 'https://github.com/delta4chat/hitdns'
-          done
+              mkdir -p "$DIR"
+              cp -v target/release/hitdns "${DIR}/hitdns.amd64-mac"
+              git add -A
+              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac"
 
-          git switch this
-          git reset --hard ${{github.sha}}
+              if git push origin bin
+              then
+                  exit 0
+              elif test $[++retries] -gt 10
+              then
+                  exit 1
+              else
+                  git pull origin bin --rebase true
+              fi
+          done
 
   aarch64-mac:
     needs: amd64-linux
@@ -368,14 +419,12 @@ jobs:
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
           git switch -C this
-
           git switch --orphan bin && git pull origin bin
-          git switch bin
-          mkdir bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/ || echo "use found bin dir"
           git switch this
+
           git reset --hard ${{github.sha}}
       
-      - name: Build (mac)
+      - name: Build Mac (aarch64)
         run: bash upx.sh cargo build --release --jobs 20 --verbose
 
       - uses: actions/upload-artifact@v4
@@ -387,17 +436,24 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         run: |
           git switch bin
-          git pull origin bin
-          cp -v target/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.aarch64-mac
-          git add -A
-          git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 mac"
 
-          for i in {1..5}
+          DIR="bin/$(git log -1 --format='%cd' --date=format:'%Y-%m-%d_%H-%M-%S' ${{github.sha}})__${{github.sha}}/"
+          retries=0
+          while true
           do
-              echo try push $i
-              git push origin bin && break || true # why this rejected by github?   ! [rejected] bin -> bin (fetch first) error: failed to push some refs to 'https://github.com/delta4chat/hitdns'
-          done
+              mkdir -p "$DIR"
+              cp -v target/release/hitdns "${DIR}/hitdns.aarch64-mac"
+              git add -A
+              git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 mac"
 
-          git switch this
-          git reset --hard ${{github.sha}}
+              if git push origin bin
+              then
+                  exit 0
+              elif test $[++retries] -gt 10
+              then
+                  exit 1
+              else
+                  git pull origin bin --rebase true
+              fi
+          done
 
