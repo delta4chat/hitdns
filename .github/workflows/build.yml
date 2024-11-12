@@ -76,10 +76,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux"
 
-              if git push origin bin
-              then
-                  exit 0
-              elif test $[++retries] -gt 10
+              git push origin bin && break || true
+
+              if test $[++retries] -gt 10
               then
                   exit 1
               else
@@ -185,10 +184,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}"
 
-              if git push origin bin
-              then
-                  exit 0
-              elif test $[++retries] -gt 10
+              git push origin bin && break || true
+
+              if test $[++retries] -gt 10
               then
                   exit 1
               else
@@ -252,10 +250,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)"
 
-              if git push origin bin
-              then
-                  exit 0
-              elif test $[++retries] -gt 10
+              git push origin bin && break || true
+
+              if test $[++retries] -gt 10
               then
                   exit 1
               else
@@ -325,10 +322,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows"
 
-              if git push origin bin
-              then
-                  exit 0
-              elif test $[++retries] -gt 10
+              git push origin bin && break || true
+
+              if test $[++retries] -gt 10
               then
                   exit 1
               else
@@ -386,10 +382,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac"
 
-              if git push origin bin
-              then
-                  exit 0
-              elif test $[++retries] -gt 10
+              git push origin bin && break || true
+
+              if test $[++retries] -gt 10
               then
                   exit 1
               else
@@ -446,10 +441,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 mac"
 
-              if git push origin bin
-              then
-                  exit 0
-              elif test $[++retries] -gt 10
+              git push origin bin && break || true
+
+              if test $[++retries] -gt 10
               then
                   exit 1
               else
