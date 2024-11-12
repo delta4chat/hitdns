@@ -130,8 +130,8 @@ jobs:
           - aarch64-unknown-netbsd
           - armv7-unknown-netbsd-eabihf
 
-          - aarch64-pc-windows-msvc
-          - i686-pc-windows-msvc
+          #- aarch64-pc-windows-msvc
+          #- i686-pc-windows-msvc
 
         include:
           - filename: hitdns.mipsel-linux-musl
@@ -195,10 +195,10 @@ jobs:
             target: armv7-unknown-netbsd-eabihf
 
 
-          - filename: hitdns.aarch64-windows.exe
-            target: aarch64-pc-windows-msvc
-          - filename: hitdns.i686-windows.exe
-            target: i686-pc-windows-msvc
+          #- filename: hitdns.aarch64-windows.exe
+          #  target: aarch64-pc-windows-msvc
+          #- filename: hitdns.i686-windows.exe
+          #  target: i686-pc-windows-msvc
 
     runs-on: ubuntu-latest
     steps:
@@ -234,7 +234,7 @@ jobs:
           export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
 
           ARGS=''
-          if test ${{matrix.target}} = mipsel-unknown-linux-musl
+          if test ${{matrix.target}} = mipsel-unknown-linux-musl || true
           then
               rustup default nightly
               ARGS='-Z build-std=core,std,alloc,proc_macro'
