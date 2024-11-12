@@ -24,6 +24,7 @@ note: run with RUST_BACKTRACE=1 environment variable to display a backtrace
 4. [x] add hosts support for DNS resolving
 5. [ ] \(optional) add network offline detects?
 6. [x] \(optional) ~~add automatic update expired cache entry?~~ implements API endpoint for requesting Record expire. instead of "automatic update" (which uses a lot of bandwidth due to refreshing ALL dns queries received in the past, and may be exploited by DDoS attacks as a traffic reflection amplifier)
-7. [ ] CI: build.yml: use matrix instead of duplicate codes
-8. [ ] implement [RFC 8427](https://www.rfc-editor.org/rfc/rfc8427) JSON output
-9. [ ] add more rdtype output in dohp `/resolve`
+7. [ ] CI: build.yml: use matrix instead of duplicate codes (partial complete)
+8. [ ] CI: build.yml: (optional) add support for arm windows
+9. [ ] implement [RFC 8427](https://www.rfc-editor.org/rfc/rfc8427) JSON output
+10. [ ] add more rdtype output in dohp `/resolve`
