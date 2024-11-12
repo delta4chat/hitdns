@@ -131,7 +131,7 @@ jobs:
           - armv7-unknown-netbsd-eabihf
 
           #- aarch64-pc-windows-msvc
-          #- i686-pc-windows-msvc
+          - i686-pc-windows-msvc
 
         include:
           - filename: hitdns.mipsel-linux-musl
@@ -197,8 +197,8 @@ jobs:
 
           #- filename: hitdns.aarch64-windows.exe
           #  target: aarch64-pc-windows-msvc
-          #- filename: hitdns.i686-windows.exe
-          #  target: i686-pc-windows-msvc
+          - filename: hitdns.i686-windows.exe
+            target: i686-pc-windows-msvc
 
     runs-on: ubuntu-latest
     steps:
