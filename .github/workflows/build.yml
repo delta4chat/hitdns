@@ -76,7 +76,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux"
 
-              git push origin bin && break || true
+              set +e
+              git push origin bin && break
+              set -e
 
               if test $[++retries] -gt 10
               then
@@ -184,7 +186,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}"
 
-              git push origin bin && break || true
+              set +e
+              git push origin bin && break
+              set -e
 
               if test $[++retries] -gt 10
               then
@@ -250,7 +254,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)"
 
-              git push origin bin && break || true
+              set +e
+              git push origin bin && break
+              set -e
 
               if test $[++retries] -gt 10
               then
@@ -322,7 +328,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows"
 
-              git push origin bin && break || true
+              set +e
+              git push origin bin && break
+              set -e
 
               if test $[++retries] -gt 10
               then
@@ -382,7 +390,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac"
 
-              git push origin bin && break || true
+              set +e
+              git push origin bin && break
+              set -e
 
               if test $[++retries] -gt 10
               then
@@ -441,7 +451,9 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 mac"
 
-              git push origin bin && break || true
+              set +e
+              git push origin bin && break
+              set -e
 
               if test $[++retries] -gt 10
               then
