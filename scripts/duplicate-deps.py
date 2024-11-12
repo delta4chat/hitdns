@@ -6,8 +6,6 @@ import subprocess
 import json
 import os
 
-from typing import OrderedDict
-
 def _deps():
     process = subprocess.Popen(['cargo', 'check', '--message-format=json'], stdin=None, stdout=subprocess.PIPE, stderr=None)
     decoder = json.JSONDecoder()
@@ -26,31 +24,33 @@ def _deps():
         line = process.stdout.readline()
 
 def deps():
-    dep = OrderedDict()
+    dep = {}
     for pkg, ver in _deps():
         if pkg not in dep:
-            dep[pkg] = OrderedDict()
+            dep[pkg] = set()
         
-        dep[pkg][ver]=None
+        dep[pkg].add(ver)
 
     return dep
+
+def str2int(s):
+    return int((b'\xff' + s.encode()).hex(), 16)
 
 def duplicated_deps():
-    dep = {}
-    for pkg, vers in deps().items():
+    dep = deps()
+    for pkg in sorted(dep.keys(), key=str2int):
+        vers = dep[pkg]
         if len(vers) > 1:
-            dep[pkg] = vers
-
-    return dep
+            yield (pkg, sorted(vers, key=str2int))
 
 ml = 0
-dep = duplicated_deps()
-for pkg in dep:
+dep = list(duplicated_deps())
+for pkg, _ in dep:
     l = len(pkg)
     if l > ml:
         ml = l
 
-for pkg, vers in dep.items():
+for pkg, vers in dep:
     print('[', pkg, '] =', sep='')
-    print(' '*(ml+3), ' | '.join(vers.keys()))
+    print(' '*(ml+3), ' | '.join(vers))
     print('='*(ml*3), os.linesep)
