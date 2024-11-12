@@ -74,7 +74,7 @@ jobs:
               mkdir -p "$DIR"
               cp -v target/release/hitdns "${DIR}/hitdns.amd64-linux"
               git add -A
-              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux"
+              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux" || true
 
               git push origin bin || true $[++fails]
 
@@ -185,7 +185,7 @@ jobs:
               mkdir -p "$DIR"
               cp -v target/${{matrix.target}}/release/hitdns "${DIR}/hitdns.${{matrix.filename}}"
               git add -A
-              git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}"
+              git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}" || true
 
               git push origin bin || true $[++fails]
 
@@ -254,7 +254,7 @@ jobs:
               mkdir -p "$DIR"
               cp -v target/x86_64-unknown-linux-musl/release/hitdns "${DIR}/hitdns.amd64-linux"
               git add -A
-              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)"
+              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)" || true
 
               git push origin bin || true $[++fails]
 
@@ -329,7 +329,7 @@ jobs:
               mkdir -p "$DIR"
               cp -v target/release/hitdns.exe "${DIR}/hitdns.amd64-windows.exe"
               git add -A
-              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows"
+              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows" || true
 
               git push origin bin || true $[++fails]
 
@@ -392,7 +392,7 @@ jobs:
               mkdir -p "$DIR"
               cp -v target/release/hitdns "${DIR}/hitdns.amd64-mac"
               git add -A
-              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac"
+              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac" || true
 
               git push origin bin || true $[++fails]
 
@@ -454,7 +454,7 @@ jobs:
               mkdir -p "$DIR"
               cp -v target/release/hitdns "${DIR}/hitdns.aarch64-mac"
               git add -A
-              git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 mac"
+              git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 mac" || true
 
               git push origin bin || true $[++fails]
 
