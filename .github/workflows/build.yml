@@ -237,6 +237,7 @@ jobs:
           if test ${{matrix.target}} = mipsel-unknown-linux-musl || true
           then
               rustup default nightly
+              rustup component add rust-src
               ARGS='-Z build-std=core,std,alloc,proc_macro'
           fi
 
