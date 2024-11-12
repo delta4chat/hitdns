@@ -275,7 +275,7 @@ jobs:
           while true
           do
               mkdir -p "$DIR"
-              cp -v "target/${{matrix.target}}/release/hitdns${suffix}" "${DIR}/hitdns.${{matrix.filename}}"
+              cp -v "target/${{matrix.target}}/release/hitdns${suffix}" "${DIR}/${{matrix.filename}}"
               git add -A
               git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}" || true
 
