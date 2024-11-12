@@ -75,6 +75,40 @@ jobs:
 
   cross:
     needs: amd64-linux
+
+    strategy:
+      matrix:
+        target:
+          - mipsel-unknown-linux-musl
+          - aarch64-linux-android
+          - x86_64-linux-android
+          - aarch64-unknown-linux-gnu
+          - aarch64-unknown-linux-musl
+          - x86_64-unknown-freebsd
+          - x86_64-unknown-netbsd
+
+        include:
+          - filename: hitdns.mipsel-linux-musl
+            target: mipsel-unknown-linux-musl
+
+          - filename: hitdns.aarch64-android
+            target: aarch64-linux-android
+
+          - filename: hitdns.amd64-android
+            target: x86_64-linux-android
+
+          - filename: hitdns.aarch64-linux
+            target: aarch64-unknown-linux-gnu
+
+          - filename: hitdns.aarch64-linux-musl
+            target: aarch64-unknown-linux-musl
+
+          - filename: hitdns.amd64-freebsd
+            target: x86_64-unknown-freebsd
+
+          - filename: hitdns.amd64-netbsd
+            target: x86_64-unknown-netbsd
+
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -103,182 +137,38 @@ jobs:
           git switch this  
           git reset --hard ${{github.sha}}
 
-      - name: use nightly rust
-        run: rustup default nightly
-
-      # do not continue-on-error if cross install failed
       - name: Install Cross
         run: cargo install cross
 
-      - name: Cross Build mips-el Linux musl
-        continue-on-error: true
+      - name: Cross Build ${{matrix.target}}
         run: |
           export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
-          bash upx.sh cross build --release --jobs 20 --target mipsel-unknown-linux-musl --verbose -Z build-std=core,std,alloc,proc_macro 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hitdns.mipsel-linux-musl
-          path: target/mipsel-unknown-linux-musl/release/hitdns
-      - name: Upload binary of mipsel linux musl
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        run: |
-          git switch bin
-          git pull origin bin
-          if cp -v target/mipsel-unknown-linux-musl/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.mipsel-linux-musl
-          then
-            git add -A
-            git commit -m "[${{github.sha}}] upload binary of hitdns mipsel linux musl"
-            git push origin bin
-          fi
-          git switch this
-          git reset --hard ${{github.sha}}
-          cargo clean
-          docker image prune -a -f
 
-      - name: Cross Build aarch64 android
-        continue-on-error: true
-        run: bash upx.sh cross build --release --jobs 20 --target aarch64-linux-android --verbose
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hitdns.aarch64-android
-          path: target/aarch64-linux-android/release/hitdns
-      - name: Upload binary of aarch64 android
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        run: |
-          git switch bin
-          git pull origin bin
-          if cp -v target/aarch64-linux-android/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.aarch64-android
+          ARGS=''
+          if test ${{matrix.target}} = mipsel-unknown-linux-musl
           then
-            git add -A
-            git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 android"
-            git push origin bin
+              rustup default nightly
+              ARGS='-Z build-std=core,std,alloc,proc_macro'
           fi
-          git switch this
-          git reset --hard ${{github.sha}}
-          cargo clean
-          docker image prune -a -f
 
-      - name: Cross Build x86 android (64-bit)
-        continue-on-error: true
-        run: bash upx.sh cross build --release --jobs 20 --target x86_64-linux-android --verbose
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hitdns.amd64-android
-          path: target/x86_64-linux-android/release/hitdns
-      - name: Upload binary of amd64 android
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        run: |
-          git switch bin
-          git pull origin bin
-          if cp -v target/x86_64-linux-android/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-android
-          then
-            git add -A
-            git commit -m "[${{github.sha}}] upload binary of hitdns amd64 android"
-            git push origin bin
-          fi
-          git switch this
-          git reset --hard ${{github.sha}}
-          cargo clean
-          docker image prune -a -f
+          eval bash upx.sh cross build --release --jobs 20 --target ${{matrix.target}} --verbose $ARGS
 
-      - name: Cross Build aarch64 linux
-        continue-on-error: true
-        run: bash upx.sh cross build --release --jobs 20 --target aarch64-unknown-linux-gnu --verbose
       - uses: actions/upload-artifact@v4
         with:
-          name: hitdns.aarch64-linux
-          path: target/aarch64-unknown-linux-gnu/release/hitdns
-      - name: Upload binary of aarch64 linux
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        run: |
-          git switch bin
-          git pull origin bin
-          if cp -v target/aarch64-unknown-linux-gnu/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.aarch64-linux
-          then
-            git add -A
-            git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 linux"
-            git push origin bin
-          fi
-          git switch this
-          git reset --hard ${{github.sha}}
-          cargo clean
-          docker image prune -a -f
+          name: ${{matrix.filename}}
+          path: target/${{matrix.target}}/release/hitdns
 
-      - name: Cross Build aarch64 linux (musl)
-        continue-on-error: true
-        run: bash upx.sh cross build --release --jobs 20 --target aarch64-unknown-linux-musl --verbose
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hitdns.aarch64-linux-musl
-          path: target/aarch64-unknown-linux-musl/release/hitdns
-      - name: Upload binary of aarch64 linux (musl)
+      - name: Upload binary of ${{matrix.target}}
         if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
         run: |
           git switch bin
           git pull origin bin
-          if cp -v target/aarch64-unknown-linux-musl/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.aarch64-linux-musl
+          if cp -v target/${{matrix.target}}/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/${{matrix.filename}}
           then
             git add -A
-            git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 linux (musl)"
+            git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}"
             git push origin bin
           fi
-          git switch this
-          git reset --hard ${{github.sha}}
-          cargo clean
-          docker image prune -a -f
-
-      - name: Cross Build amd64 FreeBSD
-        continue-on-error: true
-        run: bash upx.sh cross build --release --jobs 20 --target x86_64-unknown-freebsd --verbose
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hitdns.amd64-freebsd
-          path: target/x86_64-unknown-freebsd/release/hitdns
-      - name: Upload binary of amd64 freebsd
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        run: |
-          git switch bin
-          git pull origin bin
-          if cp -v target/x86_64-unknown-freebsd/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-freebsd
-          then
-            git add -A
-            git commit -m "[${{github.sha}}] upload binary of hitdns amd64 freebsd"
-            git push origin bin
-          fi
-          git switch this
-          git reset --hard ${{github.sha}}
-          cargo clean
-          docker image prune -a -f
-
-      - name: Cross Build amd64 NetBSD
-        continue-on-error: true
-        run: bash upx.sh cross build --release --jobs 20 --target x86_64-unknown-netbsd --verbose
-      - uses: actions/upload-artifact@v4
-        with:
-          name: hitdns.amd64-netbsd
-          path: target/x86_64-unknown-netbsd/release/hitdns
-      - name: Upload binary of amd64 netbsd
-        if: ${{ github.event_name != 'pull_request' }}
-        continue-on-error: true
-        run: |
-          git switch bin
-          git pull origin bin
-          if cp -v target/x86_64-unknown-netbsd/release/hitdns bin/$(git log -1 --format="%cd" --date=format:"%Y-%m-%d_%H-%M-%S" ${{github.sha}})__${{github.sha}}/hitdns.amd64-netbsd
-          then
-            git add -A
-            git commit -m "[${{github.sha}}] upload binary of hitdns amd64 netbsd"
-            git push origin bin
-          fi
-          git switch this
-          git reset --hard ${{github.sha}}
-          cargo clean
-          docker image prune -a -f
 
   amd64-linux-musl:
     needs: amd64-linux
