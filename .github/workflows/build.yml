@@ -76,12 +76,13 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux" || true
 
-              git push origin bin || true $[++fails]
+              ok=1
+              git push origin bin || true $[ok=0]
 
-              if test $fails -eq 0
+              if test $ok -eq 1
               then
                   exit 0
-              elif test $fails -gt 10
+              elif test $[++fails] -gt 10
               then
                   exit 1
               else
@@ -187,12 +188,13 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}" || true
 
-              git push origin bin || true $[++fails]
+              ok=1
+              git push origin bin || true $[ok=0]
 
-              if test $fails -eq 0
+              if test $ok -eq 1
               then
                   exit 0
-              elif test $fails -gt 10
+              elif test $[++fails] -gt 10
               then
                   exit 1
               else
@@ -256,12 +258,13 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)" || true
 
-              git push origin bin || true $[++fails]
+              ok=1
+              git push origin bin || true $[ok=0]
 
-              if test $fails -eq 0
+              if test $ok -eq 1
               then
                   exit 0
-              elif test $fails -gt 10
+              elif test $[++fails] -gt 10
               then
                   exit 1
               else
@@ -331,12 +334,13 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows" || true
 
-              git push origin bin || true $[++fails]
+              ok=1
+              git push origin bin || true $[ok=0]
 
-              if test $fails -eq 0
+              if test $ok -eq 1
               then
                   exit 0
-              elif test $fails -gt 10
+              elif test $[++fails] -gt 10
               then
                   exit 1
               else
@@ -394,12 +398,13 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac" || true
 
-              git push origin bin || true $[++fails]
+              ok=1
+              git push origin bin || true $[ok=0]
 
-              if test $fails -eq 0
+              if test $ok -eq 1
               then
                   exit 0
-              elif test $fails -gt 10
+              elif test $[++fails] -gt 10
               then
                   exit 1
               else
@@ -456,12 +461,13 @@ jobs:
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 mac" || true
 
-              git push origin bin || true $[++fails]
+              ok=1
+              git push origin bin || true $[ok=0]
 
-              if test $fails -eq 0
+              if test $ok -eq 1
               then
                   exit 0
-              elif test $fails -gt 10
+              elif test $[++fails] -gt 10
               then
                   exit 1
               else
