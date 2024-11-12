@@ -98,12 +98,40 @@ jobs:
       matrix:
         target:
           - mipsel-unknown-linux-musl
+
           - aarch64-linux-android
+          - armv7-linux-androideabi
+
           - x86_64-linux-android
+          - i686-linux-android
+
+          - i686-unknown-linux-gnu
+          - i686-unknown-linux-musl
+
           - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabi
+          - armv7-unknown-linux-gnueabihf
+
           - aarch64-unknown-linux-musl
+          - armv7-unknown-linux-musleabi
+          - armv7-unknown-linux-musleabihf
+
+          - x86_64-unknown-openbsd
+          - i686-unknown-openbsd
+          - aarch64-unknown-openbsd
+
           - x86_64-unknown-freebsd
+          - i686-unknown-freebsd
+          - aarch64-unknown-freebsd
+          - armv7-unknown-freebsd
+
           - x86_64-unknown-netbsd
+          - i686-unknown-netbsd
+          - aarch64-unknown-netbsd
+          - armv7-unknown-netbsd-eabihf
+
+          - aarch64-pc-windows-msvc
+          - i686-pc-windows-msvc
 
         include:
           - filename: hitdns.mipsel-linux-musl
@@ -111,21 +139,66 @@ jobs:
 
           - filename: hitdns.aarch64-android
             target: aarch64-linux-android
+          - filename: hitdns.armv7-android
+            target: armv7-linux-androideabi
 
           - filename: hitdns.amd64-android
             target: x86_64-linux-android
+          - filename: hitdns.i686-android
+            target: i686-linux-android
+
+          - filename: hitdns.i686-linux
+            target: i686-unknown-linux-gnu
+          - filename: hitdns.i686-linux-musl
+            target: i686-unknown-linux-musl
 
           - filename: hitdns.aarch64-linux
             target: aarch64-unknown-linux-gnu
+          - filename: hitdns.armv7-linux
+            target: armv7-unknown-linux-gnueabi
+          - filename: hitdns.armv7hf-linux
+            target: armv7-unknown-linux-gnueabihf
 
           - filename: hitdns.aarch64-linux-musl
             target: aarch64-unknown-linux-musl
+          - filename: hitdns.armv7-linux-musl
+            target: armv7-unknown-linux-musleabi
+          - filename: hitdns.armv7hf-linux-musl
+            target: armv7-unknown-linux-musleabihf
+
+          - filename: hitdns.amd64-openbsd
+            target: x86_64-unknown-openbsd
+          - filename: hitdns.i686-openbsd
+            target: i686-unknown-openbsd
+
+          - filename: hitdns.aarch64-openbsd
+            target: aarch64-unknown-openbsd
 
           - filename: hitdns.amd64-freebsd
             target: x86_64-unknown-freebsd
+          - filename: hitdns.i686-freebsd
+            target: i686-unknown-freebsd
+
+          - filename: hitdns.aarch64-freebsd
+            target: aarch64-unknown-freebsd
+          - filename: hitdns.armv7-freebsd
+            target: armv7-unknown-freebsd
 
           - filename: hitdns.amd64-netbsd
             target: x86_64-unknown-netbsd
+          - filename: hitdns.i686-netbsd
+            target: i686-unknown-netbsd
+
+          - filename: hitdns.aarch64-netbsd
+            target: aarch64-unknown-netbsd
+          - filename: hitdns.armv7hf-netbsd
+            target: armv7-unknown-netbsd-eabihf
+
+
+          - filename: hitdns.aarch64-windows.exe
+            target: aarch64-pc-windows-msvc
+          - filename: hitdns.i686-windows.exe
+            target: i686-pc-windows-msvc
 
     runs-on: ubuntu-latest
     steps:
@@ -170,21 +243,35 @@ jobs:
           eval bash upx.sh cross build --release --jobs 20 --target ${{matrix.target}} --verbose $ARGS
 
       - uses: actions/upload-artifact@v4
+        if: ${{ ! contains(matrix.target, 'windows') }}
         with:
           name: ${{matrix.filename}}
           path: target/${{matrix.target}}/release/hitdns
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ contains(matrix.target, 'windows') }}
+        with:
+          name: ${{matrix.filename}}
+          path: target/${{matrix.target}}/release/hitdns.exe
 
       - name: Upload binary of ${{matrix.target}}
         if: ${{ github.event_name != 'pull_request' }}
         run: |
           git switch bin
 
+          if echo "${{matrix.target}}" | grep -F 'windows' &>/dev/null
+          then
+              suffix='.exe'
+          else
+              suffix=''
+          fi
+
           DIR="bin/$(git log -1 --format='%cd' --date=format:'%Y-%m-%d_%H-%M-%S' ${{github.sha}})__${{github.sha}}/"
           fails=0
           while true
           do
               mkdir -p "$DIR"
-              cp -v target/${{matrix.target}}/release/hitdns "${DIR}/hitdns.${{matrix.filename}}"
+              cp -v "target/${{matrix.target}}/release/hitdns${suffix}" "${DIR}/hitdns.${{matrix.filename}}"
               git add -A
               git commit -m "[${{github.sha}}] upload binary of ${{matrix.filename}}" || true
 
