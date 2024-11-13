@@ -345,7 +345,7 @@ jobs:
           while true
           do
               mkdir -p "$DIR"
-              cp -v target/x86_64-unknown-linux-musl/release/hitdns "${DIR}/hitdns.amd64-linux"
+              cp -v target/x86_64-unknown-linux-musl/release/hitdns "${DIR}/hitdns.amd64-linux-musl"
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux (musl)" || true
 
