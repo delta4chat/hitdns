@@ -104,6 +104,7 @@ jobs:
 
   cross:
     needs: amd64-linux
+    if: ${{ needs.amd64-linux.outputs.CANCEL == '0' }}
 
     strategy:
       fail-fast: false
@@ -307,6 +308,8 @@ jobs:
 
   amd64-linux-musl:
     needs: amd64-linux
+    if: ${{ needs.amd64-linux.outputs.CANCEL == '0' }}
+
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -377,6 +380,8 @@ jobs:
 
   amd64-windows:
     needs: amd64-linux
+    if: ${{ needs.amd64-linux.outputs.CANCEL == '0' }}
+
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -454,6 +459,8 @@ jobs:
 
   amd64-mac:
     needs: amd64-linux
+    if: ${{ needs.amd64-linux.outputs.CANCEL == '0' }}
+
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
@@ -517,6 +524,8 @@ jobs:
 
   aarch64-mac:
     needs: amd64-linux
+    if: ${{ needs.amd64-linux.outputs.CANCEL == '0' }}
+
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
