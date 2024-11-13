@@ -628,7 +628,7 @@ impl DNSOverHTTP {
                                     res.set_content_type(Self::mime_txt());
                                     res.set_body(
 "
-List of avaliable query methods:
+List of available query methods:
 
 POST /dns-query                            -> query DNS using RFC 8484 Post: https://tools.ietf.org/html/rfc8484#page-6
 GET  /dns-query?dns=[base64url]            -> query DNS using RFC 8484 Get: https://tools.ietf.org/html/rfc8484#section-4.1.1

@@ -282,8 +282,10 @@ impl HitdnsAPI {
                                     let mut res = Response::new(StatusCode::NotFound);
                                     res.set_body(
 "
-List of avaliable commands:
+List of available commands:
+GET /info            ->  get build info.
 GET /version         ->  current version.
+
 GET /uptime          ->  the uptime of this process.
 GET /nonce           ->  a fixed nonce during between lifetime of this process.
 
@@ -292,9 +294,9 @@ GET /metrics         ->  get all metrics for each resolvers.
 GET /stats           ->  get DNS query analysis.
 
 GET /reload-cache    ->  reload DNS cache entries from disk database.
-GET /expire-records  ->  make the cached results for a domain (and optional rdclass/rdtype) expires immediately.
+GET /reload-hosts    ->  reload Hosts file from disk.
 
-GET /info            ->  get build info.
+GET /expire-records  ->  mark the cached results for a domain (and optional rdclass/rdtype) expires immediately.
 
 "
                                     );

@@ -63,7 +63,7 @@ impl DNSQueryData {
         let full = STATS_FULL.load(Relaxed);
 
         if self.last_update.load(Relaxed) == 0 {
-            anyhow::bail!("no data avaliable: no any update");
+            anyhow::bail!("no data available: no any update");
         }
 
         let domains =

@@ -626,7 +626,7 @@ impl DNSDaemon {
         let resolvers = {
             let mut x: Vec<Arc<dyn DNSResolver>> = vec![];
 
-            // always avaliable
+            // always available
             for doh_url in opt.doh_upstream.iter() {
                 x.push(Arc::new(DNSOverHTTPS::new(
                     doh_url,
