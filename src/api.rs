@@ -115,6 +115,41 @@ impl HitdnsAPI {
                                     res
                                 },
 
+                                "/reload-hosts" => {
+                                    let mut res = Response::new(StatusCode::Ok);
+                                    res.set_content_type(Self::mime_txt());
+
+                                    let result;
+                                    let elapsed;
+                                    let backup;
+
+                                    if let Some(ref hosts_filename) = daemon.context.opt.hosts {
+                                        let started = Instant::now();
+
+                                        backup = HOSTS.take();
+                                        result = HOSTS.load(hosts_filename).await;
+
+                                        elapsed = started.elapsed();
+                                    } else {
+                                        res.set_status(StatusCode::InternalServerError);
+                                        res.set_body("No hosts file path provided by command line or TOML config.");
+                                        return res;
+                                    }
+
+                                    match result {
+                                        Ok(_) => {
+                                            res.set_body(format!("Hosts reloaded from disk. (used time: {elapsed:?})"));
+                                        },
+                                        Err(err) => {
+                                            HOSTS.replace(&backup);
+                                            res.set_status(StatusCode::InternalServerError);
+                                            res.set_body(format!("Failed to reload Hosts (used time: {elapsed:?}): Error={err:?}"));
+                                        }
+                                    }
+
+                                    res
+                                },
+
                                 "/expire-records" => {
                                     let mut res = Response::new(StatusCode::Ok);
                                     res.set_content_type(Self::mime_txt());

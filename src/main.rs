@@ -124,7 +124,6 @@ pub static HITDNS_NONCE: Lazy<String> = Lazy::new(|| {
         .unwrap_or(Duration::ZERO)
         .as_secs_f64();
 
-
     let rand = fastrand::u128(..);
 
     format!("{unix}_{rand}")
@@ -141,7 +140,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             args.config_path = Some(config);
             args.logging = toml_env::Logging::Log; // use `log` crate for logging
 
-            // use empty filename to disable these config source
+            // use empty name to disable these config source
             args.dotenv_path = Path::new("");
             args.config_variable_name = "";
 
@@ -181,7 +180,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
                     "/etc/hosts".to_string()
                 } else if cfg!(target_family = "windows") {
                     let mut out = std::env::var("SystemDrive").unwrap_or(String::from("C:"));
-                    out.extend(r"\Windows\System32\drivers\etc\hosts".chars());
+                    out.push_str(r"\Windows\System32\drivers\etc\hosts");
                     out
                 } else {
                     "".to_string()
@@ -243,6 +242,8 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
 
         if opt.listen.is_some() {
             assert!(opt.api_listen != opt.dohp_listen);
+            assert!(opt.listen != opt.api_listen);
+            assert!(opt.listen != opt.dohp_listen);
         }
 
         opt
@@ -302,11 +303,7 @@ pub fn randstr(len: usize) -> String {
 
 pub fn average<T>(set: &[T]) -> T
 where
-    T: Default
-        + Copy
-        + From<u64>
-        + Add<Output = T>
-        + Div<Output = T>,
+    T: Default + Copy + From<u64> + Add<Output = T> + Div<Output = T>
 {
     let len = set.len();
     if len > 0 {
@@ -502,8 +499,6 @@ fn dns_ch_hook(
 pub type DNSHook =
     fn(&DNSQueryInfo, HitdnsOpt) -> PinFut<Option<dns::Message>>;
 
-static HOOK_ID_COUNTER: AtomicUsize = AtomicUsize::new(1000);
-
 #[derive(Debug, Clone)]
 pub struct DNSHookArray {
     // id -> (nice, hook)
@@ -519,6 +514,8 @@ impl DNSHookArray {
     }
 
     pub async fn add(&self, nice: i8, hook: Arc<DNSHook>) -> usize {
+        static HOOK_ID_COUNTER: AtomicUsize = AtomicUsize::new(1000);
+
         let val = (nice, hook);
 
         let mut len = self.hooks.len();
@@ -591,7 +588,7 @@ pub struct DNSDaemonSocket {
     udp: Arc<UdpSocket>,
     tcp: Arc<TcpListener>,
 
-    // TODO plaintext HTTP with /dns-query for your reverse proxy (for example Nginx) to serve DoH.
+    // plaintext HTTP with /dns-query for your reverse proxy (for example Nginx) to serve DoH.
     http: Option<Arc<DNSOverHTTP>>,
 }
 
@@ -609,31 +606,20 @@ pub struct DNSDaemon {
 }
 
 impl DNSDaemon {
-    pub async fn new(
-        opt: HitdnsOpt,
-    ) -> anyhow::Result<Self> {
+    pub async fn new(opt: HitdnsOpt) -> anyhow::Result<Self> {
         let listen = match opt.listen {
             Some(v) => v,
             None => {
-                anyhow::bail!(
-                    "no listen address specified!"
-                );
+                anyhow::bail!("no listen address specified!");
             },
         };
 
-        let udp = Arc::new(
-            UdpSocket::bind(&listen).await.log_error()?,
-        );
-        let tcp = Arc::new(
-            TcpListener::bind(&listen)
-                .await
-                .log_error()?,
-        );
+        let udp = Arc::new(UdpSocket::bind(&listen).await.log_error()?);
+        let tcp = Arc::new(TcpListener::bind(&listen).await.log_error()?);
 
         if let Some(ref hosts_filename) = opt.hosts {
-            let _ = HOSTS
-                .load(hosts_filename)
-                .await
+            let _ =
+                HOSTS.load(hosts_filename).await
                 .log_error();
         }
 
@@ -668,8 +654,7 @@ impl DNSDaemon {
                     DNSOverTLS::new(
                         dot_addr,
                         opt.hosts.is_some(),
-                    )
-                    .await?,
+                    ).await?
                 ));
             }
 
@@ -681,13 +666,15 @@ impl DNSDaemon {
             if x.is_empty() {
                 if ! opt.no_default_servers {
                     x = DefaultServers::global();
-                    log::info!("no upstream specified. use default servers: {x:#?}");
+                    log::info!("no upstream specified. use default servers.");
                 }
             }
 
             if x.is_empty() {
                 anyhow::bail!("No DNS Upstream provided.");
             }
+
+            log::info!("Use {} Upstream Servers: {x:#?}", x.len());
 
             DNSResolverArray::from(x)
         };
@@ -721,10 +708,7 @@ impl DNSDaemon {
 
 
         if let Some(dl) = opt.dohp_listen {
-            let dohp =
-                Arc::new(
-                    DNSOverHTTP::new(dl, context.clone()).await?
-                );
+            let dohp = Arc::new(DNSOverHTTP::new(dl, context.clone()).await?);
 
             context.socket.http = Some(dohp.clone());
             task.http = Some(

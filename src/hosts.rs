@@ -2,9 +2,11 @@ use crate::*;
 
 pub static HOSTS: Lazy<Hosts> = Lazy::new(Hosts::new);
 
+pub type HostsMap = scc::TreeIndex<String, scc::TreeIndex<IpAddr, ()>>;
+
 #[derive(Debug)]
 pub struct Hosts {
-    pub(crate) map: scc::HashMap<String, Vec<IpAddr>>,
+    pub(crate) map: HostsMap,
 }
 impl Hosts {
     fn new() -> Self {
@@ -13,14 +15,33 @@ impl Hosts {
         }
 
         Self {
-            map: scc::HashMap::new(),
+            map: Default::default(),
         }
     }
 
-    pub async fn load(
-        &self,
-        filename: &PathBuf,
-    ) -> anyhow::Result<()> {
+    pub(crate) fn take(&self) -> HostsMap {
+        let map = self.map.clone();
+        self.map.clear();
+        map
+    }
+
+    pub(crate) fn replace(&self, new: &HostsMap) {
+        let g = scc::ebr::Guard::new();
+        for (domain, ips) in self.map.iter(&g) {
+            if new.contains(domain) {
+                ips.clear();
+                new.peek_with(domain, |_, ips| {
+                    for (ip, _) in ips.iter(&g) {
+                        let _ = ips.insert(*ip, ());
+                    }
+                });
+            } else {
+                self.map.remove(domain);
+            }
+        }
+    }
+
+    pub async fn load(&self, filename: &PathBuf) -> anyhow::Result<()> {
         const HOSTS_EXAMPLE: &'static str = "   two examples of hosts.txt that is: 142.250.189.206 ipv4.google.com | 2607:f8b0:4005:814::200e ipv6.google.com   ";
 
         let mut file: String =
@@ -89,12 +110,9 @@ impl Hosts {
                 log::debug!("Hosts: {filename:?}: ignore tailing words of line {lines}.");
             }
 
-            // Entry
-            self.map.entry_async(domain).await
-            .or_insert_with(Vec::new)
-            .get_mut()
-            // Vec
-            .push(ip);
+            let _ = self.map.insert_async(domain.clone(), Default::default()).await;
+
+            self.map.peek_with(&domain, |_, ips| { let _ = ips.insert(ip, ()); });
         }
 
         log::info!("Hosts: total {lines} lines loaded, {} domain names loaded. mapping: {:#?}", self.map.len(), &self.map);
@@ -112,10 +130,10 @@ impl Hosts {
         }
         let domain = domain.to_ascii_lowercase();
 
-        match self.map.get_async(&domain).await {
-            Some(entry) => Some(entry.get().clone()),
-            None => None,
-        }
+        self.map.peek_with(&domain, |_, ips| {
+            let g = scc::ebr::Guard::new();
+            ips.iter(&g).map(|(ip, _)| { *ip }).collect()
+        })
     }
 
     fn _reqwest_resolve(
