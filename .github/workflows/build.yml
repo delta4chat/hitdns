@@ -12,12 +12,17 @@ env:
 jobs:
   amd64-linux:
     runs-on: ubuntu-latest
+
+    outputs:
+      CANCEL: ${{ steps.check.outputs.CANCEL }}
+
     steps:
       - uses: actions/checkout@v4
         #with:
         #  submodules: true
 
       - name: Show system info
+        id: check
         run: |
           w(){ eval $* || true; }
           set -x
@@ -27,7 +32,24 @@ jobs:
           w uptime ; w sleep 1
           w cat /proc/cpuinfo
 
+          if git log -1 | grep -F "auto-submit}"
+          then
+            echo "Skip any auto commit by bots"
+            echo "CANCEL=1" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          if git log -1 | grep -F "#NOCI"
+          then
+            echo "This commit Disable CI"
+            echo "CANCEL=2" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "CANCEL=0" >> $GITHUB_OUTPUT
+
       - name: Create binary directory for this job
+        if: ${{ steps.check.outputs.CANCEL == '0' }}
         run: |
           git config --global user.name github-actions && git config --global user.email github-actions@github.com
 
@@ -37,19 +59,8 @@ jobs:
 
           git reset --hard ${{github.sha}}
 
-          if git log -1 | grep -F "auto-submit}"
-          then
-            echo "Skip any auto commit by bots"
-            exit 100
-          fi
-
-          if git log -1 | grep -F "#NOCI"
-          then
-            echo "This commit Disable CI"
-            exit 1
-          fi
-
       - name: Build Linux
+        if: ${{ steps.check.outputs.CANCEL == '0' }}
         run: |
           export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
           bash upx.sh cargo build --release --jobs 20 --verbose
@@ -58,12 +69,13 @@ jobs:
 #        run: cargo test --release --verbose -- --nocapture
 
       - uses: actions/upload-artifact@v4
+        if: ${{ steps.check.outputs.CANCEL == '0' }}
         with:
           name: hitdns.amd64-linux
           path: target/release/hitdns
 
       - name: Upload binary of amd64 linux
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ steps.check.outputs.CANCEL == '0' && github.event_name != 'pull_request' }}
         run: |
           git switch bin
 
