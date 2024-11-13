@@ -116,14 +116,14 @@ jobs:
           - armv7-unknown-linux-musleabi
           - armv7-unknown-linux-musleabihf
 
-          - x86_64-unknown-openbsd
-          - i686-unknown-openbsd
-          - aarch64-unknown-openbsd
+          #- x86_64-unknown-openbsd
+          #- i686-unknown-openbsd
+          #- aarch64-unknown-openbsd
 
           - x86_64-unknown-freebsd
           - i686-unknown-freebsd
           - aarch64-unknown-freebsd
-          - armv7-unknown-freebsd
+          #- armv7-unknown-freebsd
 
           - x86_64-unknown-netbsd
           - i686-unknown-netbsd
@@ -167,13 +167,13 @@ jobs:
           - filename: hitdns.armv7hf-linux-musl
             target: armv7-unknown-linux-musleabihf
 
-          - filename: hitdns.amd64-openbsd
-            target: x86_64-unknown-openbsd
-          - filename: hitdns.i686-openbsd
-            target: i686-unknown-openbsd
+          #- filename: hitdns.amd64-openbsd
+          #  target: x86_64-unknown-openbsd
+          #- filename: hitdns.i686-openbsd
+          #  target: i686-unknown-openbsd
 
-          - filename: hitdns.aarch64-openbsd
-            target: aarch64-unknown-openbsd
+          #- filename: hitdns.aarch64-openbsd
+          #  target: aarch64-unknown-openbsd
 
           - filename: hitdns.amd64-freebsd
             target: x86_64-unknown-freebsd
@@ -182,8 +182,8 @@ jobs:
 
           - filename: hitdns.aarch64-freebsd
             target: aarch64-unknown-freebsd
-          - filename: hitdns.armv7-freebsd
-            target: armv7-unknown-freebsd
+          #- filename: hitdns.armv7-freebsd
+          #  target: armv7-unknown-freebsd
 
           - filename: hitdns.amd64-netbsd
             target: x86_64-unknown-netbsd
