@@ -28,17 +28,22 @@ pub static HITDNS_SQLITE_POOL: Lazy<SqlitePool> =
                 } else {
                     let mut file = file.clone();
                     let mut file_old = file_old.clone();
-                    smol::fs::rename(&file_old, &file).await.expect("unable to rename .db from old to new!");
 
                     file.set_extension("db-shm");
                     file_old.set_extension("db-shm");
-                    let _ = smol::fs::rename(&file_old, &file).await.expect("unable to rename .db-shm from old to new!");
+                    for _ in 0..10 {
+                        let _ = smol::fs::rename(&file_old, &file).await;
+                    }
 
                     file.set_extension("db-wal");
                     file_old.set_extension("db-wal");
-                    let _ = smol::fs::rename(file_old, file).await.expect("unable to rename .db-wal from old to new!");
+                    for _ in 0..10 {
+                        let _ = smol::fs::rename(&file_old, &file).await;
+                    }
 
-                    // this is not a bug due to shadow-let just affect this spoce, so original one leaves un-modified
+                    file.set_extension("db");
+                    file_old.set_extension("db");
+                    smol::fs::rename(&file_old, &file).await.expect("unable to rename .db from old to new!");
                 }
             }
 
