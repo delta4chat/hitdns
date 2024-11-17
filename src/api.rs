@@ -121,12 +121,15 @@ impl HitdnsAPI {
 
                                     let result;
                                     let elapsed;
-                                    let backup;
+                                    let mut backup_restore_defer;
 
                                     if let Some(ref hosts_filename) = daemon.context.opt.hosts {
                                         let started = Instant::now();
 
-                                        backup = HOSTS.take();
+                                        let backup = HOSTS.take();
+                                        backup_restore_defer = Defer::new(move || {
+                                            HOSTS.replace(&backup);
+                                        });
                                         result = HOSTS.load(hosts_filename).await;
 
                                         elapsed = started.elapsed();
@@ -138,10 +141,10 @@ impl HitdnsAPI {
 
                                     match result {
                                         Ok(_) => {
+                                            backup_restore_defer.cancel();
                                             res.set_body(format!("Hosts reloaded from disk. (used time: {elapsed:?})"));
                                         },
                                         Err(err) => {
-                                            HOSTS.replace(&backup);
                                             res.set_status(StatusCode::InternalServerError);
                                             res.set_body(format!("Failed to reload Hosts (used time: {elapsed:?}): Error={err:?}"));
                                         }

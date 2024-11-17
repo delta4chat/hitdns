@@ -55,9 +55,7 @@ impl TryInto<Arc<DNSEntry>> for DNSCacheStatus {
             Self::Hit(entry) => Ok(entry),
             Self::Expired(entry) => Ok(entry),
             Self::Miss => {
-                anyhow::bail!(
-          "no valid DNSEntry due to never success!"
-        )
+                anyhow::bail!("no valid DNSEntry due to never success!")
             },
         }
     }
@@ -65,14 +63,17 @@ impl TryInto<Arc<DNSEntry>> for DNSCacheStatus {
 
 pub struct Defer {
     called: bool,
-    f: Box<dyn Fn() -> ()>,
+    f: Box<dyn FnMut() -> ()>,
 }
 impl Defer {
-    pub fn new(f: Box<dyn Fn() -> ()>) -> Self {
+    pub fn new(f: impl FnMut() -> () + 'static) -> Self {
         Self {
             called: false,
-            f,
+            f: Box::new(f),
         }
+    }
+    pub fn cancel(&mut self) {
+        self.called = true;
     }
 }
 impl Drop for Defer {
@@ -255,9 +256,9 @@ impl DNSCacheEntry {
             let task = smolscale2::spawn(async move {
                 let _guard = {
                     let u = updating.clone();
-                    Defer::new(Box::new(move || {
+                    Defer::new(move || {
                         u.store(false, SeqCst);
-                    }))
+                    })
                 };
                 updating.store(true, SeqCst);
 
@@ -267,10 +268,7 @@ impl DNSCacheEntry {
                 let mut response = match timeout_helper(resolver.dns_resolve(&query), timeout).await {
                     Some(v) => { v? },
                     None => {
-                        anyhow::bail!(
-                            "resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}",
-                            &query
-                        );
+                        anyhow::bail!("resolving query {:?} from upstream {upstream:?} timed out: timeout={timeout:?}", &query);
                     }
                 };
                 let elapsed = start.elapsed();

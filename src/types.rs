@@ -61,9 +61,7 @@ impl TryFrom<&str> for DNSQuery {
 
         let arr: Vec<&str> = val.split(" ").collect();
         if arr.len() != 3 {
-            anyhow::bail!(
-                "malformed text format of dns query"
-            );
+            anyhow::bail!("malformed text format of dns query");
         }
 
         let mut name = arr[0].to_lowercase();
@@ -536,9 +534,7 @@ impl DNSResolverArray {
 
     pub fn random(&self) -> anyhow::Result<Arc<dyn DNSResolver>> {
         if self.list.is_empty() {
-            anyhow::bail!(
-                "unexpected empty list of DNS Resolvers!"
-            );
+            anyhow::bail!("unexpected empty list of DNS Resolvers!");
         }
 
         for _ in 0..10 {

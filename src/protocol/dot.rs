@@ -264,9 +264,7 @@ impl DNSOverTLS {
             }
         }
 
-        anyhow::bail!(
-            "cannot select DoT server randomly"
-        );
+        anyhow::bail!("cannot select DoT server randomly");
     }
 
     async fn _dns_resolve(
