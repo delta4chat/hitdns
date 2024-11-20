@@ -112,7 +112,7 @@ pub use anyhow::Context;
 // command line argument parser
 pub use clap::Parser;
 
-pub use smol_timeout::TimeoutExt;
+pub use smoltimeout::TimeoutExt;
 
 // hitdns nonce randomly for each run
 pub static HITDNS_NONCE: Lazy<String> = Lazy::new(|| {

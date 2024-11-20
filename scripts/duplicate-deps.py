@@ -43,12 +43,12 @@ def duplicated_deps():
         if len(vers) > 1:
             yield (pkg, sorted(vers, key=str2int))
 
-ml = 0
+ml = 16
 dep = list(duplicated_deps())
-for pkg, _ in dep:
-    l = len(pkg)
-    if l > ml:
-        ml = l
+#for pkg, _ in dep:
+#    l = len(pkg)
+#    if l > ml:
+#        ml = l
 
 for pkg, vers in dep:
     print('[', pkg, '] =', sep='')
