@@ -72,8 +72,7 @@ impl DNSQueryData {
                 self.domains.scan_async(|domain, count|{
                     let key: String = domain.into();
 
-                    let val: serde_json::Value =
-                        count.load(Relaxed).to_string().into();
+                    let val: serde_json::Value = count.load(Relaxed).to_string().into();
 
                     domains.insert(key, val);
                 }).await;
@@ -87,13 +86,11 @@ impl DNSQueryData {
             let key: String =
                 format!(
                     "{}({})",
-                    dns::RdType::from(*rdtype)
-                        .to_string(),
+                    dns::RdType::from(*rdtype).to_string(),
                     rdtype
                 );
 
-            let val: serde_json::Value =
-                count.load(Relaxed).to_string().into();
+            let val: serde_json::Value = count.load(Relaxed).to_string().into();
 
             rdtypes.insert(key, val);
         }).await;
@@ -103,13 +100,11 @@ impl DNSQueryData {
             let key: String =
                 format!(
                     "{}({})",
-                    dns::RdClass::from(*rdclass)
-                        .to_string(),
+                    dns::RdClass::from(*rdclass).to_string(),
                     rdclass
                 );
 
-            let val: serde_json::Value =
-                count.load(Relaxed).to_string().into();
+            let val: serde_json::Value = count.load(Relaxed).to_string().into();
 
             rdclasses.insert(key, val);
         }).await;
@@ -204,7 +199,7 @@ impl DNSQueryStats {
     fn update(&self) {
         let elapsed = self.elapsed.load(Relaxed);
         if elapsed == 0.0 {
-            log::debug!("no .elapsed so cannot calc average queries number");
+            log::debug!("no .elapsed so cannot calculate average queries number");
             return;
         };
 

@@ -153,9 +153,7 @@ impl DatabaseSnapshot {
         })
     }
 
-    pub fn from_json(
-        json: &serde_json::Value,
-    ) -> anyhow::Result<Self> {
+    pub fn from_json(json: &serde_json::Value) -> anyhow::Result<Self> {
         let map = match json.as_object() {
             Some(v) => v,
             None => {

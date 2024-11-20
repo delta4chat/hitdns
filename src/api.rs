@@ -33,11 +33,7 @@ impl HitdnsAPI {
 
     pub async fn run(&self) -> anyhow::Result<()> {
         loop {
-            let (conn, peer) = self
-                .listener
-                .accept()
-                .await
-                .log_warn()?;
+            let (conn, peer) = self.listener.accept().await.log_warn()?;
 
             let daemon = self.daemon.clone();
             smolscale2::spawn(
@@ -252,7 +248,7 @@ impl HitdnsAPI {
                                     res.set_content_type(Self::mime_txt());
                                     res.set_body(HITDNS_NONCE.as_str());
                                     res
-                                }
+                                },
 
                                 "/stats" => {
                                     let mut res = Response::new(StatusCode::Ok);

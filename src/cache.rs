@@ -63,10 +63,10 @@ impl TryInto<Arc<DNSEntry>> for DNSCacheStatus {
 
 pub struct Defer {
     called: bool,
-    f: Box<dyn FnMut() -> ()>,
+    f: Box<dyn FnMut()->()>,
 }
 impl Defer {
-    pub fn new(f: impl FnMut() -> () + 'static) -> Self {
+    pub fn new(f: impl FnMut()->() + 'static) -> Self {
         Self {
             called: false,
             f: Box::new(f),
@@ -81,6 +81,7 @@ impl Drop for Defer {
         if self.called {
             return;
         }
+
         self.called = true;
 
         (self.f)();
@@ -94,17 +95,15 @@ unsafe impl Send for Defer {}
 pub struct DNSCacheEntry {
     query: Arc<DNSQuery>,
 
-    pub(crate) entry:
-        Arc<RwLock<
-            Option<Arc<DNSEntry>>
-        >>,
+    pub(crate) entry: Arc<RwLock<
+                        Option<Arc<DNSEntry>>
+                      >>,
 
-    update_task:
-        Arc<RwLock<
-            Option<Arc<
-                smol::Task<anyhow::Result<()>>
-            >>
-        >>,
+    update_task: Arc<RwLock<
+                   Option<Arc<
+                     smol::Task<anyhow::Result<()>>
+                   >>
+                 >>,
 
     updating: Arc<AtomicBool>,
     update_event: Arc<Event>,
@@ -198,7 +197,7 @@ impl DNSCacheEntry {
     pub async fn expire(&self) -> bool {
         let maybe_ade = &mut *self.entry.write().await;
         if let Some(ade) = maybe_ade {
-            let de = Arc::make_mut(ade);
+            let de = Arc::get_mut(ade).expect("should only one mutable writer due to it behind a RwLock");
             de.expire = SystemTime::UNIX_EPOCH;
             true
         } else {

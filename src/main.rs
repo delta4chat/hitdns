@@ -36,10 +36,7 @@ pub use stats::*;
 
 /* ==================== */
 
-pub use core::ops::{
-    Deref, DerefMut,
-    Add, Div,
-};
+pub use core::ops::{Deref, DerefMut, Add, Div};
 pub use core::pin::Pin;
 pub use core::time::Duration;
 
@@ -200,7 +197,8 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
                 dyna.set_port(opt.listen.unwrap().port());
 
                 loop {
-                    dyna.set_port(dyna.port() - 1);
+                    dyna.set_port(dyna.port().checked_sub(1).unwrap_or(dyna.port()));
+
                     if let Ok(sock) = TcpListener::bind(dyna).await {
                         if let Ok(addr) = sock.local_addr() {
                             dyna = addr;
@@ -219,7 +217,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
                 dyna.set_port(opt.listen.unwrap().port());
 
                 loop {
-                    dyna.set_port(dyna.port() - 1);
+                    dyna.set_port(dyna.port().checked_sub(1).unwrap_or(dyna.port()));
 
                     // skip the port used by DoH-plaintext
                     if let Some(ref dl) = opt.dohp_listen {
@@ -303,7 +301,7 @@ pub fn randstr(len: usize) -> String {
 
 pub fn average<T>(set: &[T]) -> T
 where
-    T: Default + Copy + From<u64> + Add<Output = T> + Div<Output = T>
+    T: Default + Copy + From<u64> + Add<Output=T> + Div<Output=T>
 {
     let len = set.len();
     if len > 0 {
@@ -367,7 +365,7 @@ fn dns_hosts_hook(
         match info.query.rdtype {
             1 | 28 => {
                 let mut ips = Vec::new();
-                if let Some(ip46) = HOSTS.lookup(info.query.name.as_str()).await {
+                if let Some(ip46) = HOSTS.lookup(info.query.name.as_str()) {
                     for ip in ip46.into_iter() {
                         match info.query.rdtype {
                             1 => {
@@ -484,7 +482,9 @@ fn dns_ch_hook(
                     }
 
                     answer.set_data(
-                        Some(dns::RData::TXT(dns::rdata::TXT::new(texts)))
+                        Some(dns::RData::TXT(
+                            dns::rdata::TXT::new(texts)
+                        ))
                     );
                     answers.push(answer);
                 }
@@ -496,8 +496,7 @@ fn dns_ch_hook(
     })
 }
 
-pub type DNSHook =
-    fn(&DNSQueryInfo, HitdnsOpt) -> PinFut<Option<dns::Message>>;
+pub type DNSHook = fn(&DNSQueryInfo, HitdnsOpt) -> PinFut<Option<dns::Message>>;
 
 #[derive(Debug, Clone)]
 pub struct DNSHookArray {
@@ -543,10 +542,7 @@ impl DNSHookArray {
     ///
     /// anyway, this function will calls ALL associated middleware,
     /// but only "the response with minimal nice value" will be return. (if milti hook with same nice value, then return first one)
-    pub async fn via(
-        &self,
-        info: &DNSQueryInfo,
-    ) -> Option<dns::Message> {
+    pub async fn via(&self, info: &DNSQueryInfo) -> Option<dns::Message> {
         if self.hooks.is_empty() {
             return None;
         }
@@ -1270,10 +1266,12 @@ impl DefaultServers {
             // [DE] dns.sb
             "https://45.11.45.11/dns-query",
             "https://185.222.222.222/dns-query",
+            "https://[2a09::]/dns-query",
+            "https://[2a11::]/dns-query",
 
             // [?] Adguard DNS Un-filtered
-            // NOTE: disabled: missing google.com AAAA record
-            //"https://94.140.14.140/dns-query",
+            "https://94.140.14.140/dns-query",
+            "https://94.140.14.141/dns-query",
 
             // [CH] dns.switch.ch
             "https://130.59.31.248/dns-query",

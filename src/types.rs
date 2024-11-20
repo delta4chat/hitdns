@@ -2,11 +2,9 @@ use crate::*;
 
 /* ========== DNS Query ========= */
 
-#[derive(
-    Clone, Serialize, Deserialize, PartialEq, Eq, Hash,
-)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DNSQuery {
-    /// raw query domain name, String encoded by UTF-8
+    /// raw query domain name, String encoded by UTF-8, must be ends with dot
     pub name: String,
 
     /// raw query dns class, unsigned 16-bit integer
@@ -29,15 +27,13 @@ impl DNSQuery {
 
 impl core::fmt::Debug for DNSQuery {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
-        f.write_str(format!("DNS-Query( {self} )").as_str())
+        f.write_str(format!("DNS-Query[{self}]").as_str())
     }
 }
 
 impl core::fmt::Display for DNSQuery {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
-        let query: dns::Query = self
-            .try_into()
-            .expect("cannot convert to hickory Query");
+        let query: dns::Query = self.try_into().expect("cannot convert to hickory Query");
 
         f.write_str(
             format!(
@@ -68,22 +64,19 @@ impl TryFrom<&str> for DNSQuery {
         if !name.ends_with(".") {
             name.push('.');
         }
-        let name: String =
-            dns::Name::from_str_relaxed(&name)?.to_utf8();
+        let name: String = dns::Name::from_str_relaxed(&name)?.to_utf8();
 
-        let rdclass: u16 = arr[1]
-            .replace(")", "")
-            .split("(")
-            .last()
-            .ok_or(anyhow::anyhow!("malformed rdclass field of dns query"))?
-            .parse()?;
+        let rdclass: u16 = arr[1].replace(")", "")
+                                 .split("(")
+                                 .last()
+                                 .ok_or(anyhow::anyhow!("malformed rdclass field of dns query"))?
+                                 .parse()?;
 
-        let rdtype: u16 = arr[2]
-            .replace(")", "")
-            .split("(")
-            .last()
-            .ok_or(anyhow::anyhow!("malformed rdtype field of dns query"))?
-            .parse()?;
+        let rdtype: u16 = arr[2].replace(")", "")
+                                .split("(")
+                                .last()
+                                .ok_or(anyhow::anyhow!("malformed rdtype field of dns query"))?
+                                .parse()?;
 
         Ok(DNSQuery {
             name,
@@ -95,9 +88,7 @@ impl TryFrom<&str> for DNSQuery {
 
 impl TryFrom<dns::Message> for DNSQuery {
     type Error = anyhow::Error;
-    fn try_from(
-        msg: dns::Message,
-    ) -> anyhow::Result<Self> {
+    fn try_from(msg: dns::Message) -> anyhow::Result<Self> {
         if msg.message_type() != dns::MessageType::Query {
             anyhow::bail!("unexpected receive a non-query DNS message: {msg:?}");
         }
@@ -211,15 +202,13 @@ impl DNSEntry {
         let resp_quoted: String =
             quoted_printable::encode_with_options(
                 &self.response,
-                Self::_quoted_printable_opt(),
+                Self::_quoted_printable_opt()
             );
 
-        let expire_unix: String = self
-            .expire
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or(Duration::ZERO)
-            .as_secs()
-            .to_string();
+        let expire_unix: String = self.expire.duration_since(SystemTime::UNIX_EPOCH)
+                                             .unwrap_or(Duration::ZERO)
+                                             .as_secs()
+                                             .to_string(); // u64::MAX is large than JavaScript's Number.MAX_SAFE_INTEGER
 
         let upstream_str: String = self.upstream.clone();
 
@@ -271,14 +260,14 @@ impl DNSEntry {
         let response: Vec<u8> =
             quoted_printable::decode_with_options(
                 resp_quoted,
-                Self::_quoted_printable_opt(),
+                Self::_quoted_printable_opt()
             )?;
 
         let expire: SystemTime = {
             let since =
                 if expire_unix.contains(".") {
                     let ts: f64 = expire_unix.parse().unwrap_or(0.0);
-                    Duration::from_secs_f64(ts)
+                    Duration::try_from_secs_f64(ts)?
                 } else {
                     let ts: u64 = expire_unix.parse().unwrap_or(0);
                     Duration::from_secs(ts)
@@ -291,7 +280,7 @@ impl DNSEntry {
 
         let elapsed: Duration = {
             let secs: f64 = elapsed_str.parse().unwrap_or(0.0);
-            Duration::from_secs_f64(secs)
+            Duration::try_from_secs_f64(secs)?
         };
 
         Ok(Self {
@@ -305,10 +294,7 @@ impl DNSEntry {
 }
 
 impl core::fmt::Debug for DNSEntry {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> Result<(), core::fmt::Error> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
         f.debug_struct("DNS-Entry")
         .field("query", &self.query)
         .field("response", &Bytes::copy_from_slice(&self.response))
@@ -336,10 +322,7 @@ pub struct DNSMetrics {
     upstream: String,
 }
 impl core::fmt::Debug for DNSMetrics {
-    fn fmt(
-        &self,
-        f: &mut core::fmt::Formatter,
-    ) -> Result<(), core::fmt::Error> {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
         f.debug_struct("DNS-Metrics")
         .field("latency", &self.latency())
         .field("reliability", &self.reliability)
@@ -546,9 +529,7 @@ impl DNSResolverArray {
             if let Some(resolver) = self.list.get(n) {
                 return Ok(resolver.clone());
             } else {
-                log::debug!(
-                    "unexpected cannot get({n}) from resolver list: maybe self.list.len()=={len} changed before get?"
-                );
+                log::debug!("unexpected cannot get({n}) from resolver list: maybe self.list.len()=={len} changed before get?");
             }
         }
 
