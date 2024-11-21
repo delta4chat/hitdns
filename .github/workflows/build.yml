@@ -95,7 +95,8 @@ jobs:
           DIR_PATH="$(realpath $DIR_NAME)"
 
           mkdir -p "$DIR_PATH"
-          ln -s -f "$DIR_NAME" latest
+          rm latest || true
+          ln -s "$DIR_NAME" latest
 
           cd ..
 
