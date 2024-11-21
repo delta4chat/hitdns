@@ -250,12 +250,15 @@ jobs:
           export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
 
           ARGS=''
-          if test ${{matrix.target}} = mipsel-unknown-linux-musl || true
-          then
-              rustup default nightly
-              rustup component add rust-src
-              ARGS='-Z build-std=core,std,alloc,proc_macro'
-          fi
+          case "${{matrix.target}}" in
+              i686-unknown-linux-*)
+                  ;;
+              *)
+                  rustup default nightly
+                  rustup component add rust-src
+                  ARGS='-Z build-std=core,std,alloc,proc_macro'
+                  ;;
+          esac
 
           eval bash upx.sh cross build --release --jobs 20 --target ${{matrix.target}} --verbose $ARGS
 
