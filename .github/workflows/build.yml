@@ -470,7 +470,7 @@ jobs:
         shell: bash
 
       - name: Build (windows)
-        run: bash upx.sh cargo build --release --jobs 20 --target x86_64-pc-windows-msvc --verbose -Z build-std=core,std,alloc,proc_macro
+        run: RUSTFLAGS='' bash upx.sh cargo build --release --jobs 20 --target x86_64-pc-windows-msvc --verbose -Z build-std=core,std,alloc,proc_macro
         shell: bash
 
       - uses: actions/upload-artifact@v4
