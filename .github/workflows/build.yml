@@ -87,6 +87,8 @@ jobs:
           mkdir -p "$DIR_PATH"
           ln -s -f "$DIR_NAME" latest
 
+          cd ..
+
           fails=0
           while true
           do
