@@ -266,7 +266,7 @@ jobs:
           git reset --hard ${{github.sha}}
 
       - name: Install Cross
-        run: cargo install cross
+        run: RUSTFLAGS='' cargo install cross
 
       - name: Cross Build ${{matrix.target}}
         run: |
