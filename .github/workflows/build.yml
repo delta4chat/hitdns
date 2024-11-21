@@ -266,7 +266,14 @@ jobs:
                   rustup component add rust-src
                   ARGS='-Z build-std=core,std,alloc,proc_macro'
 
-                  export RUSTFLAGS='-C target-feature=+crt-static -C relocation-model=static'
+                  case "${{matrix.target}}" in
+                      mipsel*) ;;
+                      aarch64-linux-android) ;;
+                      *freebsd) ;;
+                      *windows*) ;;
+                      *) export RUSTFLAGS='-C target-feature=+crt-static -C relocation-model=static' ;;
+                  esac
+
                   ;;
           esac
 
