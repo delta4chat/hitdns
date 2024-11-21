@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: -C target-feature=+crt-static -C relocation-model=static
 
 jobs:
   amd64-linux:
@@ -21,6 +22,11 @@ jobs:
         #with:
         #  submodules: true
 
+      - name: use nightly rust
+        run: |
+          rustup default nightly
+          rustup component add rust-src
+
       - name: Show system info
         id: check
         run: |
@@ -30,7 +36,11 @@ jobs:
           w ifconfig -a ; w sleep 1
           w free -h || w free ; w sleep 1
           w uptime ; w sleep 1
-          w cat /proc/cpuinfo
+          w cat /proc/cpuinfo ; w sleep 1
+
+          w rustc --version ; w sleep 1
+          w cargo --version ; w sleep 1
+          w rustup --version
 
           if git log -1 | grep -F "auto-submit}"
           then
@@ -63,7 +73,7 @@ jobs:
         if: ${{ steps.check.outputs.CANCEL == '0' }}
         run: |
           export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
-          bash upx.sh cargo build --release --jobs 20 --verbose
+          bash upx.sh cargo build --release --jobs 20 --verbose -Z build-std=core,std,alloc,proc_macro
 
 #      - name: Run tests
 #        run: cargo test --release --verbose -- --nocapture
@@ -229,7 +239,7 @@ jobs:
       - uses: actions/checkout@v4
         #with:
         #  submodules: true
-      
+
       - name: Show system info
         run: |
           w(){ eval $* || true; }
@@ -238,7 +248,11 @@ jobs:
           w ifconfig -a ; w sleep 1
           w free -h || w free ; w sleep 1
           w uptime ; w sleep 1
-          w cat /proc/cpuinfo
+          w cat /proc/cpuinfo ; w sleep 1
+
+          w rustc --version ; w sleep 1
+          w cargo --version ; w sleep 1
+          w rustup --version
 
       - name: Create binary directory for this job
         run: |
@@ -267,11 +281,8 @@ jobs:
                   ARGS='-Z build-std=core,std,alloc,proc_macro'
 
                   case "${{matrix.target}}" in
-                      mipsel*) ;;
-                      aarch64-linux-android) ;;
-                      *freebsd) ;;
-                      *windows*) ;;
-                      *) export RUSTFLAGS='-C target-feature=+crt-static -C relocation-model=static' ;;
+                      mipsel* | aarch64-linux-android | *freebsd | *windows* ) unset RUSTFLAGS ;;
+                      *) ;;
                   esac
 
                   ;;
@@ -336,6 +347,11 @@ jobs:
         #with:
         #  submodules: true
 
+      - name: use nightly rust
+        run: |
+          rustup default nightly
+          rustup component add rust-src
+
       - name: Show system info
         run: |
           w(){ eval $* || true; }
@@ -344,7 +360,11 @@ jobs:
           w ifconfig -a ; w sleep 1
           w free -h || w free ; w sleep 1
           w uptime ; w sleep 1
-          w cat /proc/cpuinfo
+          w cat /proc/cpuinfo ; w sleep 1
+
+          w rustc --version ; w sleep 1
+          w cargo --version ; w sleep 1
+          w rustup --version
 
       - name: Create binary directory for this job
         run: |
@@ -363,7 +383,7 @@ jobs:
         run: rustup target add x86_64-unknown-linux-musl
 
       - name: Build Linux (Musl)
-        run: bash upx.sh cargo build --release --jobs 20 --target x86_64-unknown-linux-musl --verbose
+        run: bash upx.sh cargo build --release --jobs 20 --target x86_64-unknown-linux-musl --verbose -Z build-std=core,std,alloc,proc_macro
 
       - uses: actions/upload-artifact@v4
         with:
@@ -408,6 +428,11 @@ jobs:
         #with:
         #  submodules: true
 
+      - name: use nightly rust
+        run: |
+          rustup default nightly
+          rustup component add rust-src
+
       - name: Show system info (bash)
         run: |
           w(){ eval $* || true; }
@@ -416,7 +441,11 @@ jobs:
           w ifconfig -a ; w sleep 1
           w free -h || w free ; w sleep 1
           w uptime ; w sleep 1
-          w cat /proc/cpuinfo
+          w cat /proc/cpuinfo ; w sleep 1
+
+          w rustc --version ; w sleep 1
+          w cargo --version ; w sleep 1
+          w rustup --version
         shell: bash
 
       - name: Show system info (cmd)
@@ -440,7 +469,7 @@ jobs:
         shell: bash
 
       - name: Build (windows)
-        run: bash upx.sh cargo build --release --jobs 20 --verbose
+        run: bash upx.sh cargo build --release --jobs 20 --verbose -Z build-std=core,std,alloc,proc_macro
         shell: bash
 
       - uses: actions/upload-artifact@v4
@@ -487,6 +516,11 @@ jobs:
         #with:
         #  submodules: true
 
+      - name: use nightly rust
+        run: |
+          rustup default nightly
+          rustup component add rust-src
+
       - name: Show system info
         run: |
           w(){ eval $* || true; }
@@ -495,6 +529,10 @@ jobs:
           w ifconfig -a ; w sleep 1
           w free -h || w free ; w sleep 1
           w uptime ; w sleep 1
+
+          w rustc --version ; w sleep 1
+          w cargo --version ; w sleep 1
+          w rustup --version
 
       - name: Create binary directory for this job
         run: |
@@ -507,7 +545,7 @@ jobs:
           git reset --hard ${{github.sha}}
       
       - name: Build Mac (amd64)
-        run: bash upx.sh cargo build --release --jobs 20 --verbose
+        run: bash upx.sh cargo build --release --jobs 20 --verbose -Z build-std=core,std,alloc,proc_macro
 
       - uses: actions/upload-artifact@v4
         with:
@@ -552,6 +590,11 @@ jobs:
         #with:
         #  submodules: true
 
+      - name: use nightly rust
+        run: |
+          rustup default nightly
+          rustup component add rust-src
+
       - name: Show system info
         run: |
           w(){ eval $* || true; }
@@ -560,6 +603,10 @@ jobs:
           w ifconfig -a ; w sleep 1
           w free -h || w free ; w sleep 1
           w uptime ; w sleep 1
+
+          w rustc --version ; w sleep 1
+          w cargo --version ; w sleep 1
+          w rustup --version
 
       - name: Create binary directory for this job
         run: |
@@ -572,7 +619,7 @@ jobs:
           git reset --hard ${{github.sha}}
       
       - name: Build Mac (aarch64)
-        run: bash upx.sh cargo build --release --jobs 20 --verbose
+        run: bash upx.sh cargo build --release --jobs 20 --verbose -Z build-std=core,std,alloc,proc_macro
 
       - uses: actions/upload-artifact@v4
         with:
