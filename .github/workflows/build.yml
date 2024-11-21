@@ -73,7 +73,7 @@ jobs:
         if: ${{ steps.check.outputs.CANCEL == '0' }}
         run: |
           export UPX_GNUTAR_DOWNLOAD_URL='https://github.com/upx/upx/releases/download/v4.2.4/upx-4.2.4-amd64_linux.tar.xz'
-          bash upx.sh cargo build --release --jobs 20 --verbose -Z build-std=core,std,alloc,proc_macro
+          bash upx.sh cargo build --release --jobs 20 --target x86_64-unknown-linux-gnu --verbose -Z build-std=core,std,alloc,proc_macro
 
 #      - name: Run tests
 #        run: cargo test --release --verbose -- --nocapture
@@ -82,7 +82,7 @@ jobs:
         if: ${{ steps.check.outputs.CANCEL == '0' }}
         with:
           name: hitdns.amd64-linux
-          path: target/release/hitdns
+          path: target/x86_64-unknown-linux-gnu/release/hitdns
 
       - name: Upload binary of amd64 linux
         if: ${{ steps.check.outputs.CANCEL == '0' && github.event_name != 'pull_request' }}
@@ -103,7 +103,7 @@ jobs:
           fails=0
           while true
           do
-              cp -v target/release/hitdns "${DIR_PATH}/hitdns.amd64-linux"
+              cp -v target/x86_64-unknown-linux-gnu/release/hitdns "${DIR_PATH}/hitdns.amd64-linux"
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 linux" || true
 
@@ -470,13 +470,13 @@ jobs:
         shell: bash
 
       - name: Build (windows)
-        run: bash upx.sh cargo build --release --jobs 20 --verbose -Z build-std=core,std,alloc,proc_macro
+        run: bash upx.sh cargo build --release --jobs 20 --target x86_64-pc-windows-msvc --verbose -Z build-std=core,std,alloc,proc_macro
         shell: bash
 
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-windows.exe
-          path: target/release/hitdns.exe
+          path: target/x86_64-pc-windows-msvc/release/hitdns.exe
 
       - name: Upload binary of amd64 windows
         if: ${{ github.event_name != 'pull_request' }}
@@ -488,7 +488,7 @@ jobs:
           while true
           do
               mkdir -p "$DIR"
-              cp -v target/release/hitdns.exe "${DIR}/hitdns.amd64-windows.exe"
+              cp -v target/x86_64-pc-windows-msvc/release/hitdns.exe "${DIR}/hitdns.amd64-windows.exe"
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 windows" || true
 
@@ -546,12 +546,12 @@ jobs:
           git reset --hard ${{github.sha}}
       
       - name: Build Mac (amd64)
-        run: bash upx.sh cargo build --release --jobs 20 --verbose -Z build-std=core,std,alloc,proc_macro
+        run: bash upx.sh cargo build --release --jobs 20 --target x86_64-apple-darwin --verbose -Z build-std=core,std,alloc,proc_macro
 
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.amd64-mac
-          path: target/release/hitdns
+          path: target/x86_64-apple-darwin/release/hitdns
 
       - name: Upload binary of amd64 mac
         if: ${{ github.event_name != 'pull_request' }}
@@ -563,7 +563,7 @@ jobs:
           while true
           do
               mkdir -p "$DIR"
-              cp -v target/release/hitdns "${DIR}/hitdns.amd64-mac"
+              cp -v target/x86_64-apple-darwin/release/hitdns "${DIR}/hitdns.amd64-mac"
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 mac" || true
 
@@ -620,12 +620,12 @@ jobs:
           git reset --hard ${{github.sha}}
       
       - name: Build Mac (aarch64)
-        run: bash upx.sh cargo build --release --jobs 20 --verbose -Z build-std=core,std,alloc,proc_macro
+        run: bash upx.sh cargo build --release --jobs 20 --target aarch64-apple-darwin --verbose -Z build-std=core,std,alloc,proc_macro
 
       - uses: actions/upload-artifact@v4
         with:
           name: hitdns.aarch64-mac
-          path: target/release/hitdns
+          path: target/aarch64-apple-darwin/release/hitdns
 
       - name: Upload binary of aarch64 mac
         if: ${{ github.event_name != 'pull_request' }}
@@ -637,7 +637,7 @@ jobs:
           while true
           do
               mkdir -p "$DIR"
-              cp -v target/release/hitdns "${DIR}/hitdns.aarch64-mac"
+              cp -v target/aarch64-apple-darwin/release/hitdns "${DIR}/hitdns.aarch64-mac"
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns aarch64 mac" || true
 
