@@ -265,6 +265,8 @@ jobs:
                   rustup default nightly
                   rustup component add rust-src
                   ARGS='-Z build-std=core,std,alloc,proc_macro'
+
+                  export RUSTFLAGS='-C target-feature=+crt-static -C relocation-model=static'
                   ;;
           esac
 
