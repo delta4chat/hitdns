@@ -73,7 +73,7 @@ reqwest-h3 = { version = "0.13.1", features = ["rustls-tls", "http2", "unstable"
 quinn  = { optional = true, version = "0.10.2", features = ["tls-rustls", "runtime-async-std"], default-features = false }
 
 # builtin Root CA list
-webpki-roots = { version = "0.26.6" }
+webpki-roots = { version = "0.26.7" }
 
 scc = { version = "2.2.1", features = ["serde"] }
 fastrand = "2.1.0"
