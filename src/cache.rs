@@ -176,9 +176,8 @@ impl DNSCacheEntry {
         }
 
         // smol-timeout Option
-        if let Some(maybe_task) = self
-            .update_task
-            .read()
+        if let Some(maybe_task) =
+            self.update_task.read()
             .timeout(Duration::from_millis(100))
             .await
         {
