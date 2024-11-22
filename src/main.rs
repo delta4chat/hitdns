@@ -34,6 +34,9 @@ pub use api::*;
 pub mod stats;
 pub use stats::*;
 
+// test.rs
+mod test;
+
 /* ==================== */
 
 pub use core::ops::{Deref, DerefMut, Add, Div};
@@ -153,6 +156,12 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
                 }
             }
 
+        }
+        
+        /* ===== handle Test mode ===== */
+        if opt.test {
+            let adr = smol::net::UdpSocket::bind("127.8.9.0:0").await.unwrap();
+            opt.listen = Some(adr.local_addr().unwrap());
         }
 
         /* ===== handle optional args ===== */
@@ -876,7 +885,13 @@ impl DNSDaemonContext {
             let this = this.clone();
             let udp = udp.clone();
             smolscale2::spawn(async move {
-                let req = dns::Message::from_vec(&msg).log_debug().unwrap();
+                let req =
+                    if let Ok(val) = dns::Message::from_vec(&msg).log_debug() {
+                        val
+                    } else {
+                        return;
+                    };
+                
 
                 let id = req.id();
                 let mut info: DNSQueryInfo = req.into();
@@ -1081,9 +1096,17 @@ pub static HITDNS_INFO: Lazy<HitdnsInfo> =
 #[command(author, about, long_about)]
 pub struct HitdnsOpt {
     /// show version
-    #[arg(long)]
+    #[arg(long, short='V')]
     #[serde(default)]
     pub version: bool,
+
+    /// Test mode:
+    /// * run DNS server at random port
+    /// * default to RUST_LOG=debug
+    /// * running stress tests and UDP/TCP packet fuzz tests
+    #[arg(long)]
+    #[serde(default)]
+    pub test: bool,
 
     /// show build information then quit program.
     #[arg(long)]
@@ -1345,88 +1368,6 @@ impl DefaultServers {
     }
 }
 
-async fn main_async() -> anyhow::Result<()> {
-    let opt = HITDNS_OPT.clone();
-
-    if opt.info {
-        println!("{:#}", &*HITDNS_INFO);
-        return Ok(());
-    }
-
-    if opt.version {
-        let mut ver = String::from("HitDNS");
-
-        let v = (&*HITDNS_INFO).version;
-        let s = (&*HITDNS_INFO).commit;
-
-        if v.is_empty() {
-            ver.push_str(" (version N/A)");
-        } else {
-            ver.push_str(&format!(" v{v}"));
-        }
-
-        if s.is_empty() {
-            ver.push_str(" (Commit N/A)");
-        } else {
-            ver.push_str(&format!(" [{s}]"));
-        }
-
-        println!("{ver}");
-        return Ok(());
-    }
-
-    if opt.dump.is_some() && opt.load.is_some() {
-        return Err(anyhow::anyhow!("arguments '--dump' and '--load' is exclusive and should not specified both.")).log_error();
-    }
-
-    if let Some(ref path) = opt.dump {
-        let snap = DatabaseSnapshot::export().await?;
-        let json_str = format!("{:#}", snap.to_json());
-
-        if path == &PathBuf::from("-") {
-            println!("{json_str}");
-        } else {
-            smol::fs::write(path, json_str).await?;
-        }
-        log::info!("DatabaseSnapshot dumped.");
-        return Ok(());
-    }
-    if let Some(ref path) = opt.load {
-        let json: serde_json::Value =
-            if path == &PathBuf::from("-") {
-                let f = std::io::stdin().lock();
-                serde_json::from_reader(f)?
-            } else {
-                let f = std::fs::File::open(path)?;
-                serde_json::from_reader(f)?
-            };
-
-        let snap = DatabaseSnapshot::from_json(&json)?;
-        log::info!(
-            "from_json() == to_json() ? {:?}",
-            snap.to_json() == json
-        );
-
-        log::info!("length = {}", snap.cache_v1.len());
-        log::info!(
-            "first = {:?}",
-            snap.cache_v1.iter().next()
-        );
-        snap.import().await.log_error()?;
-        log::info!("DatabaseSnapshot loaded.");
-
-        return Ok(());
-    }
-
-    MIN_TTL.store(opt.min_ttl.unwrap(), Relaxed);
-    MAX_TTL.store(opt.max_ttl.unwrap(), Relaxed);
-
-    let daemon = DNSDaemon::new(opt).await.unwrap();
-    daemon.run().await;
-
-    Ok(())
-}
-
 static ENV_FILTER: Lazy<Option<env_filter::Filter>> =
     Lazy::new(|| {
         if let Ok(ref env) = std::env::var("RUST_LOG") {
@@ -1442,7 +1383,7 @@ static ENV_FILTER: Lazy<Option<env_filter::Filter>> =
 
 pub static STARTED: Lazy<Instant> = Lazy::new(Instant::now);
 
-fn main() -> anyhow::Result<()> {
+async fn main_async() -> anyhow::Result<()> {
     Lazy::force(&STARTED);
 
     let opt = HITDNS_OPT.clone();
@@ -1606,6 +1547,92 @@ fn main() -> anyhow::Result<()> {
         //eprintln!("ftlog_logger: try init = {_ret:?}");
     }
 
-    //smolscale2::set_max_threads(4);
+    if opt.info {
+        println!("{:#}", &*HITDNS_INFO);
+        return Ok(());
+    }
+
+    if opt.version {
+        let mut ver = String::from("HitDNS");
+
+        let v = (&*HITDNS_INFO).version;
+        let s = (&*HITDNS_INFO).commit;
+
+        if v.is_empty() {
+            ver.push_str(" (version N/A)");
+        } else {
+            ver.push_str(&format!(" v{v}"));
+        }
+
+        if s.is_empty() {
+            ver.push_str(" (Commit N/A)");
+        } else {
+            ver.push_str(&format!(" [{s}]"));
+        }
+
+        println!("{ver}");
+        return Ok(());
+    }
+
+    if opt.dump.is_some() && opt.load.is_some() {
+        return Err(anyhow::anyhow!("arguments '--dump' and '--load' is exclusive and should not specified both.")).log_error();
+    }
+
+    if let Some(ref path) = opt.dump {
+        let snap = DatabaseSnapshot::export().await?;
+        let json_str = format!("{:#}", snap.to_json());
+
+        if path == &PathBuf::from("-") {
+            println!("{json_str}");
+        } else {
+            smol::fs::write(path, json_str).await?;
+        }
+        log::info!("DatabaseSnapshot dumped.");
+        return Ok(());
+    }
+    if let Some(ref path) = opt.load {
+        let json: serde_json::Value =
+            if path == &PathBuf::from("-") {
+                let f = std::io::stdin().lock();
+                serde_json::from_reader(f)?
+            } else {
+                let f = std::fs::File::open(path)?;
+                serde_json::from_reader(f)?
+            };
+
+        let snap = DatabaseSnapshot::from_json(&json)?;
+        log::info!(
+            "from_json() == to_json() ? {:?}",
+            snap.to_json() == json
+        );
+
+        log::info!("length = {}", snap.cache_v1.len());
+        log::info!(
+            "first = {:?}",
+            snap.cache_v1.iter().next()
+        );
+        snap.import().await.log_error()?;
+        log::info!("DatabaseSnapshot loaded.");
+
+        return Ok(());
+    }
+
+    MIN_TTL.store(opt.min_ttl.unwrap(), Relaxed);
+    MAX_TTL.store(opt.max_ttl.unwrap(), Relaxed);
+
+    let daemon = DNSDaemon::new(opt.clone()).await.unwrap();
+
+    if opt.test {
+        smolscale2::spawn(daemon.run()).detach();
+        test::main_async().await;
+    } else {
+        daemon.run().await;
+    }
+
+    Ok(())
+}
+
+fn main() -> anyhow::Result<()> {
     smolscale2::block_on(main_async())
 }
+
