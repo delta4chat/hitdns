@@ -4,6 +4,7 @@
 # see also https://github.com/rust-lang/cargo/issues/545
 
 tmp=$(mktemp || exit)
+trap "rm $tmp" EXIT
 
 cat > $tmp <<"EOF"
 prepare() {
