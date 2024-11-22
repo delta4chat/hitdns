@@ -201,34 +201,34 @@ impl Hosts {
         domain: reqwest_h3::dns::Name,
     ) -> reqwest_h3::dns::Resolving {
         Box::pin(async move {
-            let maybe_ips =
-                HOSTS.lookup(domain.as_str());
+            let mut addrs: Vec<SocketAddr> = vec![];
 
-            if let Some(ips) = maybe_ips {
-                let addrs: Vec<SocketAddr> = {
-                    // this is a stupid design by reqwest developers
-                    // they said "Since the DNS protocol has no notion of ports, ... any port in the overridden addr will be ignored and traffic sent to the conventional port for the given scheme (e.g. 80 for http)."
-                    // so why this API does not accept Vec<IpAddr> as argument type instead of Vec<SocketAddr> ?!
-                    // alao the same problem exists at reqwest::ClientBuilder::resolve method
-                    //
-                    // https://docs.rs/reqwest/0.11.23/reqwest/struct.ClientBuilder.html#method.resolve_to_addrs
-                    // https://docs.rs/reqwest/0.11.23/reqwest/struct.ClientBuilder.html#method.resolve
+            if let Some(ips) = HOSTS.lookup(domain.as_str()) {
+                // this is a stupid design by reqwest developers
+                // they said "Since the DNS protocol has no notion of ports, ... any port in the overridden addr will be ignored and traffic sent to the conventional port for the given scheme (e.g. 80 for http)."
+                // so why this API does not accept Vec<IpAddr> as argument type instead of Vec<SocketAddr> ?!
+                // alao the same problem exists at reqwest::ClientBuilder::resolve method
+                //
+                // https://docs.rs/reqwest/0.11.23/reqwest/struct.ClientBuilder.html#method.resolve_to_addrs
+                // https://docs.rs/reqwest/0.11.23/reqwest/struct.ClientBuilder.html#method.resolve
 
-                    let mut x = vec![];
-                    for ip in ips.iter() {
-                        x.push(SocketAddr::new(*ip, 0));
+                for ip in ips.iter() {
+                    if HITDNS_OPT.disable_ipv6 && ip.is_ipv6() {
+                        continue;
                     }
-                    x
-                };
-                let iter: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(addrs.into_iter());
-                Ok(iter)
-            } else {
+                    addrs.push(SocketAddr::new(*ip, 0));
+                }
+            }
+
+            if addrs.is_empty() {
                 let msg = format!("DNS static resolve failed: unable to find a mapping from {domain:?} to IPv4/IPv6 addresses.");
                 log::warn!("{}", &msg);
-                let err: Box<dyn std::error::Error + Send + Sync> =
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Unsupported, msg));
-                Err(err)
+                let err: Box<dyn std::error::Error + Send + Sync> = Box::new(std::io::Error::new(std::io::ErrorKind::Unsupported, msg));
+                return Err(err);
             }
+
+            let iter: Box<dyn Iterator<Item = SocketAddr> + Send> = Box::new(addrs.into_iter());
+            Ok(iter)
         })
     }
 }

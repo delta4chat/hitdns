@@ -160,8 +160,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
         
         /* ===== handle Test mode ===== */
         if opt.test {
-            let adr = smol::net::UdpSocket::bind("127.8.9.0:0").await.unwrap();
-            opt.listen = Some(adr.local_addr().unwrap());
+            opt.listen = Some("127.8.9.6:0".parse().unwrap());
         }
 
         /* ===== handle optional args ===== */
@@ -197,6 +196,13 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             } else {
                 let filename = PathBuf::from(filename);
                 opt.hosts = Some(filename);
+            }
+        }
+
+        if let Some(listen) = opt.listen {
+            if listen.port() == 0 { // handle port 0 (automatic allocated by OS)
+                let adr = smol::net::UdpSocket::bind(listen).await.unwrap();
+                opt.listen = Some(adr.local_addr().unwrap());
             }
         }
 
@@ -251,6 +257,25 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             assert!(opt.api_listen != opt.dohp_listen);
             assert!(opt.listen != opt.api_listen);
             assert!(opt.listen != opt.dohp_listen);
+        }
+
+        /* ===== handle --disable-ipv6 ===== */
+        if opt.disable_ipv6 {
+            if let Some(addr) = opt.listen {
+                if addr.is_ipv6() {
+                    panic!("IPv6 is disabled by config, please do not use IPv6 address for --listen");
+                }
+            }
+            if let Some(addr) = opt.api_listen {
+                if addr.is_ipv6() {
+                    panic!("IPv6 is disabled by config, please do not use IPv6 address for --api-listen");
+                }
+            }
+            if let Some(addr) = opt.dohp_listen {
+                if addr.is_ipv6() {
+                    panic!("IPv6 is disabled by config, please do not use IPv6 address for --dohp-listen");
+                }
+            }
         }
 
         opt
@@ -580,7 +605,7 @@ impl DNSHookArray {
         }
 
         if let Some((id, nice, res)) = maybe_res {
-            log::info!("selected hook: id={id} | nice={nice} | res = {res}");
+            log::debug!("selected hook: id={id} | nice={nice} | res = {res}");
             Some(res)
         } else {
             None
@@ -633,6 +658,11 @@ impl DNSDaemon {
 
             // always available
             for doh_url in opt.doh_upstream.iter() {
+                if opt.disable_ipv6 && doh_url.contains("[") {
+                    log::info!("ignore DoH server {doh_url} due to --disable-ipv6");
+                    continue;
+                }
+
                 x.push(Arc::new(DNSOverHTTPS::new(
                     doh_url,
                     /*
@@ -644,6 +674,11 @@ impl DNSDaemon {
 
             #[cfg(feature = "doh3")]
             for doh3_url in opt.doh3_upstream.iter() {
+                if opt.disable_ipv6 && doh3_url.contains("[") {
+                    log::info!("ignore DoH3 server {doh3_url} due to --disable-ipv6");
+                    continue;
+                }
+
                 x.push(Arc::new(DNSOverHTTPS::new_h3(
                     doh3_url,
                     /*
@@ -655,6 +690,11 @@ impl DNSDaemon {
 
             #[cfg(feature = "dot")]
             for dot_addr in opt.dot_upstream.iter() {
+                if opt.disable_ipv6 && dot_addr.contains("[") {
+                    log::info!("ignore DoT server {dot_addr} due to --disable-ipv6");
+                    continue;
+                }
+
                 x.push(Arc::new(
                     DNSOverTLS::new(
                         dot_addr,
@@ -670,7 +710,7 @@ impl DNSDaemon {
 
             if x.is_empty() {
                 if ! opt.no_default_servers {
-                    x = DefaultServers::global();
+                    x = DefaultServers::global(&opt);
                     log::info!("no upstream specified. use default servers.");
                 }
             }
@@ -1190,6 +1230,12 @@ pub struct HitdnsOpt {
     #[serde(default)]
     pub tls_sni: bool,
 
+    /// Do not try to connect IPv6 Upstream Servers, and not to bind to [::]
+    /// useful for some network without IPv6 support.
+    #[arg(long)]
+    #[serde(default)]
+    pub disable_ipv6: bool,
+
     /// Listen address of RFC 1035 plaintext DNS server (UDP and TCP).
     #[arg(long)]
     pub listen: Option<SocketAddr>, // this is optional because --dump/--load does not need to run DNS server
@@ -1267,7 +1313,7 @@ pub struct HitdnsOpt {
 pub struct DefaultServers;
 impl DefaultServers {
     /// Global servers.
-    pub fn global() -> Vec<Arc<dyn DNSResolver>> {
+    pub fn global(opt: &HitdnsOpt) -> Vec<Arc<dyn DNSResolver>> {
         let mut list: Vec<Arc<dyn DNSResolver>> = vec![];
 
         let doh_server_urls = vec![
@@ -1303,6 +1349,10 @@ impl DefaultServers {
             "https://[2001:620:0:ff::3]/dns-query",
         ];
         for doh_url in doh_server_urls.iter() {
+            if opt.disable_ipv6 && doh_url.contains("[") {
+                continue;
+            }
+
             #[cfg(feature = "doh3")]
             if DOH3_ONLY.load(Relaxed) {
                 break;
@@ -1330,6 +1380,10 @@ impl DefaultServers {
                 "https://94.140.14.140/dns-query",
             ];
             for doh3_url in doh3_server_urls.iter() {
+                if opt.disable_ipv6 && doh3_url.contains("[") {
+                    continue;
+                }
+
                 list.push(Arc::new(
                     DNSOverHTTPS::new_h3(doh3_url).unwrap(),
                 ));
