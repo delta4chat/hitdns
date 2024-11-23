@@ -61,6 +61,9 @@ static SEND_PKT: AtomicUsize = AtomicUsize::new(0);
 static RECV_PKT: AtomicUsize = AtomicUsize::new(0);
 
 async fn stress(valid: bool, interval: Duration) {
+    static ID: AtomicUsize = AtomicUsize::new(1);
+    let id = ID.fetch_add(1, Relaxed);
+
     let addr = HITDNS_OPT.listen.unwrap();
 
     let sock = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -71,7 +74,8 @@ async fn stress(valid: bool, interval: Duration) {
     let mut recv_pkt: usize = 0;
 
     let mut buf = [0u8; 1];
-    let started = Instant::now();
+    let mut t = Instant::now();
+    let mut rate = String::from("N/A");
     loop {
         if sock.recv_from(&mut buf).is_ok() {
             recv_pkt += 1; RECV_PKT.fetch_add(1, Relaxed);
@@ -80,18 +84,25 @@ async fn stress(valid: bool, interval: Duration) {
         sock.send(&generate_stress_packet(valid)).unwrap();
         send_pkt += 1; SEND_PKT.fetch_add(1, Relaxed);
 
-        if (started.elapsed().as_secs() % 10) == 0 {
+        if t.elapsed() > Duration::from_secs(10) {
+            t = Instant::now();
+
             if valid {
                 if recv_pkt > send_pkt {
-                    panic!("test failed: server unexpected responses with more packets than requested packets");
+                    panic!("(stress-{id}) test failed: server unexpected responses with more packets than requested packets");
                 }
                 if send_pkt.abs_diff(recv_pkt) > send_pkt {
-                    log::error!("test issue: [server response rate too low] sent pkts = {send_pkt} | recv pkts = {recv_pkt}");
+                    log::error!("(stress-{id}) test issue: [server response rate too low] sent pkts = {send_pkt} | recv pkts = {recv_pkt}");
                     smol::Timer::after(Duration::from_millis(100)).await;
                 }
+
+                if recv_pkt > 0 {
+                    rate = format!("{:.3}%", 100.0 / (send_pkt as f64 / recv_pkt as f64));
+                }
+                log::warn!("(stress-{id}) test result: server response rate = {rate} | sent/recv ({send_pkt}/{recv_pkt})");
             } else {
                 if recv_pkt != 0 {
-                    panic!("test failed: server unexpected responses to invalid request packets");
+                    panic!("(stress-{id}) test failed: server unexpected responses to invalid request packets");
                 }
             }
         }
@@ -103,8 +114,8 @@ async fn stress(valid: bool, interval: Duration) {
 pub async fn main_async() {
     smol::Timer::after(Duration::from_secs(3)).await;
 
-    let stress_valid_fut = stress(true, Duration::from_millis(100));
-    let stress_invalid_fut = stress(false, Duration::from_millis(500));
+    let stress_valid_fut = stress(true, Duration::from_millis(10));
+    let stress_invalid_fut = stress(false, Duration::from_millis(50));
 
     smolscale2::spawn(stress_valid_fut).detach();
     smolscale2::spawn(stress_invalid_fut).detach();
@@ -113,10 +124,12 @@ pub async fn main_async() {
     loop {
         let sp = SEND_PKT.load(Relaxed);
         let rp = RECV_PKT.load(Relaxed);
+
         if rp > 0 {
             rate = format!("{:.3}%", 100.0 / (sp as f64 / rp as f64));
         }
-        log::info!("test result: server response rate = {rate} | sent/recv ({sp}/{rp})");
+
+        log::warn!("stress test result: total server response rate = {rate} | total sent/recv ({sp}/{rp})");
 
         smol::Timer::after(Duration::from_secs(15)).await;
     }

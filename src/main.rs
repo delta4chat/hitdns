@@ -283,14 +283,22 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
 });
 
 pub static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(|| {
+
     let dir =
-        if let Some(ref val) = (&*HITDNS_OPT).data_dir {
-            val.to_owned()
-        } else {
-            directories::ProjectDirs::from("org", "delta4chat", "hitdns")
+        if HITDNS_OPT.test {
+            directories::ProjectDirs::from("org", "delta4chat", "hitdns-test")
             .expect("Cannot get platform-specified dir (via `directories::ProjectDirs`)")
             .data_dir()
             .to_owned()
+        } else {
+            if let Some(ref val) = (&*HITDNS_OPT).data_dir {
+                val.to_owned()
+            } else {
+                directories::ProjectDirs::from("org", "delta4chat", "hitdns")
+                .expect("Cannot get platform-specified dir (via `directories::ProjectDirs`)")
+                .data_dir()
+                .to_owned()
+            }
         };
 
     std::fs::create_dir_all(&dir).expect("cannot create project dir {dir:?}");

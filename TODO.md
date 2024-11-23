@@ -1,9 +1,7 @@
-## Bug: fix Lazy poisoned
-this bug found by src/test.rs
-```
-thread 'sscale-wkr-c-6' panicked at ~/.cargo/registry/src/index.crates.io-6f17d22bba15001f/once_cell-1.20.2/src/lib.rs:1311:25:
-Lazy instance has previously been poisoned
-```
+## Lazy poisoned
+* [x] no need to fix: `sqlx cannot connect to sqlite db: PoolTimedOut` (for --test should use another --data-dir for prevent conflict)
+~~this bug found by src/test.rs~~
+~~thread 'sscale-wkr-c-6' panicked at ~/.cargo/registry/src/index.crates.io-6f17d22bba15001f/once_cell-1.20.2/src/lib.rs:1311:25:Lazy instance has previously been poisoned~~
 
 ## fix domain `foo_bar.com` resolve fails:
 * [x] fixed?

@@ -286,7 +286,7 @@ impl<'a> DNSOverHTTPS {
         let start = Instant::now();
         let result = self._orig_dns_resolve(query).await;
         let latency = start.elapsed();
-        log::info!("DoH{v} un-cached Result: (server={} latency={latency:?}) {result:?}", &self.url);
+        log::debug!("DoH{v} un-cached Result: (server={} latency={latency:?}) {result:?}", &self.url);
 
         let ok = result.is_ok();
 
