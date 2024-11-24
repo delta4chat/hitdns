@@ -232,23 +232,22 @@ impl<'a> DNSOverHTTPS {
         let mut zzz = false;
 
         let v = client.version();
+        let mut mult: f64 = 1.0;
         loop {
             if zzz {
-                smol::Timer::after(
-                    Duration::from_secs(
-                        fastrand::u64(5..=10)
-                    )
-                ).await;
+                if mult > 10.0 {
+                    mult = 10.0;
+                }
+                let s = (fastrand::u16(5_000 ..= 10_000) as f64) / 1000.0;
+                smol::Timer::after(Duration::from_secs_f64(s * mult)).await;
             } else {
                 zzz = true;
             }
 
-            let url_ = url.clone();
-
             start = Instant::now();
             maybe_ret =
                 client.as_ref()
-                .head(url_)
+                .head(url.clone())
                 .header("X-Padding", randstr(fastrand::usize(1..=50)))
                 .send()
                 .timeout(Duration::from_secs(10))
@@ -256,24 +255,25 @@ impl<'a> DNSOverHTTPS {
             latency = start.elapsed();
 
             let metrics = metrics.clone();
-            let url_ = url.clone();
             {
                 let mut m = metrics.write().await;
 
                 if let Some(ret) = &maybe_ret {
                     if ret.is_ok() {
                         ret.log_trace();
-                        log::debug!("DoH{v} server {url_} working. latency={latency:?}");
+                        mult = 1.0;
+                        log::debug!("DoH{v} server {} working. latency={latency:?}", &url);
                         m.up(latency);
                     } else {
-                        log::warn!("DoH{v} server {url_} down. used time: {latency:?}, ret={ret:?}");
+                        mult *= 1.1;
+                        log::warn!("DoH{v} server {} down. used time: {latency:?}, ret={ret:?}", &url);
                         m.down();
                     }
                 } else {
-                    log::warn!("DoH{v} server {url_} not working! timed out.");
+                    mult *= 1.1;
+                    log::warn!("DoH{v} server {} not working! timed out.", &url);
                     m.down();
                 }
-
             }
         }
     }

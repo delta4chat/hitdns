@@ -89,7 +89,7 @@ echo $PATH
 
 if type upx
 then
-	upx -9 $1 && exit
+	upx --best --lzma $1 && exit
 fi
 
 echo failed to compress binary size by upx, fallback to strip if binary too large...
