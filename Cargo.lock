@@ -2373,9 +2373,9 @@ dependencies = [
 
 [[package]]
 name = "moka2"
-version = "0.12.9"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc277a6c1d4239b9c644c7b7f8eb87bd1262ce3f1193a7f4873932647d399387"
+checksum = "7bc3c7fe956c9cabb0ae780604a882ba12aa9861070ec76ffbc39504862053be"
 dependencies = [
  "async-lock 3.4.0",
  "crossbeam-channel",
