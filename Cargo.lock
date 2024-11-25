@@ -971,9 +971,9 @@ dependencies = [
 
 [[package]]
 name = "ftlog2"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47986f018bf815cc4402c6205f4172ab67dd6438b6b5c06844c79372640c8a61"
+checksum = "bd50e7b6265bb50749a22d056567f400be02005ce731e553c833182ea040190f"
 dependencies = [
  "arc-swap",
  "crossbeam-channel",
