@@ -97,7 +97,7 @@ event-listener = { version = "5.3.1", features = ["portable-atomic"] }
 toml-env = { version = "1.2.0", features = ["log"] }
 data-encoding = "2.6.0"
 moka2 = { version = "0.13.0", default-features = false, features = ["future", "logging", "quanta"] }
-anypki = "0.1.1"
+anypki = "0.1.2"
 
 [build-dependencies]
 vergen = { optional = true, version = "8.3.2", features = ["build", "cargo", "cargo_metadata", "cfg-if", "git", "gitoxide", "gix", "regex", "rustc", "rustc_version", "si", "sysinfo", "time"], default-features = false }
