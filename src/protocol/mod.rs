@@ -97,9 +97,11 @@ pub static RUSTLS_CLIENT_CONFIG: Lazy<rustls::ClientConfig> = Lazy::new(|| {
     )
     .with_safe_default_protocol_versions().unwrap()
     .with_webpki_verifier({
+        let mut roots = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
+        anypki::DefaultRules::mitm_threats_extra().retain(&mut roots);
         let rcs =
             rustls::RootCertStore {
-                roots: webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect(),
+                roots,
             };
         let scvb = rustls::client::WebPkiServerVerifier::builder(Arc::new(rcs));
         scvb.build().unwrap()
