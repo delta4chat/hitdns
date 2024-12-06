@@ -92,17 +92,16 @@ pub static RUSTLS_CRYPTO_PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = L
     Arc::new(cp)
 });
 pub static RUSTLS_CLIENT_CONFIG: Lazy<rustls::ClientConfig> = Lazy::new(|| {
-    rustls::ClientConfig::builder_with_provider(
-                              RUSTLS_CRYPTO_PROVIDER.clone()
-    )
+    rustls::ClientConfig::builder_with_provider(RUSTLS_CRYPTO_PROVIDER.clone())
     .with_safe_default_protocol_versions().unwrap()
     .with_webpki_verifier({
-        let mut roots = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
-        anypki::DefaultRules::mitm_threats_extra().retain(&mut roots);
-        let rcs =
-            rustls::RootCertStore {
-                roots,
-            };
+        let mut root_certs = rustls_native_certs::load_native_certs().certs;
+        anypki::DefaultRules::mitm_threats_extra().retain(&mut root_certs);
+
+        let mut rcs = rustls::RootCertStore::empty();
+        for cert in root_certs.into_iter() {
+            let _ = rcs.add(cert).log_error();
+        }
         let scvb = rustls::client::WebPkiServerVerifier::builder(Arc::new(rcs));
         scvb.build().unwrap()
     })
