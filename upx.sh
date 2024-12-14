@@ -83,13 +83,16 @@ prepare() {
     fi
 }
 
-prepare
-
-echo $PATH
-
-if type upx
+if test -z "$UPX_DISABLE"
 then
-	upx --best --lzma $1 && exit
+    prepare
+
+    echo $PATH
+
+    if type upx
+    then
+        upx --best --lzma $1 && exit
+    fi
 fi
 
 echo failed to compress binary size by upx, fallback to strip if binary too large...
