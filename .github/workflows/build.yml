@@ -339,6 +339,9 @@ jobs:
           done
 
   vm-amd64-openbsd:
+    #needs: amd64-linux
+    #if: ${{ needs.amd64-linux.outputs.CANCEL == '0' }}
+
     name: build openbsd (vm)
     runs-on: ubuntu-latest
     steps:
@@ -360,7 +363,7 @@ jobs:
             echo "===== uname -a        ====="
             uname -a
             
-            cargo build --release --jobs 20 --target x86_64-unknown-openbsd --verbose -Z build-std=core,std,alloc,proc_macro
+            cargo build --release --jobs 20 --target x86_64-unknown-openbsd --verbose # -Z build-std=core,std,alloc,proc_macro
 
       - name: try use upx compress
         run: bash upx.sh
