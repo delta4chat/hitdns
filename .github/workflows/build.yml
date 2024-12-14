@@ -338,6 +338,68 @@ jobs:
               fi
           done
 
+  vm-amd64-openbsd:
+    name: build openbsd (vm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build on openbsd vm
+        uses: vmactions/openbsd-vm@v1
+        with:
+          usesh: true
+          mem: 8192
+          sync: sshfs
+          copyback: true
+          prepare: |
+            export PATH="/usr/sbin:/sbin:$PATH"
+            pkg_add curl
+            curl https://sh.rustup.rs -v -L -f -o rustup.sh
+            sh rustup.sh -y --profile minimal --default-toolchain nightly
+          run: |
+            export PATH="$HOME/.cargo/bin:$PATH"
+            echo "===== rustc --version ====="
+            rustc --version
+            echo "===== uname -a        ====="
+            uname -a
+            
+            cargo build --release --jobs 20 --target x86_64-unknown-openbsd --verbose -Z build-std=core,std,alloc,proc_macro
+
+      - name: try use upx compress
+        run: bash upx.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hitdns.amd64-openbsd
+          path: target/x86_64-unknown-openbsd/release/hitdns
+
+      - name: Upload binary of amd64 openbsd
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          git switch bin
+
+          DIR="bin/$(git log -1 --format='%cd' --date=format:'%Y-%m-%d_%H-%M-%S' ${{github.sha}})__${{github.sha}}/"
+          fails=0
+          while true
+          do
+              mkdir -p "$DIR"
+              cp -v target/x86_64-unknown-openbsd/release/hitdns "${DIR}/hitdns.amd64-linux-musl"
+              git add -A
+              git commit -m "[${{github.sha}}] upload binary of hitdns amd64 openbsd" || true
+
+              ok=1
+              git push origin bin || true $[ok=0]
+
+              if test $ok -eq 1
+              then
+                  exit 0
+              elif test $[++fails] -gt 10
+              then
+                  exit 1
+              else
+                  git pull origin bin --rebase=true
+              fi
+          done
+
   amd64-linux-musl:
     needs: amd64-linux
     if: ${{ needs.amd64-linux.outputs.CANCEL == '0' }}
