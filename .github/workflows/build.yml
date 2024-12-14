@@ -342,10 +342,21 @@ jobs:
     #needs: amd64-linux
     #if: ${{ needs.amd64-linux.outputs.CANCEL == '0' }}
 
-    name: build openbsd (vm)
+    name: amd64-openbsd (vm)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create binary directory for this job
+        run: |
+          git config --global user.name github-actions && git config --global user.email github-actions@github.com
+
+          git switch -C this
+          git switch --orphan bin && git pull origin bin
+          git switch this
+
+          git reset --hard ${{github.sha}}
+
       - name: build on openbsd vm
         uses: vmactions/openbsd-vm@v1
         with:
@@ -355,6 +366,7 @@ jobs:
           copyback: true
           prepare: |
             export PATH="/usr/sbin:/sbin:$PATH"
+            pkg_add gmake
             pkg_add rust
           run: |
             export PATH="$HOME/.cargo/bin:$PATH"
@@ -383,7 +395,7 @@ jobs:
           while true
           do
               mkdir -p "$DIR"
-              cp -v target/x86_64-unknown-openbsd/release/hitdns "${DIR}/hitdns.amd64-linux-musl"
+              cp -v target/x86_64-unknown-openbsd/release/hitdns "${DIR}/hitdns.amd64-openbsd"
               git add -A
               git commit -m "[${{github.sha}}] upload binary of hitdns amd64 openbsd" || true
 
