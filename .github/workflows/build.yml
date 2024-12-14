@@ -352,9 +352,7 @@ jobs:
           copyback: true
           prepare: |
             export PATH="/usr/sbin:/sbin:$PATH"
-            pkg_add curl
-            curl https://sh.rustup.rs -v -L -f -o rustup.sh
-            sh rustup.sh -y --profile minimal --default-toolchain nightly
+            pkg_add rust
           run: |
             export PATH="$HOME/.cargo/bin:$PATH"
             echo "===== rustc --version ====="
