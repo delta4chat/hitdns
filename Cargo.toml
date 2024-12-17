@@ -95,7 +95,7 @@ toml-env = { version = "1.2.0", features = ["log"] }
 data-encoding = "2.6.0"
 moka2 = { version = "0.13.0", default-features = false, features = ["future", "logging", "quanta"] }
 
-anypki = "0.1.6"
+anypki = "0.1.8"
 #anypki = { path = "../anypki" }
 
 rustls-native-certs = "0.8.1"
