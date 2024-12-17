@@ -64,7 +64,7 @@ async fn stress(valid: bool, interval: Duration) {
     static ID: AtomicUsize = AtomicUsize::new(1);
     let id = ID.fetch_add(1, Relaxed);
 
-    let addr = HITDNS_OPT.listen.unwrap();
+    let addr = HITDNS_OPT.listen[fastrand::usize(0 .. HITDNS_OPT.listen.len())];
 
     let sock = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
     sock.connect(addr).unwrap();

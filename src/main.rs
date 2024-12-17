@@ -129,6 +129,19 @@ pub static HITDNS_NONCE: Lazy<String> = Lazy::new(|| {
     format!("{unix}_{rand}")
 });
 
+pub fn unique<T: PartialEq+Clone>(set: &mut Vec<T>) {
+    let mut new = Vec::new();
+    for it in set.iter() {
+        if new.contains(it) {
+            continue;
+        }
+        new.push(it.clone());
+    }
+
+    set.clear();
+    set.extend(new);
+}
+
 // hitdns opt parsed from clap or toml-env
 pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
     smol::block_on(async move {
@@ -160,7 +173,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
         
         /* ===== handle Test mode ===== */
         if opt.test {
-            opt.listen = Some("127.8.9.6:0".parse().unwrap());
+            opt.listen = vec![ "127.8.9.6:0".parse().unwrap() ];
         }
 
         /* ===== handle optional args ===== */
@@ -199,51 +212,64 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             }
         }
 
-        if let Some(listen) = opt.listen {
+        unique(&mut opt.listen);
+
+        for idx in 0 .. opt.listen.len() {
+            let listen = opt.listen[idx];
+
             if listen.port() == 0 { // handle port 0 (automatic allocated by OS)
                 let adr = smol::net::UdpSocket::bind(listen).await.unwrap();
-                opt.listen = Some(adr.local_addr().unwrap());
+                opt.listen[idx] = adr.local_addr().unwrap();
             }
         }
 
+        let maybe_listen = opt.listen.first();
+
+        let mut ports: Vec<u16> = opt.listen.iter().map(|adr| { adr.port() }).collect();
+
         if ! opt.no_dohp {
-            if opt.dohp_listen.is_none() && opt.listen.is_some() {
+            if opt.dohp_listen.is_empty() && maybe_listen.is_some() {
                 let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
-                dyna.set_port(opt.listen.unwrap().port());
+                dyna.set_port(maybe_listen.unwrap().port());
 
                 loop {
                     dyna.set_port(dyna.port().checked_sub(1).unwrap_or(dyna.port()));
 
+                    // skip the port used by others
+                    if ports.contains(&dyna.port()) {
+                        continue;
+                    }
+
                     if let Ok(sock) = TcpListener::bind(dyna).await {
                         if let Ok(addr) = sock.local_addr() {
                             dyna = addr;
+                            ports.push(addr.port());
                             break;
                         }
                     }
                 }
 
-                opt.dohp_listen = Some(dyna);
+                opt.dohp_listen.push(dyna);
             }
         }
 
         if ! opt.no_api {
-            if opt.api_listen.is_none() && opt.listen.is_some() {
+            if opt.api_listen.is_none() && maybe_listen.is_some() {
                 let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
-                dyna.set_port(opt.listen.unwrap().port());
+                dyna.set_port(maybe_listen.unwrap().port());
 
                 loop {
                     dyna.set_port(dyna.port().checked_sub(1).unwrap_or(dyna.port()));
 
-                    // skip the port used by DoH-plaintext
-                    if let Some(ref dl) = opt.dohp_listen {
-                        if dyna.port() == dl.port() {
-                            continue;
-                        }
+                    // skip the port used by others
+                    if ports.contains(&dyna.port()) {
+                        continue;
                     }
 
                     if let Ok(sock) = TcpListener::bind(dyna).await {
                         if let Ok(addr) = sock.local_addr() {
                             dyna = addr;
+                            ports.push(addr.port());
                             break;
                         }
                     }
@@ -253,15 +279,9 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             }
         }
 
-        if opt.listen.is_some() {
-            assert!(opt.api_listen != opt.dohp_listen);
-            assert!(opt.listen != opt.api_listen);
-            assert!(opt.listen != opt.dohp_listen);
-        }
-
         /* ===== handle --disable-ipv6 ===== */
         if opt.disable_ipv6 {
-            if let Some(addr) = opt.listen {
+            for addr in opt.listen.iter() {
                 if addr.is_ipv6() {
                     panic!("IPv6 is disabled by config, please do not use IPv6 address for --listen");
                 }
@@ -271,7 +291,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
                     panic!("IPv6 is disabled by config, please do not use IPv6 address for --api-listen");
                 }
             }
-            if let Some(addr) = opt.dohp_listen {
+            for addr in opt.dohp_listen.iter() {
                 if addr.is_ipv6() {
                     panic!("IPv6 is disabled by config, please do not use IPv6 address for --dohp-listen");
                 }
@@ -518,9 +538,14 @@ fn dns_ch_hook(
                             texts.push(format!("http://{api_listen}/"));
                         }
                     } else if name.contains("dohp") {
-                        if let Some(dohp_listen) = opt.dohp_listen {
-                            texts.push(format!("http://{dohp_listen}/"));
+                        let mut text = String::new();
+                        for dohp_listen in opt.dohp_listen.iter() {
+                            text.push_str(&format!("http://{dohp_listen}/ "));
                         }
+                        if ! text.is_empty() {
+                            text.pop();
+                        }
+                        texts.push(text);
                     }
 
                     answer.set_data(
@@ -621,20 +646,20 @@ impl DNSHookArray {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DNSDaemonSocket {
-    udp: Arc<UdpSocket>,
-    tcp: Arc<TcpListener>,
+    udp: Arc<Vec<UdpSocket>>,
+    tcp: Arc<Vec<TcpListener>>,
 
     // plaintext HTTP with /dns-query for your reverse proxy (for example Nginx) to serve DoH.
-    http: Option<Arc<DNSOverHTTP>>,
+    http: Arc<scc::HashMap<usize, Arc<DNSOverHTTP>>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DNSDaemonTask {
-    udp: smol::Task<anyhow::Result<()>>,
-    tcp: smol::Task<anyhow::Result<()>>,
-    http: Option<smol::Task<anyhow::Result<()>>>,
+    udp: scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
+    tcp: scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
+    http: scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
 }
 
 #[derive(Debug)]
@@ -645,20 +670,21 @@ pub struct DNSDaemon {
 
 impl DNSDaemon {
     pub async fn new(opt: HitdnsOpt) -> anyhow::Result<Self> {
-        let listen = match opt.listen {
-            Some(v) => v,
-            None => {
-                anyhow::bail!("no listen address specified!");
-            },
+        if opt.listen.is_empty() {
+            anyhow::bail!("no listen address specified!");
         };
 
-        let udp = Arc::new(UdpSocket::bind(&listen).await.log_error()?);
-        let tcp = Arc::new(TcpListener::bind(&listen).await.log_error()?);
+        let mut udp = Vec::new();
+        let mut tcp = Vec::new();
+        let http = scc::HashMap::new();
+
+        for listen in opt.listen.iter() {
+            udp.push(UdpSocket::bind(&listen).await.log_error()?);
+            tcp.push(TcpListener::bind(&listen).await.log_error()?);
+        }
 
         if let Some(ref hosts_filename) = opt.hosts {
-            let _ =
-                HOSTS.load(hosts_filename).await
-                .log_error();
+            let _ = HOSTS.load(hosts_filename).await.log_error();
         }
 
         let resolvers = {
@@ -738,10 +764,11 @@ impl DNSDaemon {
         hooks.add(-1, Arc::new(dns_hosts_hook)).await;
         hooks.add(0, Arc::new(dns_ch_hook)).await;
 
-        let mut context = DNSDaemonContext {
+        let context = DNSDaemonContext {
             socket: DNSDaemonSocket {
-                udp, tcp,
-                http: None,
+                udp: Arc::new(udp),
+                tcp: Arc::new(tcp),
+                http: Arc::new(http),
             },
             cache,
             opt: opt.clone(),
@@ -749,27 +776,10 @@ impl DNSDaemon {
             stats: Arc::new(DNSQueryStats::new()),
         };
 
-        let mut task = {
-            let udp_fut = context.clone().handle_udp();
-            let tcp_fut = context.clone().handle_tcp();
-            DNSDaemonTask {
-                udp: smolscale2::spawn(udp_fut),
-                tcp: smolscale2::spawn(tcp_fut),
-                http: None
-            }
-        };
-
-
-        if let Some(dl) = opt.dohp_listen {
-            let dohp = Arc::new(DNSOverHTTP::new(dl, context.clone()).await?);
-
-            context.socket.http = Some(dohp.clone());
-            task.http = Some(
-                smolscale2::spawn(async move {
-                    dohp.run().await
-                })
-            );
-        }
+        let task: DNSDaemonTask = Default::default();
+        context.handle_udp(&task.udp).await;
+        context.handle_tcp(&task.tcp).await;
+        context.handle_http(&task.http).await?;
 
         Ok(Self {
             context,
@@ -847,16 +857,23 @@ impl DNSDaemon {
                 );
             }
 
-            if this.task.udp.is_finished() || this.task.tcp.is_finished() {
-                log::error!("UDP or TCP listener tasks died");
-                return;
-            }
-            if let Some(ref ht) = this.task.http {
-                if ht.is_finished() {
-                    log::error!("DOHP listener task died");
-                    return;
+            this.task.udp.scan_async(|idx, udp| {
+                if udp.is_finished() {
+                    panic!("#{idx} of UDP socket tasks died");
                 }
-            }
+            }).await;
+
+            this.task.tcp.scan_async(|idx, tcp| {
+                if tcp.is_finished() {
+                    panic!("#{idx} of TCP listener tasks died");
+                }
+            }).await;
+
+            this.task.http.scan_async(|idx, http| {
+                if http.is_finished() {
+                    panic!("#{idx} of DOHP tasks died");
+                }
+            }).await;
 
             smol::Timer::after(Duration::from_secs(10)).await;
         }
@@ -913,13 +930,27 @@ impl DNSDaemonContext {
         }
     }
 
-    async fn handle_udp(self) -> anyhow::Result<()> {
+    async fn handle_udp(&self, tasks: &scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) {
+        for idx in 0 .. self.socket.udp.len() {
+            let addr = self.opt.listen[idx];
+            if tasks.contains(&addr) {
+                continue;
+            }
+            let udp = self.socket.udp[idx].clone();
+
+            let this = self.clone();
+            let task = smolscale2::spawn(async move { this._handle_udp(udp).await });
+
+            let _ = tasks.insert_async(addr, task).await;
+        }
+    }
+
+    async fn _handle_udp(&self, udp: UdpSocket) -> anyhow::Result<()> {
         let mut buf = vec![0u8; 65535];
         let mut msg: Vec<u8>;
 
         let this = self.clone();
 
-        let udp = this.socket.udp.clone();
         loop {
             let t = Instant::now();
             let (len, peer) = udp
@@ -964,10 +995,25 @@ impl DNSDaemonContext {
         }
     }
 
-    async fn handle_tcp(self) -> anyhow::Result<()> {
+    async fn handle_tcp(&self, tasks: &scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) {
+        for idx in 0 .. self.socket.tcp.len() {
+            let addr = self.opt.listen[idx];
+            if tasks.contains(&addr) {
+                continue;
+            }
+
+            let tcp = self.socket.tcp[idx].clone();
+
+            let this = self.clone();
+            let task = smolscale2::spawn(async move { this._handle_tcp(tcp).await });
+
+            let _ = tasks.insert_async(addr, task).await;
+        }
+    }
+
+    async fn _handle_tcp(&self, tcp: TcpListener) -> anyhow::Result<()> {
         let this = self.clone();
 
-        let tcp = this.socket.tcp.clone();
         loop {
             let (mut conn, peer) =
                 tcp.accept().await.log_error()?;
@@ -1079,6 +1125,22 @@ impl DNSDaemonContext {
                 } // tcp connection loop
             }).detach(); // smolscale2::spawn
         } // tcp accept loop
+    }
+
+    async fn handle_http(&self, tasks: &scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) -> anyhow::Result<()> {
+        for idx in 0 .. self.opt.dohp_listen.len() {
+            let dl = self.opt.dohp_listen[idx];
+
+            if tasks.contains(&dl) {
+                continue;
+            }
+
+            let dohp = Arc::new(DNSOverHTTP::new(dl, self.clone()).await?);
+            let _ = self.socket.http.insert(idx, dohp.clone());
+            let _ = tasks.insert_async(dl, smolscale2::spawn(async move { dohp.run().await })).await;
+        }
+
+        Ok(())
     }
 }
 
@@ -1246,14 +1308,14 @@ pub struct HitdnsOpt {
 
     /// Listen address of RFC 1035 plaintext DNS server (UDP and TCP).
     #[arg(long)]
-    pub listen: Option<SocketAddr>, // this is optional because --dump/--load does not need to run DNS server
+    pub listen: Vec<SocketAddr>, // this is optional because --dump/--load does not need to run DNS server
 
     /// Listen address of localhost plaintext DoH server.
     /// for now this server supports HTTP/1.1 and HTTP/1.0
     ///
     /// if the DOHP is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 1 (if the port number is in use, then continue decrementing until an available port number is found)
     #[arg(long)]
-    pub dohp_listen: Option<SocketAddr>,
+    pub dohp_listen: Vec<SocketAddr>,
 
     /// disable the localhost plaintext DoH server.
     #[arg(long)]
