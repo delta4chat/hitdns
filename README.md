@@ -14,3 +14,12 @@ hitdns has low query latency and a high cache hit rate. This is because it will 
 
 So hitdns users will only experience delays the first time they query a domain they've never queried before, and every time they query this domain after that, they'll get near-instantaneous response latency.
 
+## How to clone this repository
+the `bin` branch contains a lot of large files for pre-compiled binaries, you may want to exclude these large files, you can clone only `master` branch that contains source code only.
+
+`git clone https://github.com/delta4chat/hitdns --single-branch`
+
+or just filter these blobs
+
+`git clone https://github.com/delta4chat/hitdns --filter=blob:limit=1M`
+

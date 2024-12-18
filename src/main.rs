@@ -1343,7 +1343,11 @@ pub struct HitdnsOpt {
     #[arg(long)]
     pub api_listen: Option<SocketAddr>,
 
+    /// for test or convenience, allow API port to serve DOH-plaintext requests.
     ///
+    /// NOTE: for security, you should not to make API and DOHP unified then export it publicly,
+    ///
+    /// the good idea, that is: use two ports for API and DOHP, and only make DOHP port publicly, and keep the API private (can only access from localhost)
     #[arg(long)]
     pub api_with_dohp: bool,
 
