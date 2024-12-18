@@ -1935,7 +1935,7 @@ dependencies = [
 
 [[package]]
 name = "hitdns"
-version = "0.6.9"
+version = "0.6.9-kw"
 dependencies = [
  "anstyle",
  "anyhow",
@@ -2073,9 +2073,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.27.3"
+version = "0.27.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08afdbb5c31130e3034af566421053ab03787c640246a446327f550d11bcb333"
+checksum = "f6884a48c6826ec44f524c7456b163cebe9e55a18d7b5e307cb4f100371cc767"
 dependencies = [
  "futures-util",
  "http",
@@ -2531,9 +2531,9 @@ dependencies = [
 
 [[package]]
 name = "mozilla-root-ca"
-version = "2024.12.17"
+version = "2024.12.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "386631181009da7b58231957649830bdc1c32117d889626f2fe662b2f37f6992"
+checksum = "afdd4d84547faf077cf3d3203f62701cc967c10235629f464b1778b69782a496"
 dependencies = [
  "const-decoder2",
  "lazy_static",
@@ -2911,9 +2911,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.5.8"
+version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52cd4b1eff68bf27940dd39811292c49e007f4d0b4c357358dc9b0197be6b527"
+checksum = "1c40286217b4ba3a71d644d752e6a0b71f13f1b6a2c5311acfcbe0c2418ed904"
 dependencies = [
  "cfg_aliases",
  "libc",
