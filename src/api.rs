@@ -278,10 +278,18 @@ impl HitdnsAPI {
                                 },
 
                                 _ => {
+                                    if daemon.context.opt.api_with_dohp {
+                                        let dohp_res = DNSOverHTTP::handle_request(daemon.context.clone(), peer, req).await;
+                                        if dohp_res.status() != StatusCode::NotFound {
+                                            return dohp_res;
+                                        }
+                                    }
+
                                     let mut res = Response::new(StatusCode::NotFound);
                                     res.set_body(
 "
-List of available commands:
+# List of available commands:
+
 GET /info            ->  get build info.
 GET /version         ->  current version.
 
@@ -297,6 +305,13 @@ GET /reload-hosts    ->  reload Hosts file from disk.
 
 GET /expire-records  ->  mark the cached results for a domain (and optional rdclass/rdtype) expires immediately.
 
+# for test or convenience, if enabled by server config (disabled by default), you can use this API as DOH-plaintext
+# WARNING: leaking your API interface to publicly can causes security issues!
+# NOTE: for most common cases, it is recommended to use standalone port for DOH-plaintext
+
+(optional) GET /dns-query?dns={base64url}
+(optional) POST /dns-query
+(optional) GET /resolve?name={domain}&type={rdtype}
 "
                                     );
                                     res.set_content_type(Self::mime_txt());

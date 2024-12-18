@@ -77,6 +77,9 @@ pub mod dns {
     pub use RecordType as RdType;
 }
 
+#[cfg(not(feature="doh3"))]
+pub use reqwest as reqwest_h3;
+
 pub use portable_atomic::AtomicUsize;
 
 pub use smol::lock::RwLock;
@@ -213,7 +216,6 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
         }
 
         unique(&mut opt.listen);
-
         for idx in 0 .. opt.listen.len() {
             let listen = opt.listen[idx];
 
@@ -222,11 +224,12 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
                 opt.listen[idx] = adr.local_addr().unwrap();
             }
         }
+        unique(&mut opt.listen);
 
         let maybe_listen = opt.listen.first();
-
         let mut ports: Vec<u16> = opt.listen.iter().map(|adr| { adr.port() }).collect();
 
+        unique(&mut opt.dohp_listen);
         if ! opt.no_dohp {
             if opt.dohp_listen.is_empty() && maybe_listen.is_some() {
                 let mut dyna: SocketAddr = "127.0.0.1:0".parse().unwrap();
@@ -252,6 +255,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
                 opt.dohp_listen.push(dyna);
             }
         }
+        unique(&mut opt.dohp_listen);
 
         if ! opt.no_api {
             if opt.api_listen.is_none() && maybe_listen.is_some() {
@@ -541,6 +545,15 @@ fn dns_ch_hook(
                         let mut text = String::new();
                         for dohp_listen in opt.dohp_listen.iter() {
                             text.push_str(&format!("http://{dohp_listen}/ "));
+                        }
+                        if ! text.is_empty() {
+                            text.pop();
+                        }
+                        texts.push(text);
+                    } else if name.contains("listen") {
+                        let mut text = String::new();
+                        for listen in opt.listen.iter() {
+                            text.push_str(&format!("{listen} "));
                         }
                         if ! text.is_empty() {
                             text.pop();
@@ -1330,6 +1343,10 @@ pub struct HitdnsOpt {
     #[arg(long)]
     pub api_listen: Option<SocketAddr>,
 
+    ///
+    #[arg(long)]
+    pub api_with_dohp: bool,
+
     /// disable the localhost HTTP API.
     #[arg(long)]
     #[serde(default)]
@@ -1512,19 +1529,6 @@ async fn main_async() -> anyhow::Result<()> {
 
     let opt = HITDNS_OPT.clone();
 
-    #[cfg(feature = "doh3")]
-    if opt.doh3_only {
-        DOH3_ONLY.store(true, Relaxed);
-    }
-
-    if opt.stats_full {
-        STATS_FULL.store(true, Relaxed);
-    }
-
-    if let Some(thrs) = opt.threads {
-        smolscale2::set_threads(thrs);
-    }
-
     #[cfg(not(feature = "ftlog"))]
     {
         let _ret = env_logger::builder().try_init();
@@ -1671,11 +1675,29 @@ async fn main_async() -> anyhow::Result<()> {
         //eprintln!("ftlog_logger: try init = {_ret:?}");
     }
 
+
+    /* ===== handle API-with-DOHP warnings ===== */
+    if opt.api_with_dohp {
+        log::warn!("--api-with-dohp specified (for test or convenience?) WARNING: leaking your API interface to publicly can causes security issues! NOTE: for most common cases, it is recommended to use standalone port for DOH-plaintext");
+    }
+
+    #[cfg(feature = "doh3")]
+    if opt.doh3_only {
+        DOH3_ONLY.store(true, Relaxed);
+    }
+
+    if opt.stats_full {
+        STATS_FULL.store(true, Relaxed);
+    }
+
+    if let Some(thrs) = opt.threads {
+        smolscale2::set_threads(thrs);
+    }
+
     if opt.info {
         println!("{:#}", &*HITDNS_INFO);
         return Ok(());
     }
-
     if opt.version {
         let mut ver = String::from("HitDNS");
 
