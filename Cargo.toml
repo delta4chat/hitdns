@@ -1,6 +1,6 @@
 [package]
 name = "hitdns"
-version = "0.6.9-kw"
+version = "0.7.0"
 edition = "2021"
 description = "hitdns is a DNS forward server optimized for cache hit ratio and query latency."
 license = "GPL-3.0"
@@ -61,7 +61,7 @@ time    = { optional = true, version = "0.3.36", features = ["alloc", "formattin
 once_cell = "1.19.0"
 
 # TLS library for DoH/DoT
-rustls = { version = "0.23.14", features = ["custom-provider", "ring", "std", "tls12"], default-features = false }
+rustls = { version = "0.23.14", features = ["custom-provider", "std", "tls12"], default-features = false }
 
 # HTTPS library for DoH client
 reqwest = { package = "reqwest-h3", version = "0.13.1", features = ["rustls-tls", "http2"], default-features = false }
@@ -101,6 +101,7 @@ anypki = "0.1.8"
 #anypki = { path = "../anypki" }
 
 rustls-native-certs = "0.8.1"
+rustls-rustcrypto = { version = "0.0.2-alpha", features = ["logging"] }
 
 [build-dependencies]
 vergen = { optional = true, version = "8.3.2", features = ["build", "cargo", "cargo_metadata", "cfg-if", "git", "gitoxide", "gix", "regex", "rustc", "rustc_version", "si", "sysinfo", "time"], default-features = false }

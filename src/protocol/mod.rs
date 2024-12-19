@@ -20,7 +20,7 @@ use crate::*;
 pub static RUSTLS_CRYPTO_PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = Lazy::new(|| {
     use rustls::CipherSuite::*;
 
-    let mut cp = rustls::crypto::ring::default_provider();
+    let mut cp = rustls_rustcrypto::provider();
     let cs = &mut cp.cipher_suites;
 
     let ecdsa_chacha = [
@@ -43,10 +43,37 @@ pub static RUSTLS_CRYPTO_PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = L
         TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
     ];
 
-    let orig_cs = cs.clone(); // [TLS13_AES_256_GCM_SHA384, TLS13_AES_128_GCM_SHA256, TLS13_CHACHA20_POLY1305_SHA256, TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256, TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384, TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256, TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256]
-    eprintln!("{orig_cs:?}");
-    cs.clear();
+    let cs_order = [
+        TLS13_CHACHA20_POLY1305_SHA256,
+        TLS13_AES_256_GCM_SHA384,
+        TLS13_AES_128_GCM_SHA256,
 
+        TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+        TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+        TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+
+        TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+        TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+        TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+    ];
+    let cs_order_len = cs.len();
+
+    let mut orig_cs = cs.clone();
+    orig_cs.sort_by_key(|scs| {
+        let s = scs.suite();
+        let mut mult = 1000;
+        let mut pos = 0;
+        while pos < cs_order_len {
+            if cs_order[pos] == s {
+                mult = 1;
+                break;
+            }
+            pos += 1;
+        }
+        pos * mult
+    });
+    log::info!("original cihper suite: {orig_cs:?}");
+    cs.clear();
 
     let chacha_len = ecdsa_chacha.len() + if HITDNS_OPT.tls_rsa { rsa_chacha.len() } else { 0 };
     //let aes_len = ecdsa_aes.len() + if HITDNS_OPT.tls_rsa { rsa_aes.len() } else { 0 };
@@ -68,7 +95,6 @@ pub static RUSTLS_CRYPTO_PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = L
                 continue;
             }
 
-
             if i == 0 && cs.len() < chacha_len {
                 continue;
             }
@@ -86,7 +112,7 @@ pub static RUSTLS_CRYPTO_PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = L
         }
     }
     assert!(cs.len() >= 1);
-    eprintln!("{cs:?}");
+    log::info!("current crypto suite: {cs:?}");
 
     cp.clone().install_default().unwrap();
     Arc::new(cp)
