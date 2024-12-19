@@ -1242,28 +1242,34 @@ pub struct HitdnsOpt {
     ///
     /// NOTE: for ".config" itself, it will be ignored if that read from TOML config file.
     #[arg(long)]
+    #[serde(default)]
     pub config: Option<PathBuf>,
 
     /// specify the data dir. if not specified, will use directories to get platform-specified runtime dir.
     #[arg(long)]
+    #[serde(default)]
     pub data_dir: Option<PathBuf>,
 
     /// specify the work thread number of async runtime. if not specified, will use same number of CPUs
     #[arg(long)]
+    #[serde(default)]
     pub threads: Option<usize>,
 
     /// Dumps all cache entry from disk database file.
     /// if filename is "-", prints to standard output.
     #[arg(long)]
+    #[serde(default)]
     pub dump: Option<PathBuf>,
 
     /// Loads from specified JSON dump file, and saves it to in-disk database.
     /// if filename is "-", read from standard input.
     #[arg(long)]
+    #[serde(default)]
     pub load: Option<PathBuf>,
 
     /// Log file location
     #[arg(long)]
+    #[serde(default)]
     pub log_file: Option<PathBuf>,
 
     /// debug mode.
@@ -1274,11 +1280,13 @@ pub struct HitdnsOpt {
     /// Minimum TTL of cached DNS entry.
     /// default to 3 minutes.
     #[arg(long)]
+    #[serde(default)]
     pub min_ttl: Option<u32>,
 
     /// Maximum TTL of cached DNS entry.
     /// default to 7 days.
     #[arg(long)]
+    #[serde(default)]
     pub max_ttl: Option<u32>,
 
     /// location of a hosts.txt file.
@@ -1287,6 +1295,7 @@ pub struct HitdnsOpt {
     ///
     /// specify this will override system hosts.
     #[arg(long)]
+    #[serde(default)]
     pub hosts: Option<PathBuf>,
 
     /// Whether try to find system-side hosts.txt
@@ -1321,6 +1330,7 @@ pub struct HitdnsOpt {
 
     /// Listen address of RFC 1035 plaintext DNS server (UDP and TCP).
     #[arg(long)]
+    #[serde(default)]
     pub listen: Vec<SocketAddr>, // this is optional because --dump/--load does not need to run DNS server
 
     /// Listen address of localhost plaintext DoH server.
@@ -1328,6 +1338,7 @@ pub struct HitdnsOpt {
     ///
     /// if the DOHP is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 1 (if the port number is in use, then continue decrementing until an available port number is found)
     #[arg(long)]
+    #[serde(default)]
     pub dohp_listen: Vec<SocketAddr>,
 
     /// disable the localhost plaintext DoH server.
@@ -1341,6 +1352,7 @@ pub struct HitdnsOpt {
     ///
     /// if the API is not explicitly disabled and the API listen address is not specified, the port number is automatically determined based on the DNS listening port: DNS_PORT - 2 (if the port number is in use, then continue decrementing until an available port number is found)
     #[arg(long)]
+    #[serde(default)]
     pub api_listen: Option<SocketAddr>,
 
     /// for test or convenience, allow API port to serve DOH-plaintext requests.
@@ -1349,6 +1361,7 @@ pub struct HitdnsOpt {
     ///
     /// the good idea, that is: use two ports for API and DOHP, and only make DOHP port publicly, and keep the API private (can only access from localhost)
     #[arg(long)]
+    #[serde(default)]
     pub api_with_dohp: bool,
 
     /// disable the localhost HTTP API.
@@ -1366,6 +1379,11 @@ pub struct HitdnsOpt {
     #[arg(long)]
     #[serde(default)]
     pub doh_upstream: Vec<String>,
+
+    /// whether hide the User-Agent for DoH requests
+    #[arg(long)]
+    #[serde(default)]
+    pub doh_hide_ua: bool,
 
     #[cfg(feature = "doh3")]
     /// ** Experimental **
@@ -1391,6 +1409,7 @@ pub struct HitdnsOpt {
     /// upstream address of DoT servers.
     /// DNS over TLS (RFC 7858)
     #[arg(long)]
+    #[serde(default)]
     pub dot_upstream: Vec<String>,
 
     #[cfg(feature = "doq")]
@@ -1398,6 +1417,7 @@ pub struct HitdnsOpt {
     /// upstream address of DoQ servers.
     /// DNS over QUIC (RFC 9250)
     #[arg(long)]
+    #[serde(default)]
     pub doq_upstream: Vec<String>,
 }
 
