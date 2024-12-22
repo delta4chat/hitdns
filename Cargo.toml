@@ -82,8 +82,8 @@ smoltimeout = "0.6.2"
 
 #smolscale = { version = "0.4.4", features = ["preempt"] }
 
-smolscale2 = { version = "0.5.12", features = ["preempt"] }
-#smolscale2 = { path = "../smolscale", features = ["preempt"] }
+smolscale2 = { version = "0.6.0", features = ["preempt", "async-compat"] }
+#smolscale2 = { path = "../smolscale", features = ["preempt", "async-compat"] }
 
 portable-atomic = { version = "1.6.0", features = ["float"] }
 
