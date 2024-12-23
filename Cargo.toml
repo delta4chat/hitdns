@@ -26,7 +26,7 @@ ftlog = [ "dep:ftlog2", "dep:anstyle", "dep:time" ]
 vergen = [ "dep:vergen" ]
 
 [dependencies]
-anyhow = "1.0.79"
+anyhow = "1.0.95"
 async-tls = { optional = true, version = "0.13.0" }
 
 serde = { version = "1.0.196", features = ["alloc", "derive", "rc", "std"] }
