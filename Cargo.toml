@@ -87,7 +87,7 @@ smolscale2 = { version = "0.6.0", features = ["preempt", "async-compat"] }
 
 portable-atomic = { version = "1.6.0", features = ["float"] }
 
-sqlx = { optional = true, version = "0.8.2", features = ["runtime-async-std", "sqlite"], default-features = false }
+sqlx = { optional = true, version = "0.8.3", features = ["runtime-async-std", "sqlite"], default-features = false }
 
 sled = { optional = true, version = "0.34.7", features = ["compression", "zstd"], default-features = false }
 #sled = { optional = true, version = "1.0.0-alpha.120" }
