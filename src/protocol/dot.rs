@@ -6,7 +6,7 @@ pub type TlsStream =
     async_tls::client::TlsStream<TcpStream>;
 
 pub type TlsSessions = Arc<
-    scc::HashMap<
+    scc2::HashMap<
         SocketAddr,
         VecDeque<(u128, Arc<TlsStream>)>,
     >,
@@ -96,7 +96,7 @@ impl DNSOverTLS {
         };
 
         let connector = async_tls::TlsConnector::new();
-        let sessions = Arc::new(scc::HashMap::new());
+        let sessions = Arc::new(scc2::HashMap::new());
 
         for addr in addrs.iter() {
             sessions

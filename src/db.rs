@@ -96,8 +96,8 @@ impl DatabaseSnapshot {
         let mut this = Self::init();
         for (query, cache_entry) in dc.memory.iter() {
             if let Ok(entry) =
-                // Option< Arc<DNSEntry> >
-                cache_entry.entry.read().await.clone()
+                // Option<Arc<DNSEntry>>
+                cache_entry.entry.get()
 
                 // Arc<DNSEntry>
                 .context("unexpected got NULL value of DNS Entry from database!")

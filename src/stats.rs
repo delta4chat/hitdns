@@ -50,13 +50,13 @@ pub struct DNSQueryData {
     cache_expired: AtomicU128,
 
     // query numbers of specified domain
-    domains: Arc<scc::HashMap<String, AtomicU128>>,
+    domains: Arc<scc2::HashMap<String, AtomicU128>>,
 
     // query numbers of specified RdType (usually 90% of A, AAAA)
-    rdtypes: Arc<scc::HashMap<u16, AtomicU128>>,
+    rdtypes: Arc<scc2::HashMap<u16, AtomicU128>>,
 
     // query numbers of specified DNS Class (usually IN - Internet)
-    rdclasses: Arc<scc::HashMap<u16, AtomicU128>>,
+    rdclasses: Arc<scc2::HashMap<u16, AtomicU128>>,
 }
 impl DNSQueryData {
     pub async fn to_json(&self) -> anyhow::Result<serde_json::Value> {
@@ -176,7 +176,7 @@ pub struct DNSQueryStats {
     elapsed: AtomicF64,
 
     // all of queries with timestamp
-    queries: Arc<scc::TreeIndex<Instant, Option<DNSQueryInfo>>>,
+    queries: Arc<scc2::TreeIndex<Instant, Option<DNSQueryInfo>>>,
 
     // inner data that can `derive(Default)`
     data: DNSQueryData,
@@ -219,7 +219,7 @@ impl DNSQueryStats {
         let mut used_times: Vec<f64> = vec![];
 
         {
-            let g = scc::ebr::Guard::new();
+            let g = scc2::ebr::Guard::new();
             for entry in self.queries.iter(&g) {
                 let (time, maybe_info) = entry;
 
@@ -312,7 +312,7 @@ impl DNSQueryStats {
             }
         }
         if ret.is_err() {
-            log::warn!("cannot insert to scc::HashMap!");
+            log::warn!("cannot insert to scc2::HashMap!");
         }
 
         if full {

@@ -307,7 +307,6 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
 });
 
 pub static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(|| {
-
     let dir =
         if HITDNS_OPT.test {
             directories::ProjectDirs::from("org", "delta4chat", "hitdns-test")
@@ -581,13 +580,13 @@ pub type DNSHook = fn(&DNSQueryInfo, HitdnsOpt) -> PinFut<Option<dns::Message>>;
 #[derive(Debug, Clone)]
 pub struct DNSHookArray {
     // id -> (nice, hook)
-    hooks: scc::HashMap<usize, (i8, Arc<DNSHook>)>,
+    hooks: scc2::HashMap<usize, (i8, Arc<DNSHook>)>,
     opt: HitdnsOpt,
 }
 impl DNSHookArray {
     pub fn new(opt: HitdnsOpt) -> Self {
         Self {
-            hooks: scc::HashMap::new(),
+            hooks: scc2::HashMap::new(),
             opt
         }
     }
@@ -665,14 +664,14 @@ pub struct DNSDaemonSocket {
     tcp: Arc<Vec<TcpListener>>,
 
     // plaintext HTTP with /dns-query for your reverse proxy (for example Nginx) to serve DoH.
-    http: Arc<scc::HashMap<usize, Arc<DNSOverHTTP>>>,
+    http: Arc<scc2::HashMap<usize, Arc<DNSOverHTTP>>>,
 }
 
 #[derive(Debug, Default)]
 pub struct DNSDaemonTask {
-    udp: scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
-    tcp: scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
-    http: scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
+    udp: scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
+    tcp: scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
+    http: scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
 }
 
 #[derive(Debug)]
@@ -689,7 +688,7 @@ impl DNSDaemon {
 
         let mut udp = Vec::new();
         let mut tcp = Vec::new();
-        let http = scc::HashMap::new();
+        let http = scc2::HashMap::new();
 
         for listen in opt.listen.iter() {
             udp.push(UdpSocket::bind(&listen).await.log_error()?);
@@ -943,7 +942,7 @@ impl DNSDaemonContext {
         }
     }
 
-    async fn handle_udp(&self, tasks: &scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) {
+    async fn handle_udp(&self, tasks: &scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) {
         for idx in 0 .. self.socket.udp.len() {
             let addr = self.opt.listen[idx];
             if tasks.contains(&addr) {
@@ -1008,7 +1007,7 @@ impl DNSDaemonContext {
         }
     }
 
-    async fn handle_tcp(&self, tasks: &scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) {
+    async fn handle_tcp(&self, tasks: &scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) {
         for idx in 0 .. self.socket.tcp.len() {
             let addr = self.opt.listen[idx];
             if tasks.contains(&addr) {
@@ -1140,7 +1139,7 @@ impl DNSDaemonContext {
         } // tcp accept loop
     }
 
-    async fn handle_http(&self, tasks: &scc::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) -> anyhow::Result<()> {
+    async fn handle_http(&self, tasks: &scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) -> anyhow::Result<()> {
         for idx in 0 .. self.opt.dohp_listen.len() {
             let dl = self.opt.dohp_listen[idx];
 

@@ -45,7 +45,7 @@ pub const DEFAULT_HOSTS_TXT: &'static str =
 
 pub static HOSTS: Lazy<Hosts> = Lazy::new(|| { smol::block_on(Hosts::new()) });
 
-pub type HostsMap = scc::TreeIndex<String, scc::TreeIndex<IpAddr, ()>>;
+pub type HostsMap = scc2::TreeIndex<String, scc2::TreeIndex<IpAddr, ()>>;
 
 #[derive(Debug)]
 pub struct Hosts {
@@ -74,7 +74,7 @@ impl Hosts {
     }
 
     pub(crate) fn replace(&self, new: &HostsMap) {
-        let g = scc::ebr::Guard::new();
+        let g = scc2::ebr::Guard::new();
         for (domain, ips) in self.map.iter(&g) {
             if new.contains(domain) {
                 ips.clear();
@@ -191,7 +191,7 @@ impl Hosts {
         let domain = domain.to_ascii_lowercase();
 
         self.map.peek_with(&domain, |_, ips| {
-            let g = scc::ebr::Guard::new();
+            let g = scc2::ebr::Guard::new();
             ips.iter(&g).map(|(ip, _)| { *ip }).collect()
         })
     }

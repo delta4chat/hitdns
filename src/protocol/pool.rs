@@ -12,7 +12,7 @@ where
     pub connector: Arc<dyn Fn(SocketAddr) -> PinFut<Arc<Conn>>>,
     pub min_conn: u16,
     pub max_conn: u16,
-    pub conns: scc::HashMap<SocketAddr, VecDeque<Arc<Conn>>>,
+    pub conns: scc2::HashMap<SocketAddr, VecDeque<Arc<Conn>>>,
 }
 
 impl<Conn: AsyncReadExt+AsyncWriteExt+Send+Sync+Clone> Pool<Conn> {
@@ -25,7 +25,7 @@ impl<Conn: AsyncReadExt+AsyncWriteExt+Send+Sync+Clone> Pool<Conn> {
             anyhow::bail!("invalid remote {remote:?}: no port number found");
         }
 
-        let conns = scc::HashMap::new();
+        let conns = scc2::HashMap::new();
 
         if let Ok(addr) = remote.parse() {
             let _ = conns.insert_async(addr, Default::default()).await;

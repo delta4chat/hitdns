@@ -95,15 +95,12 @@ unsafe impl Send for Defer {}
 pub struct DNSCacheEntry {
     query: Arc<DNSQuery>,
 
-    pub(crate) entry: Arc<RwLock<
-                        Option<Arc<DNSEntry>>
-                      >>,
+    pub(crate) entry: Arc<scc2::Atom<DNSEntry>>,
 
-    update_task: Arc<RwLock<
-                   Option<Arc<
-                     smol::Task<anyhow::Result<()>>
-                   >>
-                 >>,
+    update_task:
+        Arc<scc2::Atom<
+            smol::Task<anyhow::Result<()>>
+        >>,
 
     updating: Arc<AtomicBool>,
     update_event: Arc<Event>,
@@ -112,8 +109,8 @@ impl From<Arc<DNSQuery>> for DNSCacheEntry {
     fn from(query: Arc<DNSQuery>) -> DNSCacheEntry {
         DNSCacheEntry {
             query,
-            entry: Arc::new(RwLock::new(None)),
-            update_task: Arc::new(RwLock::new(None)),
+            entry: Arc::new(Default::default()),
+            update_task: Arc::new(Default::default()),
 
             updating: Arc::new(AtomicBool::new(false)),
             update_event: Arc::new(Event::new()),
@@ -123,18 +120,15 @@ impl From<Arc<DNSQuery>> for DNSCacheEntry {
 impl From<Arc<DNSEntry>> for DNSCacheEntry {
     fn from(entry: Arc<DNSEntry>) -> DNSCacheEntry {
         let query = entry.query.clone();
-
-        let mut this: DNSCacheEntry = Arc::new(query).into();
-
-        this.entry = Arc::new(RwLock::new(Some(entry)));
-
+        let this: DNSCacheEntry = Arc::new(query).into();
+        this.entry.set_arc(entry);
         this
     }
 }
 
 impl DNSCacheEntry {
     pub async fn status(&self) -> DNSCacheStatus {
-        if let Some(entry) = self.entry.read().await.deref().clone() {
+        if let Some(entry) = self.entry.get() {
             entry.into()
         } else {
             DNSCacheStatus::Miss
@@ -175,33 +169,25 @@ impl DNSCacheEntry {
             return true;
         }
 
-        // smol-timeout Option
-        if let Some(maybe_task) =
-            self.update_task.read()
-            .timeout(Duration::from_millis(100))
-            .await
-        {
+        if let Some(task) = self.update_task.get() {
             // Option<smol::Task>
-            if let Some(task) = maybe_task.deref().clone() {
-                ! task.is_finished()
-            } else {
-                false
-            }
+            ! task.is_finished()
         } else {
-            log::warn!("get read lock timeout!!!");
-            true
+            // no task
+            false
         }
     }
 
-    pub async fn expire(&self) -> bool {
-        let maybe_ade = &mut *self.entry.write().await;
-        if let Some(ade) = maybe_ade {
-            let de = Arc::get_mut(ade).expect("should only one mutable writer due to it behind a RwLock");
-            de.expire = SystemTime::UNIX_EPOCH;
-            true
-        } else {
-            false
-        }
+    pub fn expire(&self) {
+        self.entry.update(|maybe_ade| {
+            if let Some(ade) = maybe_ade {
+                let mut de: DNSEntry = ade.deref().clone();
+                de.expire = SystemTime::UNIX_EPOCH;
+                Some(de)
+            } else {
+                None
+            }
+        });
     }
 
     /// (if caller does not provide a resolver, this method just query cached DNSEntry and any Cache Miss will cause Error.)
@@ -245,7 +231,7 @@ impl DNSCacheEntry {
         if let Some(ref resolver) = maybe_resolver {
             let resolver = resolver.clone();
 
-            let entry_lock = self.entry.clone();
+            let entry_atom = self.entry.clone();
             let query = self.query.clone();
 
             let updating = self.updating.clone();
@@ -295,17 +281,19 @@ impl DNSCacheEntry {
                 response.set_id(0);
                 *response.extensions_mut() = None;
 
-                let entry = Arc::new(DNSEntry {
-                    query: query.deref().clone(),
-                    response: response.to_vec()?,
-                    elapsed,
-                    upstream,
-                    expire,
-                });
+                let entry =
+                    entry_atom.set(
+                        DNSEntry {
+                            query: query.deref().clone(),
+                            response: response.to_vec()?,
+                            elapsed,
+                            upstream,
+                            expire,
+                        }
+                    );
 
-                *entry_lock.write().await = Some(entry.clone());
                 updating.store(false, Relaxed);
-                log::debug!("send notify to {} listeners", update_event.notify_relaxed(usize::MAX));
+                log::debug!("send update finish notify to {} listeners", update_event.notify_relaxed(usize::MAX));
 
                 let query: Vec<u8> = bincode::serialize(&query).log_error()?;
                 let entry: Vec<u8> = bincode::serialize(&entry).log_error()?;
@@ -319,7 +307,7 @@ impl DNSCacheEntry {
                 Ok(())
             });
 
-            *self.update_task.write().await = Some(Arc::new(task));
+            self.update_task.set(task);
         }
 
         if let DNSCacheStatus::Miss = status {
@@ -346,11 +334,11 @@ impl DNSCacheEntry {
 #[derive(Debug, Clone)]
 pub struct DNSCache {
     pub(crate) memory: Arc<moka2::future::Cache<DNSQuery, DNSCacheEntry>>,
-    load_negatives: Arc<scc::HashSet<DNSQuery>>,
+    load_negatives: Arc<scc2::HashSet<DNSQuery>>,
     pub(crate) resolvers: Arc<DNSResolverArray>,
     pub(crate) debug: bool,
 }
-/// SAFETY: backend by scc::HashSet / moka2::future::Cache
+/// SAFETY: backend by scc2::HashSet / moka2::future::Cache
 unsafe impl Sync for DNSCache {}
 unsafe impl Send for DNSCache {}
 
@@ -387,7 +375,7 @@ impl DNSCache {
                 .build()
             );
 
-        let load_negatives = Arc::new(scc::HashSet::new());
+        let load_negatives = Arc::new(scc2::HashSet::new());
 
         let debug = false;
 
@@ -478,9 +466,8 @@ impl DNSCache {
                 rdtype: maybe_rdtype.unwrap()
             };
             if let Some(dce) = self.memory.get(&query).await {
-                if dce.expire().await {
-                    count += 1;
-                }
+                dce.expire();
+                count += 1;
             }
             return count;
         }
@@ -500,9 +487,8 @@ impl DNSCache {
                 }
             }
 
-            if cur.expire().await {
-                count += 1;
-            }
+            cur.expire();
+            count += 1;
         }
         count
     }

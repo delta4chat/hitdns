@@ -1,7 +1,7 @@
 use crate::*;
 
 type QuicConns =
-    Arc<scc::HashMap<u128, Arc<quinn::Connection>>>;
+    Arc<scc2::HashMap<u128, Arc<quinn::Connection>>>;
 
 #[derive(Debug, Clone)]
 pub struct DNSOverQUIC {
@@ -93,7 +93,7 @@ impl DNSOverQUIC {
         )?;
         endpoint.set_default_client_config(client_config);
 
-        let conns = Arc::new(scc::HashMap::new());
+        let conns = Arc::new(scc2::HashMap::new());
         let _task = Arc::new(smolscale2::spawn(
             Self::_conn_task(
                 endpoint.clone(),
