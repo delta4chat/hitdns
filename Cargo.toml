@@ -61,7 +61,7 @@ time    = { optional = true, version = "0.3.36", features = ["alloc", "formattin
 once_cell = "1.19.0"
 
 # TLS library for DoH/DoT
-rustls = { version = "0.23.14", features = ["custom-provider", "std", "tls12"], default-features = false }
+rustls = { version = "0.23.22", features = ["custom-provider", "std", "tls12"], default-features = false }
 
 # HTTPS library for DoH client
 reqwest = { package = "reqwest-h3", version = "0.13.1", features = ["rustls-tls", "http2"], default-features = false }
