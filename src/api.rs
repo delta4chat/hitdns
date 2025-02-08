@@ -71,8 +71,8 @@ impl HitdnsAPI {
                                     let mut all_metrics = serde_json::Map::new();
                                     for ds in daemon.context.cache.resolvers.list.iter() {
                                         let upstream = ds.dns_upstream();
-                                        let mut metrics = ds.dns_metrics().await.to_json();
 
+                                        let mut metrics = ds.dns_metrics().to_json();
                                         {
                                             let obj = metrics.as_object_mut().unwrap();
                                             obj.remove("upstream");

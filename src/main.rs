@@ -80,9 +80,7 @@ pub mod dns {
 #[cfg(not(feature="doh3"))]
 pub use reqwest as reqwest_h3;
 
-pub use portable_atomic::AtomicUsize;
-
-pub use smol::lock::RwLock;
+pub use portable_atomic::{AtomicUsize, AtomicU64, AtomicU8, AtomicBool};
 
 pub use bytes::Bytes;
 pub use serde::{Serialize, Deserialize};
@@ -364,17 +362,29 @@ pub fn randstr(len: usize) -> String {
     out
 }
 
-pub fn average<T>(set: &[T]) -> T
+/// u128 nanoseconds version of [core::time::Duration::from_nanos](https://doc.rust-lang.org/1.84.1/src/core/time.rs.html#318-326)
+pub const fn duration_from_nanos(nanos: u128) -> Duration {
+    const NANOS_PER_SEC: u128 = 1_000_000_000;
+
+    let secs = (nanos / NANOS_PER_SEC) as u64;
+    let subsec_nanos = (nanos % NANOS_PER_SEC) as u32;
+
+    Duration::new(secs, subsec_nanos)
+}
+
+pub fn average<T>(mut iter: impl Iterator<Item=T>, one: T) -> T
 where
-    T: Default + Copy + From<u64> + Add<Output=T> + Div<Output=T>
+    T: Default + Copy + Ord + Add<Output=T> + Div<Output=T>
 {
-    let len = set.len();
-    if len > 0 {
-        let len: T = T::from(len as u64);
-        let mut sum: T = Default::default();
-        for n in set.iter() {
-            sum = sum + *n;
-        }
+    let mut len: T = Default::default();
+    let mut sum: T = Default::default();
+
+    while let Some(val) = iter.next() {
+        sum = sum + val;
+        len = len + one;
+    }
+
+    if len > Default::default() {
         sum / len
     } else {
         Default::default()
@@ -861,7 +871,7 @@ impl DNSDaemon {
             if opt.debug {
                 let mut x = vec![];
                 for r in cache.resolvers.list.iter() {
-                    x.push(r.dns_metrics().await);
+                    x.push(r.dns_metrics());
                 }
 
                 log::trace!(

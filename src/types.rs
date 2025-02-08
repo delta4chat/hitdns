@@ -313,125 +313,118 @@ impl TryFrom<&DNSEntry> for dns::Message {
 }
 
 /* ========== DNS Metrics ========== */
-#[derive(Clone)]
 pub struct DNSMetrics {
-    latency: VecDeque<Duration>,
-    reliability: u8, // 0% - 100%
-    online: bool,
-    last_respond: SystemTime,
+    latency: scc2::Queue<Duration>,
+    reliability: AtomicU8, // 0% - 100%
+    online: AtomicBool,
+    last_respond: AtomicU64,
     upstream: String,
 }
 impl core::fmt::Debug for DNSMetrics {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> Result<(), core::fmt::Error> {
         f.debug_struct("DNS-Metrics")
-        .field("latency", &self.latency())
-        .field("reliability", &self.reliability)
-        .field("online", &self.online)
-        .field("last_respond", &self.last_respond)
-        .field("upstream", &self.upstream)
-        .finish()
+         .field("latency", &self.latency())
+         .field("reliability", &self.reliability())
+         .field("online", &self.online())
+         .field("last_respond", &self.last_respond())
+         .field("upstream", &self.upstream)
+         .finish()
     }
 }
 
 impl DNSMetrics {
     pub(crate) fn from(upstream: impl ToString) -> Self {
         Self {
-            latency: VecDeque::new(),
-            reliability: 50,
-            online: false,
-            last_respond: SystemTime::UNIX_EPOCH,
+            latency: Default::default(),
+            reliability: AtomicU8::new(50),
+            online: AtomicBool::new(false),
+            last_respond: AtomicU64::new(0),
             upstream: upstream.to_string(),
         }
     }
 
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
-            "latency":
-                self.latency()
-                .as_secs_f64()
-                .to_string(),
-
-            "reliability": self.reliability,
-            "online": self.online,
-
-            "last_respond":
-                self.last_respond
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap_or(Duration::ZERO)
-                .as_secs_f64()
-                .to_string(),
-
-            "upstream": self.upstream.clone(),
+            "latency": self.latency().as_secs_f64().to_string(),
+            "reliability": self.reliability(),
+            "online": self.online(),
+            "last_respond": self.last_respond(),
+            "upstream": &self.upstream,
         })
     }
 
     /// record a server works normal (on DNS query success)
-    pub fn up(&mut self, elapsed: Duration) {
-        self.online = true;
-
-        if self.reliability < 100 {
-            self.reliability += 1;
-        }
-
+    pub fn up(&self, elapsed: Duration) {
+        self.online.store(true, Relaxed);
+        self._update_reliability(true);
         self._add_latency(elapsed);
-        self.last_respond = SystemTime::now();
+
+        if let Ok(dur) = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
+            self.last_respond.store(dur.as_secs(), Relaxed);
+        }
     }
 
     /// record a server down (on DNS query fails)
-    pub fn down(&mut self) {
-        self.online = false;
-
-        if self.reliability > 0 {
-            self.reliability -= 1;
-        }
-
+    pub fn down(&self) {
+        self.online.store(false, Relaxed);
+        self._update_reliability(false);
         self._add_latency(Duration::from_secs(999));
     }
 
-    fn _add_latency(&mut self, elapsed: Duration) {
-        self.latency.push_back(elapsed);
+    fn _update_reliability(&self, add: bool) {
+        let _ = self.reliability.fetch_update(Relaxed, Relaxed, |v| {
+            if add {
+                if v < 100 {
+                    Some(v + 1)
+                } else {
+                    None
+                }
+            } else {
+                if v > 0 {
+                    Some(v - 1)
+                } else {
+                    None
+                }
+            }
+        });
+    }
 
-        while self.latency.len() > 100 {
-            self.latency.pop_front();
+    fn _add_latency(&self, elapsed: Duration) {
+        self.latency.push(elapsed);
+
+        while self.latency.len() > 10000 {
+            self.latency.pop();
         }
     }
 
     /* == Getters == */
     /// returns Average Latency
     pub fn latency(&self) -> Duration {
-        let nanos: Vec<u128> =
-            self.latency
-            .iter()
-            .map(|x| { x.as_nanos() })
-            .collect();
+        let guard = scc2::ebr::Guard::new();
 
-        let avg: u128 = average(&nanos);
+        let avg: u128 =
+            average(
+                self.latency.iter(&guard).map(|x| { x.as_nanos() }),
+                1u128
+            );
 
-        let avg: u64 =
-            if avg > (u64::MAX as u128) {
-                log::error!("latency great-than u64::MAX !!!");
-                u64::MAX
-            } else {
-                avg as u64
-            };
-
-        Duration::from_nanos(avg)
+        duration_from_nanos(avg)
     }
 
     pub fn reliability(&self) -> u8 {
-        self.reliability
+        self.reliability.load(Relaxed)
     }
 
     pub fn online(&self) -> bool {
-        self.online
+        self.online.load(Relaxed)
     }
 
-    pub fn last_respond(&self) -> SystemTime {
-        self.last_respond
+    pub fn last_respond(&self) -> u64 {
+        self.last_respond.load(Relaxed)
     }
 
-    pub fn upstream(&self) -> String {
-        self.upstream.clone()
+    pub fn upstream(&self) -> &str {
+        self.upstream.as_str()
     }
 }
 
@@ -469,7 +462,7 @@ impl DNSResolverArray {
         let mut best = None;
         let mut best_metrics = None;
         for resolver in self.list.as_ref().iter() {
-            let my_metrics = resolver.dns_metrics().await;
+            let my_metrics = resolver.dns_metrics();
 
             /*
             // ignore any offline resolvers

@@ -250,7 +250,7 @@ pub(crate) static DOH3_ONLY: AtomicBool = AtomicBool::new(false);
 pub struct DNSOverHTTPS {
     client: ClientKind,
     url: reqwest_h3::Url,
-    metrics: Arc<RwLock<DNSMetrics>>,
+    metrics: Arc<DNSMetrics>,
     _task: Arc<smol::Task<()>>,
 }
 
@@ -300,7 +300,7 @@ impl<'a> DNSOverHTTPS {
             client = ClientKind::H3(DOH3_CLIENT.clone());
         }
 
-        let metrics = Arc::new(RwLock::new(DNSMetrics::from(&url)));
+        let metrics = Arc::new(DNSMetrics::from(&url));
 
         let _task = Arc::new(smolscale2::spawn(
             Self::_metrics_task(
@@ -321,7 +321,7 @@ impl<'a> DNSOverHTTPS {
     async fn _metrics_task(
         client: ClientKind,
         url: reqwest_h3::Url,
-        metrics: Arc<RwLock<DNSMetrics>>,
+        metrics: Arc<DNSMetrics>,
     ) {
         let mut start;
         let mut latency;
@@ -352,26 +352,21 @@ impl<'a> DNSOverHTTPS {
                 .await;
             latency = start.elapsed();
 
-            let metrics = metrics.clone();
-            {
-                let mut m = metrics.write().await;
-
-                if let Some(ret) = &maybe_ret {
-                    if ret.is_ok() {
-                        ret.log_trace();
-                        mult = 1.0;
-                        log::debug!("DoH{v} server {} working. latency={latency:?}", &url);
-                        m.up(latency);
-                    } else {
-                        mult *= 1.1;
-                        log::warn!("DoH{v} server {} down. used time: {latency:?}, ret={ret:?}", &url);
-                        m.down();
-                    }
+            if let Some(ref ret) = maybe_ret {
+                if ret.is_ok() {
+                    ret.log_trace();
+                    mult = 1.0;
+                    log::debug!("DoH{v} server {} working. latency={latency:?}", &url);
+                    metrics.up(latency);
                 } else {
                     mult *= 1.1;
-                    log::warn!("DoH{v} server {} not working! timed out.", &url);
-                    m.down();
+                    log::warn!("DoH{v} server {} down. used time: {latency:?}, ret={ret:?}", &url);
+                    metrics.down();
                 }
+            } else {
+                mult *= 1.1;
+                log::warn!("DoH{v} server {} not working! timed out.", &url);
+                metrics.down();
             }
         }
     }
@@ -386,26 +381,18 @@ impl<'a> DNSOverHTTPS {
         let latency = start.elapsed();
         log::debug!("DoH{v} un-cached Result: (server={} latency={latency:?}) {result:?}", &self.url);
 
-        let ok = result.is_ok();
-
-        let metrics_lock = self.metrics.clone();
-        smolscale2::spawn(async move {
-            let mut metrics = metrics_lock.write().await;
-
-            if ok {
-                metrics.up(latency);
-            } else {
-                metrics.down();
-            }
-        }).detach();
+        if result.is_ok() {
+            self.metrics.up(latency);
+        } else {
+            self.metrics.down();
+        }
 
         result
     }
     async fn _orig_dns_resolve(&self, query: &DNSQuery) -> anyhow::Result<dns::Message> {
         let v = self.client.version();
 
-        let req: dns::Message =
-            query.try_into().log_warn()?;
+        let req: dns::Message = query.try_into().log_warn()?;
 
         let client = self.client.clone();
         let url = self.url.clone();
@@ -446,13 +433,9 @@ impl<'a> DNSOverHTTPS {
 }
 
 impl DNSResolver for DNSOverHTTPS {
-    fn dns_resolve(
-        &self,
-        query: &DNSQuery,
-    ) -> PinFut<anyhow::Result<dns::Message>> {
-        let query = query.clone();
-        Box::pin(async move {
-            self._dns_resolve(&query).await
+    fn dns_resolve<'a>(&'a self, query: &'a DNSQuery) -> PinFut<'a, anyhow::Result<dns::Message>> {
+        Box::pin(async {
+            self._dns_resolve(query).await
         })
     }
 
@@ -470,9 +453,7 @@ impl DNSResolver for DNSOverHTTPS {
         }
     }
 
-    fn dns_metrics(&self) -> PinFut<DNSMetrics> {
-        Box::pin(async move {
-            self.metrics.read().await.clone()
-        })
+    fn dns_metrics(&self) -> Arc<DNSMetrics> {
+        self.metrics.clone()
     }
 }
