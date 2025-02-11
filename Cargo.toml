@@ -64,7 +64,7 @@ once_cell = "1.19.0"
 rustls = { version = "0.23.14", features = ["custom-provider", "std", "tls12"], default-features = false }
 
 # HTTPS library for DoH client
-reqwest = { package = "reqwest-h3", version = "0.13.1", features = ["rustls-tls", "http2"], default-features = false }
+reqwest = { package = "reqwest-h3", version = "0.13.1", features = ["rustls-tls-manual-roots-no-provider", "http2"], default-features = false }
 
 reqwest-h3 = { optional = true, version = "0.13.1", features = ["rustls-tls", "http2", "unstable", "http3"], default-features = false }
 #reqwest-h3 = { path = "../reqwest", features = ["rustls-tls", "http2", "unstable", "http3"], default-features = false }
@@ -97,7 +97,7 @@ toml-env = { version = "1.2.0", features = ["log"] }
 data-encoding = "2.6.0"
 moka2 = { version = "0.13.0", default-features = false, features = ["future", "logging", "quanta"] }
 
-anypki = "0.1.8"
+anypki = "0.1.9"
 #anypki = { path = "../anypki" }
 
 rustls-native-certs = "0.8.1"

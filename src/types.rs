@@ -348,7 +348,7 @@ impl DNSMetrics {
             "latency": self.latency().as_secs_f64().to_string(),
             "reliability": self.reliability(),
             "online": self.online(),
-            "last_respond": self.last_respond(),
+            "last_respond": self.last_respond().to_string(),
             "upstream": &self.upstream,
         })
     }

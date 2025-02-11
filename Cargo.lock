@@ -155,18 +155,21 @@ dependencies = [
 
 [[package]]
 name = "anypki"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fe6b1867d5d27800042e5897b66a25567e2836da595fe5b7dba00cc57040483"
+checksum = "586d5b6dcefc4213b2ebf123618f866b451a4b86bbcfa5c61a6ceb4a65462717"
 dependencies = [
  "anyhow",
  "bcder",
+ "constant_time_eq",
  "country-code-enum",
+ "digest",
  "hex",
  "hex-literal",
- "mozilla-root-ca",
  "rustls-pki-types",
- "scc",
+ "scc2",
+ "sha1",
+ "sha2",
  "slice-find",
  "x509cert",
 ]
@@ -635,9 +638,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.12"
+version = "1.2.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "755717a7de9ec452bf7f3f1a3099085deabd7f2962b861dae91ecd7a365903d2"
+checksum = "c7777341816418c02e033934a09f20dc0ccaf65a5201ef8a450ae0105a573fda"
 dependencies = [
  "jobserver",
  "libc",
@@ -756,12 +759,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 
 [[package]]
-name = "compile-fmt"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bed69047ed42e52c7e38d6421eeb8ceefb4f2a2b52eed59137f7bad7908f6800"
-
-[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -769,15 +766,6 @@ checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
  "portable-atomic",
-]
-
-[[package]]
-name = "const-decoder2"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1c68e93fb1797567e252ae3c807a80760c57c3553a203d65bc69d9ae9c4e58a"
-dependencies = [
- "compile-fmt",
 ]
 
 [[package]]
@@ -791,6 +779,12 @@ name = "const_fn"
 version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f8a2ca5ac02d09563609681103aada9e1777d54fc57a5acd7a41404f9c93b6e"
+
+[[package]]
+name = "constant_time_eq"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6"
 
 [[package]]
 name = "core-foundation"
@@ -950,9 +944,9 @@ dependencies = [
 
 [[package]]
 name = "data-encoding"
-version = "2.7.0"
+version = "2.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e60eed09d8c01d3cee5b7d30acb059b76614c918fa0f992e0dd6eeb10daad6f"
+checksum = "575f75dfd25738df5b91b8e43e14d44bda14637a58fae779fd2b064f8bf3e010"
 
 [[package]]
 name = "der"
@@ -2806,17 +2800,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mozilla-root-ca"
-version = "2025.1.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5daa0cc0d58b93534456e266b4e050edc58c858ced6df925370cd48ac62e2444"
-dependencies = [
- "const-decoder2",
- "lazy_static",
- "x509cert",
-]
-
-[[package]]
 name = "nohash-hasher"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3956,6 +3939,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+]
+
+[[package]]
 name = "sha1_smol"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4044,9 +4038,9 @@ dependencies = [
 
 [[package]]
 name = "slice-find"
-version = "0.0.1"
+version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab142aa5013189d5bca725a9e16ead4aed5289a2e492d0547db162f22f1a1f9d"
+checksum = "77d3708c2604cf0386ef409ed7e5aad0d9cbb0de6eaec3135775cf80f2ab1e94"
 
 [[package]]
 name = "smallvec"
@@ -4603,15 +4597,15 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.22.23"
+version = "0.22.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02a8b472d1a3d7c18e2d61a489aee3453fd9031c33e4f55bd533f4a7adca1bee"
+checksum = "17b4795ff5edd201c7cd6dca065ae59972ce77d1b80fa0a84d94950ece7d1474"
 dependencies = [
  "indexmap",
  "serde",
  "serde_spanned",
  "toml_datetime",
- "winnow 0.7.1",
+ "winnow 0.7.2",
 ]
 
 [[package]]
@@ -5286,9 +5280,9 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86e376c75f4f43f44db463cf729e0d3acbf954d13e22c51e26e4c264b4ab545f"
+checksum = "59690dea168f2198d1a3b0cac23b8063efcd11012f10ae4698f284808c8ef603"
 dependencies = [
  "memchr",
 ]
@@ -5327,9 +5321,9 @@ dependencies = [
 
 [[package]]
 name = "x509cert"
-version = "0.25.1"
+version = "0.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e71d933c08ec461c7cfe93eeb57a145f71772d4161599b386027e0c32488415e"
+checksum = "20ecd42540eb2408c42d29b6f62aac6979cd450b2f9cdaba9ffcc825a27534d8"
 dependencies = [
  "bcder",
  "bytes",
@@ -5337,7 +5331,6 @@ dependencies = [
  "der",
  "hex",
  "pem",
- "ring",
  "signature",
  "spki",
  "thiserror 1.0.69",
