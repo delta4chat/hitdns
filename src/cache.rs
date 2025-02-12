@@ -562,33 +562,31 @@ impl DNSCache {
             }
         }
 
-        let resolver =
-            self.resolvers
-            .best_or_random().await
-            .log_warn()
-            .ok();
-        let entry =
-            cache_entry.update(resolver, Duration::from_secs(10))
-            .await
-            .log_warn()?;
+        let resolver = self.resolvers.best_or_random().await.log_warn().ok();
+        let entry = cache_entry.update(resolver, Duration::from_secs(10)).await.log_warn()?;
 
-        let now_unix =
-            SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .log_error()?;
-        let expire_unix =
-            entry.expire
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .log_error()?;
+        let now_unix: u64 =
+            SystemTime::now().duration_since(SystemTime::UNIX_EPOCH)
+            .log_error()?.as_secs();
+        let expire_unix: u64 =
+            entry.expire.duration_since(SystemTime::UNIX_EPOCH)
+            .log_error()?.as_secs();
 
         let mut res: dns::Message = entry.as_ref().try_into().log_warn()?;
         res.set_id(req_id);
 
-        let ttl: u32 = if now_unix > expire_unix {
-            0
-        } else {
-            (expire_unix - now_unix).as_secs() as u32
-        };
+        let ttl: u32 =
+            if now_unix >= expire_unix {
+                0
+            } else {
+                let ttl: u64 = expire_unix - now_unix;
+                // limiting the max value to i32::MAX, for avoid some incorrectly implemented DNS resolvers got negative number if that use signed 32-bit integers to parse TTL.
+                if ttl > (i32::MAX as u64) { 
+                    i32::MAX as u32
+                } else {
+                    ttl as u32
+                }
+            };
 
         for record in res.answers_mut() {
             record.set_ttl(ttl);
