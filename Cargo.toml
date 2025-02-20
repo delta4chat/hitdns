@@ -29,7 +29,7 @@ vergen = [ "dep:vergen" ]
 anyhow = "1.0.79"
 async-tls = { optional = true, version = "0.13.0" }
 
-serde = { version = "1.0.196", features = ["alloc", "derive", "rc", "std"] }
+serde = { version = "1.0.218", features = ["alloc", "derive", "rc", "std"] }
 serde_json = { version = "1.0.128", features = ["preserve_order"] }
 bincode = "1.3.3"
 bytes = "1.5.0"
