@@ -2,8 +2,29 @@ use crate::*;
 
 /* ========== DNS Query ========= */
 
+pub type DNSLabel = heapless::Vec<u8, 63>;
+pub type DNSName = heapless::Vec<DNSLabel, 127>;
+
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-pub struct DNSQuery {
+/// version 2 of DNS query, uses postcard for serialize
+pub struct DNSQueryV2 {
+    /// a list for raw labels of query domain name.
+    /// 1. each labels must not contains dot ("."), must not contains null byte ("\x00")
+    /// 2. empty lebels are not allowed.
+    /// 3. root domain should be stored as empty Vec.
+    ///
+    pub name: Vec<DNSLabel>,
+
+    /// raw query dns class, unsigned 16-bit integer
+    pub rdclass: u16,
+
+    /// raw query record type, unsigned 16-bit integer
+    pub rdtype: u16,
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+/// v1 format of DNS Query, planned to deprecating, only kept for compatibly.
+pub struct DNSQueryV1 {
     /// raw query domain name, String encoded by UTF-8, must be ends with dot
     pub name: String,
 
@@ -13,15 +34,61 @@ pub struct DNSQuery {
     /// raw query record type, unsigned 16-bit integer
     pub rdtype: u16,
 }
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub enum DNSQuery {
+    V2(DNSQueryV2),
+    V1(DNSQueryV1),
+}
+
 impl DNSQuery {
+    pub fn rdclass(&self) -> u16 {
+        match self {
+            V1(v1) => v1.rdclass,
+            V2(v2) => v2.rdclass,
+        }
+    }
     pub fn rdclass_str(&self) -> String {
-        let rdclass: dns::RdClass = self.rdclass.into();
+        let rdclass: dns::RdClass = self.rdclass().into();
         return format!("{}({})", rdclass, self.rdclass);
     }
 
+    pub fn rdtype(&self) -> u16 {
+        match self {
+            Self::V1(ref v1) => v1.rdtype,
+            Self::V2(ref v2) => v2.rdtype,
+        }
+    }
     pub fn rdtype_str(&self) -> String {
-        let rdtype: dns::RdType = self.rdtype.into();
+        let rdtype: dns::RdType = self.rdtype().into();
         return format!("{}({})", rdtype, self.rdtype);
+    }
+
+    pub fn to_bytes(&self) -> anyhow::Result<Bytes> {
+        match self {
+            Self::V1(_) => {
+                anyhow::bail!("Version 1 format of DNS query is no longer support serialize to bytes!");
+            },
+            Self::V2(ref v2) => {
+                Ok(postcard::to_vec(v2)?)
+            }
+        }
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+        if let Ok(this) = Self::from_bytes_v2(bytes) {
+            return Ok(this);
+        }
+
+        Ok(Self::from_bytes_v1(bytes)?)
+    }
+
+    pub fn from_bytes_v2(bytes: &[u8]) -> anyhow::Result<Self> {
+        Ok(Self::V2(postcard::from_bytes(bytes)?))
+    }
+
+    pub fn from_bytes_v1(bytes: &[u8]) -> anyhow::Result<Self> {
+        Ok(Self::V1(bincode::deserialize(bytes)?))
     }
 }
 
@@ -40,9 +107,9 @@ impl core::fmt::Display for DNSQuery {
                 "{} {}({}) {}({})",
                 query.name().to_ascii(),
                 query.query_class(),
-                self.rdclass,
+                self.rdclass(),
                 query.query_type(),
-                self.rdtype,
+                self.rdtype(),
             ).as_str()
         )
     }
@@ -52,19 +119,16 @@ impl TryFrom<&str> for DNSQuery {
     fn try_from(val: &str) -> anyhow::Result<DNSQuery> {
         let mut val = val.to_string();
         while val.contains("  ") {
-            val = val.replace("  ", " ");
+            val = val.replace("  ", ' ');
         }
 
-        let arr: Vec<&str> = val.split(" ").collect();
+        let arr: Vec<&str> = val.split(' ').take(3).collect();
         if arr.len() != 3 {
             anyhow::bail!("malformed text format of dns query");
         }
 
         let mut name = arr[0].to_lowercase();
-        if !name.ends_with(".") {
-            name.push('.');
-        }
-        let name: String = dns::Name::from_str_relaxed(&name)?.to_utf8();
+        let name: DNSName = name.split(".").map(|x| { DNSLabel::from_slice(x.as_bytes()) }).collect();
 
         let rdclass: u16 = arr[1].replace(")", "")
                                  .split("(")
@@ -78,7 +142,7 @@ impl TryFrom<&str> for DNSQuery {
                                 .ok_or(anyhow::anyhow!("malformed rdtype field of dns query"))?
                                 .parse()?;
 
-        Ok(DNSQuery {
+        Ok(DNSQuery::V2 {
             name,
             rdclass,
             rdtype,
@@ -115,18 +179,21 @@ impl TryFrom<dns::Message> for DNSQuery {
 
 impl From<dns::Query> for DNSQuery {
     fn from(val: dns::Query) -> DNSQuery {
-        let mut name = val.name().to_string().to_lowercase();
-
-        // de-duplicate by convert all domain to "ends with dot"
-        if ! name.ends_with(".") {
-            name.push('.');
+        let mut name = DNSName::new();
+        for label in val.name().iter() {
+            assert!(! label.contains(b'.'));
+            assert!(! label.contains(b'\x00'));
+            let label = DNSLabel::from_slice(label).expect("unexpected label length larger than 63");
+            name.push(label);
         }
 
-        DNSQuery {
-            name,
-            rdclass: val.query_class().into(),
-            rdtype: val.query_type().into(),
-        }
+        DNSQuery::V2(
+            DNSQueryV2 {
+                name,
+                rdclass: val.query_class().into(),
+                rdtype: val.query_type().into(),
+            }
+        )
     }
 }
 impl TryFrom<&DNSQuery> for dns::Query {
@@ -139,11 +206,20 @@ impl TryFrom<&DNSQuery> for dns::Query {
             name.push('.');
         }
 
+        use DNSQuery::*;
+
         Ok(
             dns::Query::new()
-            .set_name(dns::Name::from_str_relaxed(name)?)
-            .set_query_class(val.rdclass.into())
-            .set_query_type(val.rdtype.into())
+            .set_name(match val {
+                V1(v1) => {
+                    dns::Name::from_str_relaxed(v1.name)?
+                },
+                V2(v2) => {
+                    dns::Name::from_labels(v2.name)?
+                }
+            })
+            .set_query_class(val.rdclass().into())
+            .set_query_type(val.rdtype().into())
             .to_owned()
         )
     }
@@ -177,13 +253,28 @@ impl TryFrom<DNSQuery> for dns::Message {
 /* ========== DNS Entry ========== */
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DNSEntry {
-    pub query: DNSQuery,
+pub struct DNSEntryV2 {
+    pub query: DNSQueryV2,
+    pub response: dns::Message,
+    pub expire: SystemTime,
+    pub upstream: String,
+    pub elapsed: Duration,
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DNSEntryV1 {
+    pub query: DNSQueryV1,
     pub response: Vec<u8>,
     pub expire: SystemTime,
     pub upstream: String,
     pub elapsed: Duration,
 }
+
+pub enum DNSEntry {
+    V1(DNSEntryV1),
+    V2(DNSEntryV2),
+}
+
 impl DNSEntry {
     fn _quoted_printable_opt() -> quoted_printable::Options {
         quoted_printable::Options::default()
