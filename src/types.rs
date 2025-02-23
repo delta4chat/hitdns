@@ -13,7 +13,7 @@ pub struct DNSQueryV2 {
     /// 2. empty lebels are not allowed.
     /// 3. root domain should be stored as empty Vec.
     ///
-    pub name: Vec<DNSLabel>,
+    pub name: DNSName,
 
     /// raw query dns class, unsigned 16-bit integer
     pub rdclass: u16,
@@ -257,7 +257,8 @@ pub struct DNSEntryV2 {
     pub query: DNSQueryV2,
     pub response: dns::Message,
     pub expire: SystemTime,
-    pub upstream: String,
+    pub upstream: http_types::Url, // schemes: doh2/doh3 for DNS over HTTP2/HTTP3. dot for DNS over TLS.
+                                   // doq for DNS over QUIC. dnscrypt for DNSCrypt.
     pub elapsed: Duration,
 }
 
@@ -270,6 +271,7 @@ pub struct DNSEntryV1 {
     pub elapsed: Duration,
 }
 
+#[derive(Clone, PartialEq, Eq)]
 pub enum DNSEntry {
     V1(DNSEntryV1),
     V2(DNSEntryV2),
