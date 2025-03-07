@@ -54,6 +54,7 @@ impl DNSOverHTTP {
             "/dns-query" => {
                 let mut res = Response::new(StatusCode::Ok);
                 res.insert_header("Access-Control-Allow-Origin", "*");
+                res.insert_header("Server", "hitdns");
 
                 match req.method() {
                     Method::Post => {
