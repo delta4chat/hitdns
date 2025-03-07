@@ -1,6 +1,6 @@
 [package]
 name = "hitdns"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2021"
 description = "hitdns is a DNS forward server optimized for cache hit ratio and query latency."
 license = "GPL-3.0"
@@ -102,6 +102,8 @@ anypki = "0.1.9"
 
 rustls-native-certs = "0.8.1"
 rustls-rustcrypto = { version = "0.0.2-alpha", features = ["logging"] }
+mozilla-root-ca = { version = ">=0.0.0", features = ["der", "rustls"], default-features = false }
+#mozilla-root-ca = { path = "../mozilla-root-ca", features = ["der", "rustls"], default-features = false }
 
 [build-dependencies]
 vergen = { optional = true, version = "8.3.2", features = ["build", "cargo", "cargo_metadata", "cfg-if", "git", "gitoxide", "gix", "regex", "rustc", "rustc_version", "si", "sysinfo", "time"], default-features = false }
