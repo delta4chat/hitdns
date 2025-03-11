@@ -41,7 +41,7 @@ hickory-proto = { version = "0.24.0", default-features = false, features = ["dns
 
 log = "0.4.20"
 env_filter = "0.1.0"
-env_logger = "0.11.1"
+env_logger = "0.11.7"
 
 #async-h1 = "2.3.4"
 
