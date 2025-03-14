@@ -58,7 +58,7 @@ ftlog2 = { optional = true, version = "0.3.2", features = ["tsc"] }
 anstyle = { optional = true, version = "1.0.6" }
 time    = { optional = true, version = "0.3.36", features = ["alloc", "formatting"] }
 
-once_cell = "1.19.0"
+once_cell = "1.21.1"
 
 # TLS library for DoH/DoT
 rustls = { version = "0.23.14", features = ["custom-provider", "std", "tls12"], default-features = false }
