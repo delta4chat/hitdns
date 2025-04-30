@@ -16,7 +16,7 @@ pub static HITDNS_SQLITE_FILENAME: Lazy<PathBuf> =
 
 pub static HITDNS_SQLITE_POOL: Lazy<SqlitePool> =
     Lazy::new(|| {
-        smol::block_on(async move {
+        async_io::block_on(async move {
             let mut file = &*HITDNS_SQLITE_FILENAME;
             let file_old = &*HITDNS_SQLITE_FILENAME_OLD;
 
@@ -32,18 +32,22 @@ pub static HITDNS_SQLITE_POOL: Lazy<SqlitePool> =
                     file.set_extension("db-shm");
                     file_old.set_extension("db-shm");
                     for _ in 0..10 {
-                        let _ = smol::fs::rename(&file_old, &file).await;
+                        if async_fs::rename(&file_old, &file).await.is_ok() {
+                            break;
+                        }
                     }
 
                     file.set_extension("db-wal");
                     file_old.set_extension("db-wal");
                     for _ in 0..10 {
-                        let _ = smol::fs::rename(&file_old, &file).await;
+                        if async_fs::rename(&file_old, &file).await.is_ok() {
+                            break;
+                        }
                     }
 
                     file.set_extension("db");
                     file_old.set_extension("db");
-                    smol::fs::rename(&file_old, &file).await.expect("unable to rename .db from old to new!");
+                    async_fs::rename(&file_old, &file).await.expect("unable to rename .db from old to new!");
                 }
             }
 

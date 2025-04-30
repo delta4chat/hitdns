@@ -48,7 +48,7 @@ pub struct DNSOverTLS {
     connector: async_tls::TlsConnector,
     sessions: TlsSessions,
     upstream: String,
-    _task: smol::Task<()>,
+    _task: Task<()>,
 }
 impl DNSOverTLS {
     pub async fn new(
@@ -106,7 +106,7 @@ impl DNSOverTLS {
 
         // start connection keep-alive watchdog
         let _task =
-            smolscale2::spawn(Self::_conn_watchdog(
+            asyncute::spawn(Self::_conn_watchdog(
                 connector.clone(),
                 sessions.clone(),
             ));
@@ -224,8 +224,7 @@ impl DNSOverTLS {
             }
             ret.clear();
 
-            smol::Timer::after(Duration::from_secs(1))
-                .await;
+            async_io::Timer::after(Duration::from_secs(1)).await;
         } // loop
     }
 

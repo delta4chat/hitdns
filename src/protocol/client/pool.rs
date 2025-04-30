@@ -61,7 +61,7 @@ impl<Conn: AsyncReadExt+AsyncWriteExt+Send+Sync+Clone> Pool<Conn> {
 
         {
             let this = this.clone();
-            smolscale2::spawn(async move {
+            asyncute::spawn(async move {
                 this._watchdog().await;
             }).detach();
         }
@@ -74,7 +74,7 @@ impl<Conn: AsyncReadExt+AsyncWriteExt+Send+Sync+Clone> Pool<Conn> {
         let interval = Duration::from_secs(3);
         loop {
             if zzz {
-                smol::Timer::after(interval).await;
+                async_io::Timer::after(interval).await;
             } else {
                 zzz = true;
             }

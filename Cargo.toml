@@ -77,10 +77,13 @@ quinn  = { optional = true, version = "0.11.7", features = ["rustls", "runtime-a
 scc2 = { version = "2.4.3", features = ["serde"] }
 fastrand = "2.3.0"
 
-smol = "2.0.2"
 smoltimeout = "0.6.2"
+async-task = { version = "4.7.1", features = ["portable-atomic"] }
+async-io = "2.4.0"
+async-net = "2.0.0"
+async-fs = "2.1.2"
 
-#smolscale = { version = "0.4.4", features = ["preempt"] }
+asyncute = "0.0.2"
 
 smolscale2 = { version = "0.6.0", features = ["preempt", "async-compat"] }
 #smolscale2 = { path = "../smolscale", features = ["preempt", "async-compat"] }
@@ -103,6 +106,8 @@ anypki = "0.2.0"
 rustls-native-certs = "0.8.1"
 rustls-rustcrypto = { version = "0.0.2-alpha", features = ["logging"] }
 mozilla-root-ca = { version = ">=0.0.0", features = ["der", "rustls"], default-features = false }
+futures-lite = { version = "2.6.0", features = ["memchr"] }
+async-channel = "2.3.1"
 #mozilla-root-ca = { path = "../mozilla-root-ca", features = ["der", "rustls"], default-features = false }
 
 [build-dependencies]

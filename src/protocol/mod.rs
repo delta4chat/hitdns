@@ -1,22 +1,8 @@
-// doh.rs
-pub mod doh;
-pub use doh::*;
-
-//pub mod pool; // compile error
-
-// dot.rs
-#[cfg(feature = "dot")]
-pub mod dot;
-#[cfg(feature = "dot")]
-pub use dot::*;
-
-// doq.rs
-#[cfg(feature = "doq")]
-pub mod doq;
-#[cfg(feature = "doq")]
-pub use doq::*;
-
 use crate::*;
+
+pub mod client;
+pub use client::*;
+
 pub static RUSTLS_CRYPTO_PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = Lazy::new(|| {
     use rustls::CipherSuite::*;
 

@@ -43,7 +43,7 @@ pub const DEFAULT_HOSTS_TXT: &'static str =
 2001:620:0:ff::3      dns.switch.ch
 ";
 
-pub static HOSTS: Lazy<Hosts> = Lazy::new(|| { smol::block_on(Hosts::new()) });
+pub static HOSTS: Lazy<Hosts> = Lazy::new(|| { async_io::block_on(Hosts::new()) });
 
 pub type HostsMap = scc2::TreeIndex<String, scc2::TreeIndex<IpAddr, ()>>;
 
@@ -91,7 +91,7 @@ impl Hosts {
 
     pub async fn load(&self, filename: &PathBuf) -> anyhow::Result<()> {
         let text =
-            smol::fs::read_to_string(filename).await
+            async_fs::read_to_string(filename).await
             .context("cannot read from hosts.txt file")
             .log_warn()?;
 

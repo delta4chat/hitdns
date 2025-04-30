@@ -7,7 +7,6 @@ use crate::*;
 use core::str::FromStr;
 
 use http_types::{Mime, Request, Response, StatusCode, Method};
-use smol::net::TcpListener;
 
 use data_encoding::{
     BASE64, BASE64URL_NOPAD, BASE32_NOPAD,
@@ -636,7 +635,7 @@ GET  /resolve?name=[domain]&type=[rdtype]  -> query DNS using JSON API (modified
                 .log_warn()?;
 
             let context = self.context.clone();
-            smolscale2::spawn(
+            asyncute::spawn(
                 async_h1b::accept_with_opts(
                     conn,
                     move |req| {
@@ -644,12 +643,12 @@ GET  /resolve?name=[domain]&type=[rdtype]  -> query DNS using JSON API (modified
                         async move {
                             Self::handle_request(context, peer, req).await
                         }
-                    }, // move closure
+                    },
                     async_h1b::ServerOptions::new()
                         //.with_headers_timeout(Duration::from_secs(10))
                         .with_default_host("unspecified.invalid")
-                ) // async_h1b::accept_with_opts
-            ).detach(); // smolscale2::spawn
+                )
+            ).detach();
         }
     }
 }

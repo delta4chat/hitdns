@@ -272,7 +272,7 @@ impl DNSQueryStats {
 
     pub fn add_query(&self, info: DNSQueryInfo) {
         let this = self.clone();
-        smolscale2::spawn(async move {
+        asyncute::spawn(async move {
             this._add_query(info).await.unwrap();
         }).detach();
     }

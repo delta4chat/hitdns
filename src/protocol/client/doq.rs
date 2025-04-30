@@ -10,7 +10,7 @@ pub struct DNSOverQUIC {
     endpoint: quinn::Endpoint,
     conns: QuicConns,
 
-    _task: Arc<smol::Task<()>>,
+    _task: Arc<Task<()>>,
 }
 
 impl DNSOverQUIC {
@@ -94,7 +94,7 @@ impl DNSOverQUIC {
         endpoint.set_default_client_config(client_config);
 
         let conns = Arc::new(scc2::HashMap::new());
-        let _task = Arc::new(smolscale2::spawn(
+        let _task = Arc::new(asyncute::spawn(
             Self::_conn_task(
                 endpoint.clone(),
                 conns.clone(),
@@ -120,7 +120,7 @@ impl DNSOverQUIC {
         let mut zzz = false;
         loop {
             if zzz {
-                smol::Timer::after(Duration::from_secs(
+                async_io::Timer::after(Duration::from_secs(
                     1,
                 ));
             } else {
