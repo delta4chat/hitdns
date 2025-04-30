@@ -251,7 +251,7 @@ pub struct DNSOverHTTPS {
     client: ClientKind,
     url: reqwest_h3::Url,
     metrics: Arc<DNSMetrics>,
-    _task: Arc<smol::Task<()>>,
+    _task: Arc<Task<()>>,
 }
 
 impl<'a> DNSOverHTTPS {
@@ -302,7 +302,7 @@ impl<'a> DNSOverHTTPS {
 
         let metrics = Arc::new(DNSMetrics::from(&url));
 
-        let _task = Arc::new(smolscale2::spawn(
+        let _task = Arc::new(asyncute::spawn(
             Self::_metrics_task(
                 client.clone(),
                 url.clone(),
@@ -337,7 +337,7 @@ impl<'a> DNSOverHTTPS {
                     mult = 10.0;
                 }
                 let s = (fastrand::u16(5_000 ..= 10_000) as f64) / 1000.0;
-                smol::Timer::after(Duration::from_secs_f64(s * mult)).await;
+                async_io::Timer::after(Duration::from_secs_f64(s * mult)).await;
             } else {
                 zzz = true;
             }

@@ -2,7 +2,6 @@ use crate::*;
 
 use core::str::FromStr;
 use http_types::{Mime, Response, StatusCode};
-use smol::net::TcpListener;
 
 #[derive(Debug)]
 pub struct HitdnsAPI {
@@ -36,7 +35,7 @@ impl HitdnsAPI {
             let (conn, peer) = self.listener.accept().await.log_warn()?;
 
             let daemon = self.daemon.clone();
-            smolscale2::spawn(
+            asyncute::spawn(
                 async_h1b::accept_with_opts(
                     conn,
                     move |req| {
@@ -324,7 +323,7 @@ GET /expire-records  ->  mark the cached results for a domain (and optional rdcl
                         //.with_headers_timeout(Duration::from_secs(60))
                         .with_default_host("unspecified.invalid")
                 ) // async_h1b::accept_with_opts
-            ).detach(); // smolscale2::spawn
+            ).detach(); // asyncute::spawn
         }
     }
 }

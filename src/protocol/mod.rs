@@ -1,22 +1,8 @@
-// doh.rs
-pub mod doh;
-pub use doh::*;
-
-//pub mod pool; // compile error
-
-// dot.rs
-#[cfg(feature = "dot")]
-pub mod dot;
-#[cfg(feature = "dot")]
-pub use dot::*;
-
-// doq.rs
-#[cfg(feature = "doq")]
-pub mod doq;
-#[cfg(feature = "doq")]
-pub use doq::*;
-
 use crate::*;
+
+pub mod client;
+pub use client::*;
+
 pub static RUSTLS_CRYPTO_PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = Lazy::new(|| {
     use rustls::CipherSuite::*;
 
@@ -122,6 +108,7 @@ pub static RUSTLS_CLIENT_CONFIG: Lazy<rustls::ClientConfig> = Lazy::new(|| {
     .with_safe_default_protocol_versions().unwrap()
     .with_webpki_verifier({
         let mut root_certs = rustls_native_certs::load_native_certs().certs;
+        root_certs.extend_from_slice(&(mozilla_root_ca::RUSTLS_CERTIFICATE_DER_LIST));
         anypki::DefaultRules::mitm_threats_extra().retain(&mut root_certs);
 
         let mut rcs = rustls::RootCertStore::empty();

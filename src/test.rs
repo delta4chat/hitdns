@@ -22,13 +22,13 @@ fn stress_pkt_gen2() -> dns::Message {
 }
 
 fn random_bytes(len: usize) -> Vec<u8> {
-    let mut out = vec![];
-    while out.len() < len {
+    let mut out = vec![0u8; len];
+
+    let mut chunk_len;
+    for chunk in out.chunks_mut(8) {
+        chunk_len = chunk.len();
         // do not use fastrand::Rng::fill() because it's internal implemention is like to this, so there is no performance advantage
-        out.extend(fastrand::u64(..).to_ne_bytes());
-    }
-    while out.len() > len {
-        out.pop();
+        chunk.copy_from_slice(&(fastrand::u64(..).to_ne_bytes()[..chunk_len]));
     }
     assert!(out.len() == len);
     out
@@ -93,7 +93,7 @@ async fn stress(valid: bool, interval: Duration) {
                 }
                 if send_pkt.abs_diff(recv_pkt) > send_pkt {
                     log::error!("(stress-{id}) test issue: [server response rate too low] sent pkts = {send_pkt} | recv pkts = {recv_pkt}");
-                    smol::Timer::after(Duration::from_millis(100)).await;
+                    async_io::Timer::after(Duration::from_millis(100)).await;
                 }
 
                 if recv_pkt > 0 {
@@ -107,18 +107,18 @@ async fn stress(valid: bool, interval: Duration) {
             }
         }
 
-        smol::Timer::after(interval).await;
+        async_io::Timer::after(interval).await;
     }
 }
 
 pub async fn main_async() {
-    smol::Timer::after(Duration::from_secs(3)).await;
+    async_io::Timer::after(Duration::from_secs(3)).await;
 
     let stress_valid_fut = stress(true, Duration::from_millis(10));
     let stress_invalid_fut = stress(false, Duration::from_millis(50));
 
-    smolscale2::spawn(stress_valid_fut).detach();
-    smolscale2::spawn(stress_invalid_fut).detach();
+    asyncute::spawn(stress_valid_fut).detach();
+    asyncute::spawn(stress_invalid_fut).detach();
 
     let mut rate = String::from("N/A");
     loop {
@@ -131,7 +131,7 @@ pub async fn main_async() {
 
         log::warn!("stress test result: total server response rate = {rate} | total sent/recv ({sp}/{rp})");
 
-        smol::Timer::after(Duration::from_secs(15)).await;
+        async_io::Timer::after(Duration::from_secs(15)).await;
     }
 }
 

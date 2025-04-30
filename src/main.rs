@@ -18,7 +18,7 @@ pub use traits::*;
 pub mod hosts;
 pub use hosts::*;
 
-// protocol/*.rs
+// protocol/*
 pub mod protocol;
 pub use protocol::*;
 
@@ -39,20 +39,26 @@ mod test;
 
 /* ==================== */
 
-pub use core::ops::{Deref, DerefMut, Add, Div};
-pub use core::pin::Pin;
-pub use core::time::Duration;
-
-pub use core::fmt::Debug;
-pub use core::iter::Sum;
+pub use core::{
+    ops::{Deref, DerefMut, Add, Div},
+    pin::Pin,
+    time::Duration,
+    fmt::Debug,
+    iter::Sum,
+    future::Future,
+};
 
 extern crate alloc;
-pub use alloc::collections::VecDeque;
-pub use alloc::sync::Arc;
+pub use alloc::{
+    collections::VecDeque,
+    sync::Arc,
+};
 
-pub use std::net::{IpAddr, SocketAddr};
-pub use std::path::{Path, PathBuf};
-pub use std::time::{Instant, SystemTime};
+pub use std::{
+    net::{IpAddr, SocketAddr},
+    path::{Path, PathBuf},
+    time::{Instant, SystemTime},
+};
 
 pub mod dns {
     pub use hickory_proto::op::*;
@@ -85,19 +91,25 @@ pub use portable_atomic::{AtomicUsize, AtomicU64, AtomicU8, AtomicBool};
 pub use bytes::Bytes;
 pub use serde::{Serialize, Deserialize};
 
-pub use smol::net::AsyncToSocketAddrs;
+pub use asyncute::Defer;
 
-pub use smol::net::UdpSocket;
-pub use smol::net::{TcpListener, TcpStream};
+pub use async_task::Task;
 
-pub use smol::io::{
-    AsyncReadExt, AsyncWriteExt,
-    AsyncRead, AsyncWrite,
+pub use async_net::{
+    AsyncToSocketAddrs,
+    UdpSocket,
+    TcpListener, TcpStream,
 };
-pub use smol::stream::StreamExt;
 
-pub use smol::channel::{Receiver, Sender};
-pub use smol::future::Future;
+pub use futures_lite::{
+    io::{
+        AsyncReadExt, AsyncWriteExt,
+        AsyncRead,    AsyncWrite,
+    },
+    stream::StreamExt,
+};
+
+pub use async_channel::{Receiver, Sender};
 
 #[cfg(feature = "sqlite")]
 pub use sqlx::{
@@ -130,22 +142,21 @@ pub static HITDNS_NONCE: Lazy<String> = Lazy::new(|| {
     format!("{unix}_{rand}")
 });
 
-pub fn unique<T: PartialEq+Clone>(set: &mut Vec<T>) {
+pub fn unique<T: PartialEq>(set: &mut Vec<T>) {
     let mut new = Vec::new();
-    for it in set.iter() {
-        if new.contains(it) {
+    for it in set.drain(..) {
+        if new.contains(&it) {
             continue;
         }
-        new.push(it.clone());
+        new.push(it);
     }
 
-    set.clear();
-    set.extend(new);
+    *set = new;
 }
 
 // hitdns opt parsed from clap or toml-env
 pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
-    smol::block_on(async move {
+    async_io::block_on(async move {
         let mut opt = HitdnsOpt::parse();
 
         if let Some(ref config) = opt.config {
@@ -169,7 +180,6 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
                     log::error!("cannot parse TOML config file ({config:?}): {err:?}");
                 }
             }
-
         }
         
         /* ===== handle Test mode ===== */
@@ -218,7 +228,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
             let listen = opt.listen[idx];
 
             if listen.port() == 0 { // handle port 0 (automatic allocated by OS)
-                let adr = smol::net::UdpSocket::bind(listen).await.unwrap();
+                let adr = UdpSocket::bind(listen).await.unwrap();
                 opt.listen[idx] = adr.local_addr().unwrap();
             }
         }
@@ -301,7 +311,7 @@ pub static HITDNS_OPT: Lazy<HitdnsOpt> = Lazy::new(|| {
         }
 
         opt
-    }) // smol::block_on
+    }) // async_io::block_on
 });
 
 pub static HITDNS_DIR: Lazy<PathBuf> = Lazy::new(|| {
@@ -596,7 +606,7 @@ pub struct DNSHookArray {
 impl DNSHookArray {
     pub fn new(opt: HitdnsOpt) -> Self {
         Self {
-            hooks: scc2::HashMap::new(),
+            hooks: Default::default(),
             opt
         }
     }
@@ -679,9 +689,9 @@ pub struct DNSDaemonSocket {
 
 #[derive(Debug, Default)]
 pub struct DNSDaemonTask {
-    udp: scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
-    tcp: scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
-    http: scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>,
+    udp: scc2::HashMap<SocketAddr, Task<anyhow::Result<()>>>,
+    tcp: scc2::HashMap<SocketAddr, Task<anyhow::Result<()>>>,
+    http: scc2::HashMap<SocketAddr, Task<anyhow::Result<()>>>,
 }
 
 #[derive(Debug)]
@@ -694,7 +704,7 @@ impl DNSDaemon {
     pub async fn new(opt: HitdnsOpt) -> anyhow::Result<Self> {
         if opt.listen.is_empty() {
             anyhow::bail!("no listen address specified!");
-        };
+        }
 
         let mut udp = Vec::new();
         let mut tcp = Vec::new();
@@ -826,7 +836,7 @@ impl DNSDaemon {
                         .await
                         .log_error()
                 {
-                    smolscale2::spawn(async move {
+                    asyncute::spawn(async move {
                         api.run().await.unwrap();
                     })
                     .detach();
@@ -849,12 +859,8 @@ impl DNSDaemon {
             );
 
             log::debug!(
-                "smolscale2 worker threads: {:?}",
-                smolscale2::running_threads()
-            );
-            log::debug!(
-                "smolscale2 active tasks: {:?}",
-                smolscale2::active_task_count()
+                "asyncute executor status: {:#?}",
+                asyncute::ExecutorStatus::current(),
             );
 
             log::trace!(
@@ -897,7 +903,7 @@ impl DNSDaemon {
                 }
             }).await;
 
-            smol::Timer::after(Duration::from_secs(10)).await;
+            async_io::Timer::after(Duration::from_secs(10)).await;
         }
     }
 }
@@ -952,7 +958,7 @@ impl DNSDaemonContext {
         }
     }
 
-    async fn handle_udp(&self, tasks: &scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) {
+    async fn handle_udp(&self, tasks: &scc2::HashMap<SocketAddr, Task<anyhow::Result<()>>>) {
         for idx in 0 .. self.socket.udp.len() {
             let addr = self.opt.listen[idx];
             if tasks.contains(&addr) {
@@ -961,7 +967,7 @@ impl DNSDaemonContext {
             let udp = self.socket.udp[idx].clone();
 
             let this = self.clone();
-            let task = smolscale2::spawn(async move { this._handle_udp(udp).await });
+            let task = asyncute::spawn(async move { this._handle_udp(udp).await });
 
             let _ = tasks.insert_async(addr, task).await;
         }
@@ -985,7 +991,7 @@ impl DNSDaemonContext {
 
             let this = this.clone();
             let udp = udp.clone();
-            smolscale2::spawn(async move {
+            asyncute::spawn(async move {
                 let req =
                     if let Ok(val) = dns::Message::from_vec(&msg).log_debug() {
                         val
@@ -1017,7 +1023,7 @@ impl DNSDaemonContext {
         }
     }
 
-    async fn handle_tcp(&self, tasks: &scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) {
+    async fn handle_tcp(&self, tasks: &scc2::HashMap<SocketAddr, Task<anyhow::Result<()>>>) {
         for idx in 0 .. self.socket.tcp.len() {
             let addr = self.opt.listen[idx];
             if tasks.contains(&addr) {
@@ -1027,7 +1033,7 @@ impl DNSDaemonContext {
             let tcp = self.socket.tcp[idx].clone();
 
             let this = self.clone();
-            let task = smolscale2::spawn(async move { this._handle_tcp(tcp).await });
+            let task = asyncute::spawn(async move { this._handle_tcp(tcp).await });
 
             let _ = tasks.insert_async(addr, task).await;
         }
@@ -1042,7 +1048,7 @@ impl DNSDaemonContext {
             log::debug!("DNS Daemon accepted new TCP connection from {peer:?}");
 
             let this = this.clone();
-            smolscale2::spawn(async move {
+            asyncute::spawn(async move {
                 let mut req_buf = vec![0u8; 65535];
                 let mut req: dns::Message;
 
@@ -1145,11 +1151,11 @@ impl DNSDaemonContext {
                         break;
                     }
                 } // tcp connection loop
-            }).detach(); // smolscale2::spawn
+            }).detach(); // asyncute::spawn
         } // tcp accept loop
     }
 
-    async fn handle_http(&self, tasks: &scc2::HashMap<SocketAddr, smol::Task<anyhow::Result<()>>>) -> anyhow::Result<()> {
+    async fn handle_http(&self, tasks: &scc2::HashMap<SocketAddr, Task<anyhow::Result<()>>>) -> anyhow::Result<()> {
         for idx in 0 .. self.opt.dohp_listen.len() {
             let dl = self.opt.dohp_listen[idx];
 
@@ -1159,7 +1165,7 @@ impl DNSDaemonContext {
 
             let dohp = Arc::new(DNSOverHTTP::new(dl, self.clone()).await?);
             let _ = self.socket.http.insert(idx, dohp.clone());
-            let _ = tasks.insert_async(dl, smolscale2::spawn(async move { dohp.run().await })).await;
+            let _ = tasks.insert_async(dl, asyncute::spawn(async move { dohp.run().await })).await;
         }
 
         Ok(())
@@ -1725,6 +1731,7 @@ async fn main_async() -> anyhow::Result<()> {
 
     if let Some(thrs) = opt.threads {
         smolscale2::set_threads(thrs);
+        asyncute::Config::global().executor.total_threads_range.set_range(thrs..usize::MAX);
     }
 
     if opt.info {
@@ -1764,7 +1771,7 @@ async fn main_async() -> anyhow::Result<()> {
         if path == &PathBuf::from("-") {
             println!("{json_str}");
         } else {
-            smol::fs::write(path, json_str).await?;
+            async_fs::write(path, json_str).await?;
         }
         log::info!("DatabaseSnapshot dumped.");
         return Ok(());
@@ -1802,7 +1809,7 @@ async fn main_async() -> anyhow::Result<()> {
     let daemon = DNSDaemon::new(opt.clone()).await.unwrap();
 
     if opt.test {
-        smolscale2::spawn(daemon.run()).detach();
+        asyncute::spawn(daemon.run()).detach();
         test::main_async().await;
     } else {
         daemon.run().await;
@@ -1812,6 +1819,6 @@ async fn main_async() -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    smolscale2::block_on(main_async())
+    async_io::block_on(main_async())
 }
 

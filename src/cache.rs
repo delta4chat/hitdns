@@ -61,35 +61,6 @@ impl TryInto<Arc<DNSEntry>> for DNSCacheStatus {
     }
 }
 
-pub struct Defer {
-    called: bool,
-    f: Box<dyn FnMut()->()>,
-}
-impl Defer {
-    pub fn new(f: impl FnMut()->() + 'static) -> Self {
-        Self {
-            called: false,
-            f: Box::new(f),
-        }
-    }
-    pub fn cancel(&mut self) {
-        self.called = true;
-    }
-}
-impl Drop for Defer {
-    fn drop(&mut self) {
-        if self.called {
-            return;
-        }
-
-        self.called = true;
-
-        (self.f)();
-    }
-}
-
-unsafe impl Send for Defer {}
-
 /* ========== DNS Cache Entry ========== */
 #[derive(Debug, Clone)]
 pub struct DNSCacheEntry {
@@ -99,7 +70,7 @@ pub struct DNSCacheEntry {
 
     update_task:
         Arc<scc2::Atom<
-            smol::Task<anyhow::Result<()>>
+            Task<anyhow::Result<()>>
         >>,
 
     updating: Arc<AtomicBool>,
@@ -145,15 +116,16 @@ impl DNSCacheEntry {
             );
 
             if zzz {
-                smol::Timer::after(Duration::from_millis(50)).await;
+                async_io::Timer::after(Duration::from_millis(50)).await;
             } else {
                 zzz = true;
             }
 
             if let None =
-                self.update_event.listen()
-                .timeout(Duration::from_millis(100))
-                .await
+                self.update_event
+                    .listen()
+                    .timeout(Duration::from_millis(100))
+                    .await
             {
                 log::trace!("timed out for waiting event from update_event");
                 continue;
@@ -170,7 +142,7 @@ impl DNSCacheEntry {
         }
 
         if let Some(task) = self.update_task.get() {
-            // Option<smol::Task>
+            // Option<Task>
             ! task.is_finished()
         } else {
             // no task
@@ -237,8 +209,8 @@ impl DNSCacheEntry {
             let updating = self.updating.clone();
             let update_event = self.update_event.clone();
 
-            let task = smolscale2::spawn(async move {
-                let _guard = {
+            let task = asyncute::spawn(async move {
+                let mut defer = {
                     let u = updating.clone();
                     Defer::new(move || {
                         u.store(false, SeqCst);
@@ -261,7 +233,8 @@ impl DNSCacheEntry {
                     let min_ttl = MIN_TTL.load(Relaxed);
                     let max_ttl = MAX_TTL.load(Relaxed);
 
-                    let mut ttl = response
+                    let mut ttl =
+                        response
                         .all_sections()
                         .map(|x| x.ttl())
                         .min()
@@ -292,7 +265,7 @@ impl DNSCacheEntry {
                         }
                     );
 
-                updating.store(false, Relaxed);
+                defer.run();
                 log::debug!("send update finish notify to {} listeners", update_event.notify_relaxed(usize::MAX));
 
                 let query: Vec<u8> = bincode::serialize(&query).log_error()?;
