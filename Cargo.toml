@@ -72,7 +72,7 @@ reqwest-h3 = { optional = true, version = "0.13.2", features = ["rustls-tls", "h
 #hyper = { version = "0.14.21", features = ["client"], default-features = false }
 
 # QUIC library for DoQ client
-quinn  = { optional = true, version = "0.11.7", features = ["rustls", "runtime-async-std"], default-features = false }
+quinn  = { optional = true, version = "0.11.8", features = ["rustls", "runtime-async-std"], default-features = false }
 
 scc2 = { version = "2.4.3", features = ["serde"] }
 fastrand = "2.3.0"
