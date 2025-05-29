@@ -5,8 +5,8 @@
 #![warn(missing_docs)]
 
 pub mod dns;
-
 pub mod query;
+pub mod upstream;
 
 pub(crate) use core::fmt::Write;
 
