@@ -5,10 +5,12 @@
 #![warn(missing_docs)]
 
 pub mod dns;
-//pub mod cache;
+pub mod cache;
 pub mod query;
 pub mod entry;
 pub mod upstream;
+
+pub mod helper;
 
 pub use core::{
     fmt::{self, Write},
@@ -23,8 +25,11 @@ pub use std::{
     sync::Arc,
 };
 
+pub use bytes::Bytes;
 pub use country_code_enum::CountryCode;
 pub use http_types::Url;
+pub use portable_atomic::{AtomicUsize, Ordering::Relaxed};
+pub use event_listener::{Event, listener};
 
 pub type BoxFut<T> = Box<dyn Future<Output=T> + Send + 'static>;
 pub type PinFut<T> = Pin<BoxFut<T>>;

@@ -57,7 +57,7 @@ use serialized::Serialized;
 pub type DomainString = heapless::String<{serialized::len_max::DOMAIN}>;
 
 /// DNS Query.
-pub trait DNSQuery {
+pub trait DNSQuery: Send + Sync {
     /// create new DNS Query from (domain, rdclass, rdtype) third-tuple.
     fn new(
         domain: dns::Name,
@@ -75,6 +75,37 @@ pub trait DNSQuery {
 
     /// query type (rdtype).
     fn rdtype(&self) -> dns::RdType;
+}
+
+impl PartialEq for dyn DNSQuery {
+    fn eq(&self, other: &Self) -> bool {
+        self.domain() == other.domain()
+        &&
+        self.rdclass() == other.rdclass()
+        &&
+        self.rdtype() == other.rdtype()
+    }
+}
+
+impl Eq for dyn DNSQuery {}
+
+impl fmt::Debug for dyn DNSQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("dyn DNSQuery")
+         .field("domain", self.domain())
+         .field("rdclass", &(self.rdclass()))
+         .field("rdtype", &(self.rdtype()))
+         .finish_non_exhaustive()
+    }
+}
+
+impl Hash for dyn DNSQuery {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        format!("{:?}", self).hash(state);
+        self.domain().hash(state);
+        self.rdclass().hash(state);
+        self.rdtype().hash(state);
+    }
 }
 
 impl DNSQuery for dns::Query {

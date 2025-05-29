@@ -173,7 +173,7 @@ impl DNSProtocol {
 }
 
 /// DNS Upstream Server.
-pub trait DNSUpstream {
+pub trait DNSUpstream: Send + Sync {
     /// the Name of Upstream Server.
     fn name<'a>(&'a self) -> &'a str;
 
@@ -201,7 +201,7 @@ pub trait DNSUpstream {
     fn is_without_logs(&self) -> bool { false }
 
     /// try to resolve DNS query using this upstream.
-    fn resolve(&self, query: Arc<dyn DNSQuery>) -> PinFut<std::io::Result<DNSRecord>>;
+    fn resolve(&self, query: Arc<dyn DNSQuery>) -> PinFut<std::io::Result<DNSEntry>>;
 }
 
 impl fmt::Debug for dyn DNSUpstream {

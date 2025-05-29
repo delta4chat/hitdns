@@ -4,6 +4,7 @@ use crate::{
     *,
     query::*,
     upstream::*,
+    helper::*,
 };
 
 /// the source of DNS Record.
@@ -18,19 +19,14 @@ pub enum DNSRecordSource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DNSRecord {
+pub struct DNSEntry {
     /// whole DNS Response in wire format
-    pub wire: Arc<Vec<u8>>,
+    pub wire: Bytes,
 
-    /// last update timestamp
-    pub last_update: SystemTime,
+    /// expire timestamp of this entry
+    pub expire_time: SystemTime,
 
     /// this DNS record is from which source?
     pub source: DNSRecordSource,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct DNSEntry<Q: DNSQuery> {
-    pub query: Q,
-    pub response: DNSRecord,
-}
