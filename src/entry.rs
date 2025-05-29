@@ -1,5 +1,10 @@
 //! DNS Entry (response)
-//!
+
+use crate::{
+    *,
+    query::*,
+    upstream::*,
+};
 
 /// the source of DNS Record.
 /// * Internet: this record is from public DNS upstream.
@@ -7,7 +12,7 @@
 /// * Local: this record is from router, gateway, or another kind of LAN domains.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DNSRecordSource {
-    Internet(DNSUpstream),
+    Internet(Arc<dyn DNSUpstream>),
     Hosts,
     Local,
 }

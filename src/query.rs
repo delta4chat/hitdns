@@ -57,13 +57,15 @@ use serialized::Serialized;
 pub type DomainString = heapless::String<{serialized::len_max::DOMAIN}>;
 
 /// DNS Query.
-pub trait DNSQuery: Sized {
+pub trait DNSQuery {
     /// create new DNS Query from (domain, rdclass, rdtype) third-tuple.
     fn new(
         domain: dns::Name,
         rdclass: dns::RdClass,
         rdtype: dns::RdType,
-    ) -> Self;
+    ) -> Self where Self: Sized {
+        unimplemented!();
+    }
 
     /// query domain name.
     fn domain<'a>(&'a self) -> &'a dns::Name;
@@ -147,7 +149,7 @@ pub trait DNSQueryExt: DNSQuery {
     }
 
     /// parse DNSQuery from Serialized format.
-    fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> {
+    fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> where Self: Sized {
         let mut bytes = bytes.as_ref();
 
         if bytes.len() > serialized::LEN_MAX {

@@ -1,11 +1,10 @@
 //! DNS upstream
 
-use crate::*;
-
-use std::net::SocketAddr;
-
-use country_code_enum::CountryCode;
-use http_types::Url;
+use crate::{
+    *,
+    query::*,
+    entry::*,
+};
 
 /// HTTP versions
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -175,6 +174,9 @@ impl DNSProtocol {
 
 /// DNS Upstream Server.
 pub trait DNSUpstream {
+    /// the Name of Upstream Server.
+    fn name<'a>(&'a self) -> &'a str;
+
     /// DNS protocol used by this upstream.
     fn protocol(&self) -> DNSProtocol;
 
@@ -197,4 +199,50 @@ pub trait DNSUpstream {
     /// * only return true if servers that have policy that clarify claimed it does not kept logs.
     /// * it's should return false if this is unclear.
     fn is_without_logs(&self) -> bool { false }
+
+    /// try to resolve DNS query using this upstream.
+    fn resolve(&self, query: Arc<dyn DNSQuery>) -> PinFut<std::io::Result<DNSRecord>>;
+}
+
+impl fmt::Debug for dyn DNSUpstream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("dyn DNSUpstream")
+         .field("name", &(self.name()))
+         .field("protocol", &(self.protocol()))
+         .field("server_country", &(self.server_country()))
+         .field("operator_country", &(self.operator_country()))
+         .field("is_anonymized_logs", &(self.is_anonymized_logs()))
+         .field("is_without_logs", &(self.is_without_logs()))
+         .field("resolve", &"fn")
+         .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for dyn DNSUpstream {
+    fn eq(&self, other: &Self) -> bool {
+        self.name() == other.name()
+        &&
+        self.protocol() == other.protocol()
+        &&
+        self.server_country() == other.server_country()
+        &&
+        self.operator_country() == other.operator_country()
+        &&
+        self.is_anonymized_logs() == other.is_anonymized_logs()
+        &&
+        self.is_without_logs() == self.is_without_logs()
+    }
+}
+impl Eq for dyn DNSUpstream {}
+
+impl Hash for dyn DNSUpstream {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        format!("{:?}", self).hash(state);
+        self.name().hash(state);
+        self.protocol().hash(state);
+        self.server_country().hash(state);
+        self.operator_country().hash(state);
+        self.is_anonymized_logs().hash(state);
+        self.is_without_logs().hash(state);
+    }
 }
