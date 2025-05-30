@@ -4,6 +4,7 @@ use crate::{
     *,
     query::*,
     entry::*,
+    util::*,
 };
 
 /// HTTP versions
@@ -200,7 +201,11 @@ pub trait DNSUpstream: Send + Sync {
     /// * it's should return false if this is unclear.
     fn is_without_logs(&self) -> bool { false }
 
-    /// try to resolve DNS query using this upstream.
+    /// return the metrics of this upstream.
+    /// * metrics is about to online status, reliability status and server latency, etc.
+    fn metrics<'a>(&'a self) -> &'a DNSUpstreamMetrics;
+
+    /// (un-cached) try to resolve DNS query using this upstream.
     fn resolve(&self, query: Arc<dyn DNSQuery>) -> PinFut<std::io::Result<DNSEntry>>;
 }
 
@@ -213,6 +218,7 @@ impl fmt::Debug for dyn DNSUpstream {
          .field("operator_country", &(self.operator_country()))
          .field("is_anonymized_logs", &(self.is_anonymized_logs()))
          .field("is_without_logs", &(self.is_without_logs()))
+         .field("metrics", self.metrics())
          .field("resolve", &"fn")
          .finish_non_exhaustive()
     }
@@ -244,5 +250,84 @@ impl Hash for dyn DNSUpstream {
         self.operator_country().hash(state);
         self.is_anonymized_logs().hash(state);
         self.is_without_logs().hash(state);
+    }
+}
+
+/// the inner of [`DNSUpstreamMetrics`].
+#[derive(Debug)]
+pub struct DNSUpstreamMetricsInner {
+    /// whether this upstream online?
+    online: Atomic<bool>,
+
+    /// percentage of reliability of this upstream.
+    /// * u8 must be within range `0..=100`: reliability `0` means all of query is failed, and `100` means all of query is successful.
+    /// * this is about to the application level reliability. for example (in DoH protocol) all web servers will have 0% reliability due to that accepts HTTPS requests but unable to handle DoH requests.
+    reliability: Atomic<u8>,
+
+    /// latency map: key is the response time, and value is the latency.
+    latency: MokaCache<SystemTime, Duration>,
+
+    /// last successfully request.
+    /// * this often means the last server uptime.
+    /// but sometimes inaccurate for reliability, because the server select mechanism will automatic skipping offline servers.
+    last_okey: AtomicDuration,
+
+    /// last failed request.
+    /// * this often means the start time of server down.
+    /// * but sometimes inaccurate for reliability, because the server select mechanism will try to use some down servers if no more reliable servers (for example Ethernet down or Wi-Fi disconnected).
+    last_fail: AtomicDuration,
+}
+
+/// the metrics that can able to update in place.
+#[derive(Debug, Clone)]
+pub struct DNSUpstreamMetrics(Arc<DNSUpstreamMetricsInner>);
+
+impl Deref for DNSUpstreamMetrics {
+    type Target = DNSUpstreamMetricsInner;
+
+    fn deref<'a>(&'a self) -> &'a DNSUpstreamMetricsInner {
+        self.0.as_ref()
+    }
+}
+
+impl DNSUpstreamMetrics {
+    /// create new Metrics of specified DNS Upstream.
+    pub fn new() -> Self {
+        Self(Arc::new(DNSUpstreamMetricsInner {
+            online: Atomic::<bool>::new(false),
+            reliability: Atomic::<u8>::new(50),
+            latency: {
+                MokaCacheBuilder::default()
+                .name("dns upstream metrics: latency information")
+                .max_capacity(10000)
+                .build_with_hasher(ahash::RandomState::default())
+            },
+            last_okey: AtomicDuration::default(),
+            last_fail: AtomicDuration::default(),
+        }))
+    }
+
+    pub async fn record(&self, now: SystemTime, online: bool, maybe_latency: Option<Duration>) {
+        self.online.store(online, Relaxed);
+
+        let maybe_unix = now.duration_since(SystemTime::UNIX_EPOCH);
+
+        if online {
+            self.reliability.deref().checked_add(1);
+        } else {
+            self.reliability.deref().checked_sub(1);
+        }
+
+        if let Ok(unix) = maybe_unix {
+            if online {
+                self.last_okey.set(unix);
+            } else {
+                self.last_fail.set(unix);
+            }
+        }
+
+        if let Some(latency) = maybe_latency {
+            self.latency.insert(now, latency).await;
+        }
     }
 }

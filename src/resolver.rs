@@ -99,7 +99,7 @@ pub struct DNSResolver {
 impl Deref for DNSResolver {
     type Target = DNSResolverInner;
 
-    fn deref(&self) -> &DNSResolverInner {
+    fn deref<'a>(&'a self) -> &'a DNSResolverInner {
         self.inner.as_ref()
     }
 }

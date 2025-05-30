@@ -15,7 +15,7 @@ pub mod cache;
 pub mod upstream;
 pub mod resolver;
 
-pub mod helper;
+pub mod util;
 
 pub use core::{
     fmt::{self, Write},
@@ -37,6 +37,10 @@ pub use http_types::Url;
 pub use portable_atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering::Relaxed};
 pub use event_listener::{Event, listener};
 pub use smoltimeout::TimedExt;
+pub use asyncute::util::{AtomicChecked, AtomicDuration};
+
+pub use moka::future::CacheBuilder as MokaCacheBuilder;
+pub type MokaCache<K, V> = moka::future::Cache<K, V, ahash::RandomState>;
 
 pub type BoxFut<T> = Box<dyn Future<Output=T> + Send + 'static>;
 pub type PinFut<T> = Pin<BoxFut<T>>;

@@ -9,7 +9,7 @@ impl CacheConfig {
     pub const fn global() -> &'static Self {
         static GLOBAL: CacheConfig = CacheConfig {
             min_ttl: AtomicU32::new(0),
-            max_ttl: AtomicU32::new(86400),
+            max_ttl: AtomicU32::new(60*60*24),
         };
 
         &GLOBAL

@@ -29,7 +29,7 @@ pub struct DNSCacheEntry {
 impl Deref for DNSCacheEntry {
     type Target = DNSCacheEntryInner;
 
-    fn deref(&self) -> &DNSCacheEntryInner {
+    fn deref<'a>(&'a self) -> &'a DNSCacheEntryInner {
         self.inner.as_ref()
     }
 }
@@ -106,7 +106,7 @@ pub enum DNSCacheStatus {
 /// 3. if response exists and TTL does not expired, cache hit.
 #[derive(Debug, Clone)]
 pub struct DNSCache {
-    memory: moka::future::Cache<Arc<dyn DNSQuery>, DNSCacheEntry, ahash::RandomState>,
+    memory: MokaCache<Arc<dyn DNSQuery>, DNSCacheEntry>,
     //disk: DNSDatabase,
 
     resolve_notify: Arc<dyn ResolveNotify>,
@@ -116,12 +116,16 @@ impl DNSCache {
     pub fn new(resolve_notify: Arc<dyn ResolveNotify>) -> Self {
         Self {
             memory: {
-                moka::future::Cache::builder()
+                MokaCacheBuilder::default()
                 .name("hitdns in-memory cache")
                 .max_capacity(10485760)
-                .time_to_idle(Duration::from_secs(60*60)) // one hour for time-to-idle
-                .time_to_live(Duration::from_secs(60*60*24*365*100)) // 100 years for time-to-live
                 //.async_eviction_listener(|_query, _entry, cause| {})
+                .time_to_idle(Duration::from_secs(60*60)) // one hour for time-to-idle
+
+                /* !!! NOTE do not set this, because moka by default is not doing calculate of time to live, so set this causes useless calculation.
+                            .time_to_live(Duration::from_secs(60*60*24*365*100))
+                */
+
                 .build_with_hasher(ahash::RandomState::default())
             },
             resolve_notify,

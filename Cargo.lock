@@ -10,6 +10,7 @@ checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
 dependencies = [
  "cfg-if",
  "const-random",
+ "getrandom 0.3.3",
  "once_cell",
  "portable-atomic",
  "version_check",
@@ -73,6 +74,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-task"
+version = "4.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b75356056920673b02621b35afd0f7dda9306d03c79a30f5c56c44cf256e3de"
+
+[[package]]
 name = "async-trait"
 version = "0.1.88"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -81,6 +88,23 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "asyncute"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7abe0a7b35db5da8d0a573e85183b49dd927aeb9362f75f7d5b680cfb27186ca"
+dependencies = [
+ "ahash",
+ "async-task",
+ "crossbeam-channel",
+ "log",
+ "num-traits",
+ "once_cell",
+ "portable-atomic",
+ "rustversion",
+ "scc2",
 ]
 
 [[package]]
@@ -477,6 +501,7 @@ name = "hitdns"
 version = "0.8.0"
 dependencies = [
  "ahash",
+ "asyncute",
  "bytes",
  "country-code-enum",
  "event-listener 5.4.0",
@@ -755,12 +780,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-traits"
+version = "0.2.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 dependencies = [
  "critical-section",
+ "parking_lot_core",
  "portable-atomic",
 ]
 
@@ -1052,6 +1087,15 @@ name = "scc"
 version = "2.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22b2d775fb28f245817589471dd49c5edf64237f4a19d10ce9a92ff4651a27f4"
+dependencies = [
+ "sdd",
+]
+
+[[package]]
+name = "scc2"
+version = "2.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44e2272f2b777b1fbdb596f1822875ccc34bafed95abac2d6d74350ee9360b84"
 dependencies = [
  "sdd",
 ]
