@@ -14,7 +14,7 @@ pub use hickory_proto::{
         rdata,
         Record,
     },
-    serialize::binary::BinEncodable,
+    serialize::binary::{BinEncodable, BinDecodable},
 };
 
 /// RdClass

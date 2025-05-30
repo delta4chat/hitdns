@@ -4,6 +4,8 @@
 
 #![warn(missing_docs)]
 
+pub mod config;
+
 pub mod dns;
 
 pub mod query;
@@ -32,7 +34,7 @@ pub use std::{
 pub use bytes::Bytes;
 pub use country_code_enum::CountryCode;
 pub use http_types::Url;
-pub use portable_atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
+pub use portable_atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering::Relaxed};
 pub use event_listener::{Event, listener};
 pub use smoltimeout::TimedExt;
 

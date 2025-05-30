@@ -46,9 +46,28 @@ impl DNSCacheEntry {
         }
     }
 
-    pub async fn update(&self, resolver: &DNSResolver) {
-        resolver.resolve(self.query);
+    pub fn get_query<'a>(&'a self) -> &'a Arc<dyn DNSQuery> {
+        &self.query
     }
+
+    pub fn get_entry(&self) -> Option<sdd::Shared<DNSEntry>> {
+        let g = sdd::Guard::new();
+        self.entry.get_shared(Relaxed, &g)
+    }
+
+    pub fn set_entry(&self, entry: DNSEntry) {
+        let entry = sdd::Shared::new(entry);
+        self.entry.swap(
+            (Some(entry), sdd::Tag::None),
+            Relaxed
+        );
+    }
+
+    /*
+    pub async fn update(&self, resolver: &DNSResolver) -> std::io::Result<()> {
+        resolver.resolve(self.query).await?;
+    }
+    */
     
     pub async fn wait_timeout(&self, timeout: Duration) -> bool {
         match Instant::now().checked_add(timeout) {
@@ -57,7 +76,7 @@ impl DNSCacheEntry {
         }
     }
 
-    pub async fn wait_deadline(&self, deadline: Duration) -> bool {
+    pub async fn wait_deadline(&self, deadline: Instant) -> bool {
         while self.updating.load(Relaxed) {
             if Instant::now() >= deadline {
                 return false;
@@ -73,7 +92,7 @@ impl DNSCacheEntry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum DNSCacheStatus {
     Hit(Arc<DNSEntry>),
@@ -110,21 +129,16 @@ impl DNSCache {
     }
 
     pub async fn get(&self, query: &Arc<dyn DNSQuery>) -> DNSCacheStatus {
-        let cache_entry =
-            match self.memory.get(query).await {
-                Some(ce) => ce,
-                _ => {
-                    self.memory
-                        .entry_by_ref(query)
-                        .or_insert(|| {
-                            DNSCacheEntry::new(
-                                query.clone(),
-                                None
-                            )
-                        })
-                        .into_inner()
-                }
-            };
+        let dce =
+            self.memory
+                .entry_by_ref(query)
+                .or_insert_with(async {
+                    DNSCacheEntry::new(
+                        query.clone(),
+                        None
+                    )
+                }).await.into_value();
+
         todo!()
         /*
 
@@ -146,17 +160,36 @@ impl DNSCache {
 
     /// update the DNSEntry.
     /// return false if the DNSEntry is exists, and provided DNSEntry is older.
-    pub async fn put(&self, query: &Arc<dyn DNSQuery>, entry: &DNSCacheEntry) -> bool {
-        if self.memory.contains_key(query) {
-            if let Some(old_entry) = self.memory.get(query).await {
-                if old_entry.expire_time > entry.expire_time {
-                    return false;
-                }
+    ///
+    /// the parameters is passed by reference for "copy-on-write", so the `&DNSEntry` will only be cloned if needed to update it to DNSCacheEntry.
+    pub async fn put(&self, query: &Arc<dyn DNSQuery>, entry: &DNSEntry) -> bool {
+        let moka_entry =
+            self.memory
+                .entry_by_ref(query)
+                .or_insert_with(async move {
+                    DNSCacheEntry::new(
+                        query.clone(),
+                        Some(entry.clone()),
+                    )
+                }).await;
+
+        // if called DNSCacheEntry::new
+        if moka_entry.is_fresh() {
+            return true;
+        }
+
+        // if this DNSCacheEntry is already exists.
+        // so compare two value...
+
+        let dce = moka_entry.into_value();
+
+        if let Some(old_entry) = dce.get_entry() {
+            if old_entry.expire_time > entry.expire_time {
+                return false;
             }
         }
 
-        self.memory.insert(query.clone(), entry.clone()).await;
-
+        dce.set_entry(entry.clone());
         true
     }
 }
