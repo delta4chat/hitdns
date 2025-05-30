@@ -23,6 +23,9 @@ hickory-proto = { version = "0.24.4", default-features = false, features = ["dns
 http-types = { version = "2.12.0", default-features = false }
 moka = { version = "0.12.10", features = ["future"] }
 portable-atomic = { version = "1.11.0", features = ["std"] }
+scc = "2.3.4"
+sdd = "3.0.8"
+smoltimeout = "0.6.3"
 
 [build-dependencies]
 

@@ -5,10 +5,13 @@
 #![warn(missing_docs)]
 
 pub mod dns;
-pub mod cache;
+
 pub mod query;
 pub mod entry;
+
+pub mod cache;
 pub mod upstream;
+pub mod resolver;
 
 pub mod helper;
 
@@ -17,6 +20,7 @@ pub use core::{
     hash::{Hash, Hasher},
     pin::Pin,
     future::Future,
+    ops::Deref,
 };
 
 pub use std::{
@@ -28,8 +32,9 @@ pub use std::{
 pub use bytes::Bytes;
 pub use country_code_enum::CountryCode;
 pub use http_types::Url;
-pub use portable_atomic::{AtomicUsize, Ordering::Relaxed};
+pub use portable_atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
 pub use event_listener::{Event, listener};
+pub use smoltimeout::TimedExt;
 
 pub type BoxFut<T> = Box<dyn Future<Output=T> + Send + 'static>;
 pub type PinFut<T> = Pin<BoxFut<T>>;

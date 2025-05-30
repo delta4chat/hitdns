@@ -5,7 +5,6 @@ use crate::*;
 use core::ops::{Deref, DerefMut, Range};
 
 use portable_atomic::{*, Ordering::Relaxed};
-use async_broadcast::{Sender, Receiver, WeakReceiver};
 
 pub trait AtomicType: fmt::Debug {
     type Atomic;
