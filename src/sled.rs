@@ -2,6 +2,7 @@
 
 use core::{
     any::Any,
+    panic::AssertUnwindSafe,
     fmt::Debug,
     ops::Deref,
     task::{Poll, Context, Waker},
@@ -11,12 +12,12 @@ use core::{
 };
 
 use std::{
+    panic::catch_unwind,
     sync::Arc,
     path::Path,
 };
 
 use portable_atomic::Ordering::Relaxed;
-
 use async_channel::{Sender, Receiver};
 
 pub fn sled_config() -> sled::Config {
@@ -33,7 +34,6 @@ pub fn sled_config() -> sled::Config {
 pub type Res = Box<dyn Any + Send>;
 
 pub trait WithDb: Debug + (FnOnce(&sled::Db) -> Res) + Send + 'static {}
-
 pub type BoxWithDb = Box<dyn WithDb>;
 
 #[derive(Debug)]
@@ -43,6 +43,15 @@ pub struct SledOperation {
     with_db: BoxWithDb,
 
     sw: SledWith,
+}
+
+impl SledOperation {
+    pub fn new<F: WithDb>(f: F) -> Self {
+        Self {
+            with_db: Box::new(f),
+            sw: SledWith::new(),
+        }
+    }
 }
 
 impl Deref for SledOperation {
@@ -145,6 +154,7 @@ impl SledRunner {
         Ok(Self::from(db))
     }
 
+    /// the main loop of SledRunner worker threads.
     fn run_loop(&self, id: u128, parker: parking::Parker) {
         const FAIL_SLEEP_TIME: Duration = Duration::from_secs(3);
 
@@ -164,7 +174,7 @@ impl SledRunner {
                     Ok(v) => v,
                     Err(e) => {
                         log::error!(
-                            "[async sled {}] failed to receive operations from channel!!! error={:?}",
+                            "[async sled {}] failed to receive operations from channel!!! Error: {:?}",
                             id, e,
                         );
                         parker.park_timeout(FAIL_SLEEP_TIME);
@@ -172,7 +182,19 @@ impl SledRunner {
                     }
                 };
 
-            res = (with_db)(&self.db);
+            res =
+                // any user code's panic must be catched!
+                // so force using AssertUnwindSafe even `self` and `sled::Db` both are non-UnwindSafe types.
+                match catch_unwind(AssertUnwindSafe(|| { (with_db)(&self.db) })) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        log::error!(
+                            "[async sled {}] panic from user provided code! Error: dyn Any = {:?}",
+                            id, e,
+                        );
+                        continue;
+                    }
+                };
             shared_res = sdd::Shared::new(res);
             loop {
                 sw.res.swap(
@@ -193,6 +215,7 @@ impl SledRunner {
         }
     }
 
+    /// spawn new thread for handle incoming `sled::Db` operations.
     pub fn spawn_thread(&self) -> std::io::Result<Arc<std::thread::JoinHandle<()>>> {
         static ID_COUNTER: asyncute::id::ID = asyncute::option_unwrap!(asyncute::id::ID::from_bytes(b"\xacSledFut"));
 
@@ -225,15 +248,30 @@ impl SledRunner {
         }
     }
 
+    /// execute sync queries in sled database, and it's return value can be received in asynchronous context (this just a shortcut for `self.queue(SledOperation::new(f))`.
+    /// * this never blocking.
+    /// * see [`Self::queue()`].
     pub fn with<F: WithDb>(&self, f: F) -> Result<SledWith, SledOperation> {
-        let sw = SledWith::new();
-        let op = SledOperation {
-            with_db: Box::new(f),
-            sw: sw.clone(),
-        };
-        match self.ops_tx.send_blocking(op) {
+        self.queue(SledOperation::new(f))
+    }
+
+    /// try to push provided [`SledOperation`] to wait queue.
+    ///
+    /// * this never blocking and will queue it to `async-channel`.
+    /// * returns [`SledWith`] that implements [`Future`] so can be `.await` or poll manually.
+    /// * if there is no space (channel full), return Err with [`SledOperation`]: this struct means "pending operation", it can be push back to wait queue using [`Self::queue()`]. it is fine if you discards `SledOperation`.
+    /// # Panics
+    /// it will panic if internal channel is closed unexpectedly.
+    pub fn queue(&self, op: SledOperation) -> Result<SledWith, SledOperation> {
+        let sw = op.sw.clone();
+        match self.ops_tx.try_send(op) {
             Ok(_) => Ok(sw),
-            Err(e) => Err(e.0),
+            Err(e) => {
+                if e.is_closed() {
+                    panic!("bug: unexpectedly operations channel closed!");
+                }
+                Err(e.into_inner())
+            },
         }
     }
 }
