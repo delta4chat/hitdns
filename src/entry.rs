@@ -63,10 +63,10 @@ impl DNSResponseSource {
                 out.push(Self::HOSTS);
                 written += 1;
 
-                out.push((path_len as u16).to_be_bytes());
+                out.extend((path_len as u16).to_be_bytes());
                 written += 2;
 
-                out.push(path);
+                out.extend(path);
                 written += path_len;
             },
             Self::Local(addr) => {
@@ -91,7 +91,7 @@ impl DNSResponseSource {
                         out.push(16);
                         written += 1;
 
-                        out.push(ip6);
+                        out.extend(ip6);
                         written += 16;
                     },
                 }
@@ -103,7 +103,7 @@ impl DNSResponseSource {
                 out.push(Self::INTERNET);
                 written += 1;
 
-
+                todo!()
             },
             Self::Unknown => {
                 out.push(Self::UNKNOWN);
@@ -193,12 +193,16 @@ impl DNSEntry {
         let out_len = 1 + 8 + 2 + resp_len;
         let mut out = Vec::with_capacity(out_len);
 
-        out.push(VERSION);
+        out.push(query::serialized::VERSION);
         out.extend(self.expire_time.duration_since(SystemTime::UNIX_EPOCH).expect("system time earlier unix epoch!?").as_secs().to_be_bytes());
         out.extend(resp_len.to_be_bytes());
         out.append(&mut resp);
 
         assert_eq!(out.len(), out_len);
         out
+    }
+
+    pub fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> {
+        todo!()
     }
 }

@@ -182,7 +182,7 @@ impl DNSProtocol {
             panic!("unexpectedly invalid inner data of DNSProtocol");
         }
 
-        let mut maybe_sni = None;
+        let mut scheme = "";
         let mut note = String::new();
         let addr =
             match self {

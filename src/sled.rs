@@ -3,7 +3,7 @@
 use core::{
     any::Any,
     panic::AssertUnwindSafe,
-    fmt::Debug,
+    fmt::{self, Write},
     ops::Deref,
     task::{Poll, Context, Waker},
     future::Future,
@@ -36,8 +36,17 @@ pub fn sled_config() -> sled::Config {
 
 pub type Res = Box<dyn Any + Send>;
 
-pub trait WithDb: Debug + (FnOnce(&sled::Db) -> Res) + Send + 'static {}
-impl<T: Debug + (FnOnce(&sled::Db) -> Res) + Send + 'static> WithDb for T {}
+pub trait WithDb: (FnOnce(&sled::Db) -> Res) + Send + 'static {}
+impl<T: (FnOnce(&sled::Db) -> Res) + Send + 'static> WithDb for T {}
+
+impl fmt::Debug for dyn WithDb {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("dyn WithDb")
+         .field("function", &"FnOnce(&sled::Db) -> Box<dyn Any + Send>")
+         .field("pointer", &{ self as *const _ })
+         .finish()
+    }
+}
 
 pub type BoxWithDb = Box<dyn WithDb>;
 
@@ -254,11 +263,11 @@ impl SledRunner {
         }
     }
 
-    /// execute sync queries in sled database, and it's return value can be received in asynchronous context (this just a shortcut for `self.queue(SledOperation::new(f))`.
+    /// execute sync queries in sled database, and it's return value can be received in asynchronous context (this just a shortcut for `self.try_queue(SledOperation::new(f))`.
     /// * this never blocking.
-    /// * see [`Self::queue()`].
-    pub fn with<F: WithDb>(&self, f: F) -> core::result::Result<SledWith, SledOperation> {
-        self.queue(SledOperation::new(f))
+    /// * see [`Self::try_queue()`].
+    pub fn try_with<F: WithDb>(&self, f: F) -> core::result::Result<SledWith, SledOperation> {
+        self.try_queue(SledOperation::new(f))
     }
 
     /// try to push provided [`SledOperation`] to wait queue.
@@ -268,7 +277,7 @@ impl SledRunner {
     /// * if there is no space (channel full), return Err with [`SledOperation`]: this struct means "pending operation", it can be push back to wait queue using [`Self::queue()`]. it is fine if you discards `SledOperation`.
     /// # Panics
     /// it will panic if internal channel is closed unexpectedly.
-    pub fn queue(&self, op: SledOperation) -> core::result::Result<SledWith, SledOperation> {
+    pub fn try_queue(&self, op: SledOperation) -> core::result::Result<SledWith, SledOperation> {
         let sw = op.sw.clone();
         match self.ops_tx.try_send(op) {
             Ok(_) => Ok(sw),
@@ -277,6 +286,26 @@ impl SledRunner {
                     panic!("bug: unexpectedly operations channel closed!");
                 }
                 Err(e.into_inner())
+            },
+        }
+    }
+
+    /// execute sync queries in sled database, and it's return value can be received in asynchronous context (this just a shortcut for `self.queue(SledOperation::new(f)).await`.
+    /// * see [`Self::queue()`].
+    pub async fn with<F: WithDb>(&self, f: F) -> SledWith {
+        self.queue(SledOperation::new(f)).await
+    }
+
+    /// to push provided [`SledOperation`] to wait queue.
+    /// * returns [`SledWith`] that implements [`Future`] so can be `.await` or poll manually.
+    /// # Panics
+    /// it will panic if internal channel is closed unexpectedly.
+    pub async fn queue(&self, op: SledOperation) -> SledWith {
+        let sw = op.sw.clone();
+        match self.ops_tx.send(op).await {
+            Ok(_) => sw,
+            Err(_) => { // async_channel::SendError just a wrapper of "op"...
+                panic!("bug: unexpectedly operations channel closed!");
             },
         }
     }

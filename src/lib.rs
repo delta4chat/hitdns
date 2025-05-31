@@ -2,7 +2,8 @@
 
 #![forbid(unsafe_code)]
 
-#![warn(missing_docs)]
+// TODO re-enable this after alpha developing completes
+//#![warn(missing_docs)]
 
 pub mod config;
 
@@ -29,7 +30,7 @@ pub use core::{
 };
 
 pub use std::{
-    net::SocketAddr,
+    net::{SocketAddr, IpAddr},
     time::{SystemTime, Instant, Duration},
     sync::Arc,
     path::{Path, PathBuf},
