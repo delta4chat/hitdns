@@ -153,7 +153,7 @@ pub trait DNSQueryExt: DNSQuery {
         self.rdtype().into()
     }
 
-    /// convert to versioned bytes for store to database.
+    /// serialize to bytes for store to database.
     fn to_bytes(&self) -> Serialized {
         let domain_str = self.domain_str();
 

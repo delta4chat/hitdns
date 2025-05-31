@@ -17,6 +17,9 @@ use std::{
     path::Path,
 };
 
+extern crate sled;
+pub use sled::*;
+
 use portable_atomic::Ordering::Relaxed;
 use async_channel::{Sender, Receiver};
 
@@ -34,6 +37,8 @@ pub fn sled_config() -> sled::Config {
 pub type Res = Box<dyn Any + Send>;
 
 pub trait WithDb: Debug + (FnOnce(&sled::Db) -> Res) + Send + 'static {}
+impl<T: Debug + (FnOnce(&sled::Db) -> Res) + Send + 'static> WithDb for T {}
+
 pub type BoxWithDb = Box<dyn WithDb>;
 
 #[derive(Debug)]
@@ -140,7 +145,7 @@ impl SledRunner {
 
     /// create new runner with provided config.
     /// * config must set path otherwise open failed.
-    pub fn new<P: AsRef<Path>>(config: sled::Config) -> std::io::Result<Self> {
+    pub fn new<P: AsRef<Path>>(config: sled::Config) -> sled::Result<Self> {
         let db = config.open()?;
         Ok(Self::from(db))
     }
@@ -149,7 +154,7 @@ impl SledRunner {
     /// * path type is directory, it must not a file.
     /// * this does not support temporary storage.
     /// * automatically create directory if not exists.
-    pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+    pub fn open<P: AsRef<Path>>(path: P) -> sled::Result<Self> {
         let db = sled_config().path(path).open()?;
         Ok(Self::from(db))
     }
@@ -205,13 +210,14 @@ impl SledRunner {
                     break;
                 }
             }
+            core::mem::drop(shared_res);
 
             // if waker missed, it's no problem! because next `SledWith::poll()` will checks `self.res`.
             if let Some(shared_waker) = sw.waker.get_shared(Relaxed, &{ sdd::Guard::new() }) {
                 shared_waker.wake_by_ref();
             }
 
-            core::mem::drop((sw, shared_res));
+            core::mem::drop(sw);
         }
     }
 
@@ -251,7 +257,7 @@ impl SledRunner {
     /// execute sync queries in sled database, and it's return value can be received in asynchronous context (this just a shortcut for `self.queue(SledOperation::new(f))`.
     /// * this never blocking.
     /// * see [`Self::queue()`].
-    pub fn with<F: WithDb>(&self, f: F) -> Result<SledWith, SledOperation> {
+    pub fn with<F: WithDb>(&self, f: F) -> core::result::Result<SledWith, SledOperation> {
         self.queue(SledOperation::new(f))
     }
 
@@ -262,7 +268,7 @@ impl SledRunner {
     /// * if there is no space (channel full), return Err with [`SledOperation`]: this struct means "pending operation", it can be push back to wait queue using [`Self::queue()`]. it is fine if you discards `SledOperation`.
     /// # Panics
     /// it will panic if internal channel is closed unexpectedly.
-    pub fn queue(&self, op: SledOperation) -> Result<SledWith, SledOperation> {
+    pub fn queue(&self, op: SledOperation) -> core::result::Result<SledWith, SledOperation> {
         let sw = op.sw.clone();
         match self.ops_tx.try_send(op) {
             Ok(_) => Ok(sw),

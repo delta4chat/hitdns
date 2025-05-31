@@ -83,7 +83,7 @@ pub enum DNSProtocol {
     /// DNS over HTTPS (RFC 8484).
     /// * this only includes HTTP/2 and HTTP/3.
     /// * the scheme must be `doh2://` or `doh3://`.
-    /// * disallowed schemes such as `https://` or `http://`.
+    /// * disallowed well-known schemes such as `https://` or `http://`.
     DoH(Url),
 
     /// DNS over TLS.
@@ -156,20 +156,80 @@ impl DNSProtocol {
     }
 
     /// format any protocol's address to URL format.
+    /// * must not use well-known URL schemes.
+    /// * port number is required and must not omitted.
     /// 
     /// for example:
-    /// * `doh2://www.example.com/dns-query`
-    /// * `dot://tls.example.com:853`
+    /// # DNS over HTTP/2 over TLS over TCP
+    /// DoH/2 URL: `doh2://www.example.com:443/dns-query`
+    /// # DNS over TLS over TCP
+    /// DoT URL: `dot://tls.example.com:853`
     ///
-    /// * `doh3://http3.example.com/dns-query`
-    /// * `dohq://quic.example.com:853`
+    /// # DNS over HTTP/3 over QUIC over UDP
+    /// DoH/3 URL: `doh3://http3.example.com:443/dns-query`
+    /// # DNS over QUIC over UDP
+    /// DoQ URL: `doq://quic.example.com:853`
     ///
-    /// * `udp://192.168.1.1:53`
-    /// * `tcp://172.16.0.1:53`
+    /// # non-encrypted DNS over UDP
+    /// UDP URL: `udp://192.168.1.1:53`
+    /// # non-encrypted DNS over TCP
+    /// TCP URL: `tcp://172.16.0.1:53`
     ///
-    /// * `dohp://127.0.0.1:8053`
+    /// # non-encrypted DNS over HTTP over TCP
+    /// DoH(plaintext): `dohp://127.0.0.1:8053` (non-fixed-path: `/dns-query` and `/resolve`)
     pub fn url(&self) -> Url {
-        todo!()
+        if ! self.is_valid() {
+            panic!("unexpectedly invalid inner data of DNSProtocol");
+        }
+
+        let mut maybe_sni = None;
+        let mut note = String::new();
+        let addr =
+            match self {
+                Self::Plaintext(plain) => {
+                    use DNSPlaintext::*;
+                    match plain {
+                        UDP(addr) => {
+                            scheme = "udp";
+                            *addr
+                        },
+                        TCP(addr) => {
+                            scheme = "tcp";
+                            *addr
+                        },
+                        HTTP(url) => {
+                            return url.clone();
+                        },
+                    }
+                },
+                Self::DoH(url) => {
+                    return url.clone();
+                },
+                Self::DoT(addr) => {
+                    scheme = "dot";
+                    *addr
+                },
+                Self::DoQ(addr, maybe_sni) => {
+                    scheme = "doq";
+                    if let Some(sni) = maybe_sni {
+                        let sni = sni.to_utf8();
+                        note.reserve_exact(4 + sni.len());
+                        note.push_str("sni=");
+                        note.push_str(&sni);
+                    }
+                    *addr
+                },
+            };
+
+        let mut url = Url::parse("dot://server.example:853").unwrap();
+        url.set_scheme(scheme).expect("unexpectedly failed to set scheme");
+        url.set_ip_host(addr.ip()).expect("unexpectedly failed to set ip host");
+        url.set_port(Some(addr.port())).expect("unexpectedly failed to set port");
+        if ! note.is_empty() {
+            url.set_fragment(Some(note.as_str()));
+        }
+
+        url
     }
 }
 

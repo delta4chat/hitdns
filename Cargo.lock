@@ -595,6 +595,7 @@ dependencies = [
  "http-types",
  "log",
  "moka",
+ "once_cell",
  "parking",
  "portable-atomic",
  "scc",

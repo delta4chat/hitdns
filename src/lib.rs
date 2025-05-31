@@ -18,6 +18,8 @@ pub mod resolver;
 pub mod util;
 pub mod sled;
 
+pub mod database;
+
 pub use core::{
     fmt::{self, Write},
     hash::{Hash, Hasher},
@@ -30,6 +32,7 @@ pub use std::{
     net::SocketAddr,
     time::{SystemTime, Instant, Duration},
     sync::Arc,
+    path::{Path, PathBuf},
 };
 
 pub use bytes::Bytes;
@@ -39,6 +42,7 @@ pub use portable_atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering::Relaxed}
 pub use event_listener::{Event, listener};
 pub use smoltimeout::TimedExt;
 pub use asyncute::util::{AtomicChecked, AtomicDuration};
+pub use once_cell::sync::Lazy;
 
 pub use moka::future::CacheBuilder as MokaCacheBuilder;
 pub type MokaCache<K, V> = moka::future::Cache<K, V, ahash::RandomState>;
