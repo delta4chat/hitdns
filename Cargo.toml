@@ -15,6 +15,7 @@ categories = ["command-line-utilities", "network-programming", "caching", "web-p
 
 [dependencies]
 ahash = { version = "0.8.12", default-features = false, features = ["atomic-polyfill", "compile-time-rng"] }
+async-channel = "2.3.1"
 asyncute = { version = "0.0.5", default-features = false, features = ["crossbeam-channel"] }
 bytes = "1.10.1"
 country-code-enum = "0.2.0"
@@ -22,10 +23,13 @@ event-listener = { version = "5.4.0", features = ["portable-atomic"] }
 heapless = { version = "0.8.0", features = ["portable-atomic"] }
 hickory-proto = { version = "0.24.4", default-features = false, features = ["dnssec"] }
 http-types = { version = "2.12.0", default-features = false }
+log = { version = "0.4.27", features = ["std"] }
 moka = { version = "0.12.10", features = ["future"] }
+parking = "2.2.1"
 portable-atomic = { version = "1.11.0", features = ["std"] }
 scc = "2.3.4"
 sdd = "3.0.8"
+sled = { version = "0.34.7", features = ["lock_free_delays", "compression", "backtrace"] }
 smoltimeout = "0.6.3"
 
 [build-dependencies]

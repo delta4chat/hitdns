@@ -16,6 +16,7 @@ pub mod upstream;
 pub mod resolver;
 
 pub mod util;
+pub mod sled;
 
 pub use core::{
     fmt::{self, Write},
