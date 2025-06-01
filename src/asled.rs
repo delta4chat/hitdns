@@ -17,10 +17,8 @@ use std::{
     path::Path,
 };
 
-extern crate sled;
-pub use sled::*;
-
-use portable_atomic::Ordering::Relaxed;
+use portable_atomic::{AtomicBool, Ordering::Relaxed};
+use once_cell::sync::OnceCell;
 use async_channel::{Sender, Receiver};
 
 pub fn sled_config() -> sled::Config {
@@ -133,12 +131,80 @@ impl Future for SledWith {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SledRunnerThreadStatus {
+    /// total runner threads (include all threads that does not care whether running/exited/working/idle).
+    pub total: Vec<u128>,
+
+    /// how many runner threads is running?
+    /// * this does not care whether it's working (by running sled operations)
+    pub running: Vec<u128>,
+
+    /// how many runner threads has been exited? (std::thread::JoinHandle::is_finished() == true)
+    pub exited: Vec<u128>,
+
+    /// how many runner thread is working? (doing sled operations)
+    /// * in most of cases, if a thread is working, that is also means it's running.
+    pub working: Vec<u128>,
+
+    /// how many runner thread is idle? (waiting for incoming sled operations)
+    /// * this does not includes any dead thread (exited/finished threads).
+    pub idle: Vec<u128>,
+
+    /// how many runner threads has been removed from index?
+    pub remove: Vec<u128>,
+}
+
+impl SledRunnerThreadStatus {
+    pub fn new(total_len: usize) -> Self {
+        Self {
+            total: Vec::with_capacity(total_len),
+
+            running: Vec::with_capacity(total_len),
+            exited: Vec::new(),
+
+            working: Vec::new(),
+            idle: Vec::new(),
+
+            remove: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct SledRunnerThreadState {
+    /// the ID of sled runner worker.
+    id: u128,
+
+    /// the unparker for unpacking the associated thread.
+    unparker: parking::Unparker,
+
+    /// shared join handle for associated thread.
+    join_handle: OnceCell<std::thread::JoinHandle<()>>,
+
+    /// whether the associated thread is working for handle sled operations?
+    is_working: AtomicBool,
+
+    /// request the associated thread to exit.
+    please_exit: AtomicBool,
+}
+
+impl SledRunnerThreadState {
+    pub fn is_running(&self) -> bool {
+        ! self.join_handle.wait().is_finished()
+    }
+
+    pub fn is_working(&self) -> bool {
+        self.is_working.load(Relaxed)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SledRunner {
     db: sled::Db,
     ops_tx: Sender<SledOperation>,
     ops_rx: Receiver<SledOperation>,
-    threads: Arc<scc::HashIndex<u128, (Arc<std::thread::JoinHandle<()>>, parking::Unparker)>>,
+    threads: Arc<scc::HashIndex<u128, Arc<SledRunnerThreadState>>>,
 }
 
 impl SledRunner {
@@ -169,8 +235,14 @@ impl SledRunner {
     }
 
     /// the main loop of SledRunner worker threads.
-    fn run_loop(&self, id: u128, parker: parking::Parker) {
+    fn run_loop(
+        &self,
+        state: Arc<SledRunnerThreadState>,
+        parker: parking::Parker,
+    ) {
         const FAIL_SLEEP_TIME: Duration = Duration::from_secs(3);
+
+        let id = state.id;
 
         let _defer = asyncute::Defer::new(|| {
             self.threads.remove(&id);
@@ -231,7 +303,7 @@ impl SledRunner {
     }
 
     /// spawn new thread for handle incoming `sled::Db` operations.
-    pub fn spawn_thread(&self) -> std::io::Result<Arc<std::thread::JoinHandle<()>>> {
+    pub async fn spawn_thread(&self) -> std::io::Result<Arc<SledRunnerThreadState>> {
         static ID_COUNTER: asyncute::id::ID = asyncute::option_unwrap!(asyncute::id::ID::from_bytes(b"\xacSledFut"));
 
         let id =
@@ -245,22 +317,82 @@ impl SledRunner {
         let parker = parking::Parker::new();
         let unparker = parker.unparker();
 
+        let state =
+            Arc::new(SledRunnerThreadState {
+                id,
+                unparker,
+
+                join_handle: OnceCell::new(),
+                is_working: AtomicBool::new(false),
+
+                please_exit: AtomicBool::new(false),
+            });
         let this = self.clone();
 
-        let jh = 
+        let jh = {
+            let state = state.clone();
+
             std::thread::Builder::new()
             .name(format!("async-sled-{}", id as u64))
             .stack_size(1048576)
             .spawn(move || {
-                this.run_loop(id, parker);
-            })?;
-        let jh = Arc::new(jh);
+                this.run_loop(state, parker);
+            })?
+        };
+        state.join_handle.set(jh).expect("bug: unexpectedly failed set join handle of sled runner thread!");
 
-        if self.threads.insert(id, (jh.clone(), unparker)).is_ok() {
-            Ok(jh)
+        if self.threads.insert_async(id, state.clone()).await.is_ok() {
+            Ok(state)
         } else {
             Err(std::io::Error::other("id should be unique but duplicated!"))
         }
+    }
+
+    pub fn check(
+        &self,
+        allow_remove: bool,
+    ) -> SledRunnerThreadStatus {
+        let mut st =
+            SledRunnerThreadStatus::new(
+                // maximum possible number of values.
+                self.threads.len()
+            );
+
+        let g = sdd::Guard::new();
+        let mut id;
+        for (id_, state) in self.threads.iter(&g) {
+            if st.total.contains(id_) {
+                continue;
+            }
+            id = *id_;
+
+            st.total.push(id);
+
+            if state.is_running() {
+                st.running.push(id);
+            } else {
+                st.exited.push(id);
+                if allow_remove {
+                    st.remove.push(id);
+                }
+                continue;
+            }
+
+            if state.is_working() {
+                st.working.push(id);
+            } else {
+                st.idle.push(id);
+            }
+        }
+        core::mem::drop(g);
+
+        if allow_remove {
+            for rm_id in st.remove.iter() {
+                self.threads.remove(rm_id);
+            }
+        }
+
+        st
     }
 
     /// execute sync queries in sled database, and it's return value can be received in asynchronous context (this just a shortcut for `self.try_queue(SledOperation::new(f))`.

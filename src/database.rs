@@ -2,7 +2,7 @@ use crate::{
     *,
     query::*,
     entry::*,
-    sled::{self, SledRunner, SledOperation},
+    asled::{SledRunner, SledOperation},
 };
 
 #[derive(Debug, Clone)]

@@ -17,7 +17,7 @@ pub mod upstream;
 pub mod resolver;
 
 pub mod util;
-pub mod sled;
+pub mod asled;
 
 pub mod database;
 
