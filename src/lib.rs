@@ -1,6 +1,7 @@
 //! Hit DNS library for reusable functions (for example DNS Cache, DNS Query trait, Database load/store logic).
 
-#![forbid(unsafe_code)]
+// TODO momdify "deny" to "forbid" after splitting some utils to independence crates.
+#![deny(unsafe_code)]
 
 // TODO re-enable this after alpha developing completes
 //#![warn(missing_docs)]

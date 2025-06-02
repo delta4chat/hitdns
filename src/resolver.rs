@@ -123,6 +123,5 @@ impl DNSResolver {
 
     /// un-cached resolve.
     pub async fn resolve(&self, query: Arc<dyn DNSQuery>) -> std::io::Result<DNSEntry> {
-        todo!()
     }
 }
