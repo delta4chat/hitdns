@@ -40,7 +40,7 @@ impl<T: (FnOnce(&sled::Db) -> Res) + Send + 'static> WithDb for T {}
 impl fmt::Debug for dyn WithDb {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("dyn WithDb")
-         .field("function", &"FnOnce(&sled::Db) -> Box<dyn Any + Send>")
+         .field("function", &"dyn FnOnce(&sled::Db) -> Box<dyn Any + Send>")
          .field("pointer", &{ self as *const _ })
          .finish()
     }

@@ -136,10 +136,17 @@ impl DNSQuery for dns::Query {
 
 /// the extension of [`DNSQuery`].
 pub trait DNSQueryExt: DNSQuery {
-    /// query domain name, encoded by UTF-8, it does not uses IDNA punycode.
+    /// query domain name (converted to lowercase)
+    fn domain_lowercase(&self) -> dns::Name {
+        self.domain().to_lowercase()
+    }
+
+    /// query domain name encoded to string.
+    /// * all non-lowercase ASCII characters will be converted to lowercase.
+    /// * string is encoded by UTF-8 and does not uses IDNA punycode.
     fn domain_str(&self) -> DomainString {
         let mut out = heapless::String::new();
-        write!(out, "{}", self.domain()).unwrap();
+        write!(out, "{}", self.domain_lowercase()).expect("unexpectedly failed extend domain name to stack-allocated string");
         out
     }
 
@@ -153,8 +160,42 @@ pub trait DNSQueryExt: DNSQuery {
         self.rdtype().into()
     }
 
+    /// build new [`dns::Query`] using information from this DNSQuery.
+    fn query(&self) -> dns::Query {
+        let mut q = dns::Query::new();
+        q.set_name(self.domain_lowercase())
+         .set_query_class(self.rdclass())
+         .set_query_type(self.rdtype());
+        q
+    }
+
+    /// try to build query message.
+    fn message(&self) -> dns::Message {
+        let q = self.query();
+
+        let mut m = dns::Message::new();
+        m.set_id(0) // all of outgoing query ID should be 0 for optimality the recursor cache.
+         .set_message_type(dns::MessageType::Query)
+         .set_op_code(dns::OpCode::Query)
+
+         // hitdns itself is just a forwarder (without recursion), so it's needed to set RA.
+         .set_recursion_desired(true)
+
+         // RA is only for DNS recursor
+         .set_recursion_available(false)
+
+         // CD and AD is only for DNS response
+         .set_checking_disabled(false)
+         .set_authentic_data(false)
+
+         // final add this query.
+         .add_query(q);
+
+        m
+    }
+
     /// serialize to bytes for store to database.
-    fn to_bytes(&self) -> Serialized {
+    fn encode(&self) -> Serialized {
         let domain_str = self.domain_str();
 
         let domain = domain_str.as_bytes();
@@ -180,7 +221,7 @@ pub trait DNSQueryExt: DNSQuery {
     }
 
     /// parse DNSQuery from Serialized format.
-    fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> where Self: Sized {
+    fn decode<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> where Self: Sized {
         let mut bytes = bytes.as_ref();
 
         if bytes.len() > serialized::LEN_MAX {

@@ -20,6 +20,7 @@ asyncute = { version = "0.0.5", default-features = false, features = ["crossbeam
 bytes = "1.10.1"
 country-code-enum = "0.2.0"
 event-listener = { version = "5.4.0", features = ["portable-atomic"] }
+h2 = { version = "0.4.10", default-features = false }
 heapless = { version = "0.8.0", features = ["portable-atomic"] }
 hickory-proto = { version = "0.24.4", default-features = false, features = ["dnssec"] }
 http-types = { version = "2.12.0", default-features = false }
@@ -32,6 +33,9 @@ scc = "2.3.4"
 sdd = "3.0.8"
 sled = { version = "0.34.7", features = ["lock_free_delays", "compression", "backtrace"] }
 smoltimeout = "0.6.3"
+
+# TODO publish once this crate from alpha stage to beta
+non-tokio = { path = "../toolset/non-tokio" }
 
 [build-dependencies]
 

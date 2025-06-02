@@ -296,7 +296,7 @@ impl PartialEq for dyn DNSUpstream {
         &&
         self.is_anonymized_logs() == other.is_anonymized_logs()
         &&
-        self.is_without_logs() == self.is_without_logs()
+        self.is_without_logs() == other.is_without_logs()
     }
 }
 impl Eq for dyn DNSUpstream {}
