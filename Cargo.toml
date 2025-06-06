@@ -34,6 +34,9 @@ sdd = "3.0.8"
 sled = { version = "0.34.7", features = ["lock_free_delays", "compression", "backtrace"] }
 smoltimeout = "0.6.3"
 
+# TODO publish once this crate from alpha stage to beta
+non-tokio = { path = "../toolset/non-tokio" }
+
 [build-dependencies]
 
 [profile.dev]

@@ -74,7 +74,7 @@ impl DNSResolverPolicy {
             return;
         }
 
-        self.whitelist.insert_async(rule.clone(), true).await;
+        let _ = self.whitelist.insert_async(rule.clone(), true).await;
     }
 
     pub async fn exclude(&self, rule: &Filter) {
@@ -118,10 +118,11 @@ impl DNSResolver {
         if self.upstreams.contains(&upstream) {
             return;
         }
-        self.upstreams.insert_async(upstream, DNSMetrics::default()).await;
+        let _ = self.upstreams.insert_async(upstream, DNSMetrics::default()).await;
     }
 
     /// un-cached resolve.
     pub async fn resolve(&self, query: Arc<dyn DNSQuery>) -> std::io::Result<DNSEntry> {
+        todo!()
     }
 }

@@ -643,9 +643,9 @@ dependencies = [
  "heapless",
  "hickory-proto",
  "http-types",
- "hyper",
  "log",
  "moka",
+ "non-tokio",
  "once_cell",
  "parking",
  "portable-atomic",
@@ -667,16 +667,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "http-body"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1efedce1fb8e6913f23e0c92de8e62cd5b772a67e7b3946df930a62566c93184"
-dependencies = [
- "bytes",
- "http",
-]
-
-[[package]]
 name = "http-types"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -694,21 +684,6 @@ dependencies = [
  "serde_qs",
  "serde_urlencoded",
  "url",
-]
-
-[[package]]
-name = "hyper"
-version = "1.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc2b571658e38e0c01b1fdca3bbbe93c00d3d71693ff2770043f8c29bc7d6f80"
-dependencies = [
- "bytes",
- "http",
- "http-body",
- "pin-project-lite",
- "smallvec",
- "tokio",
- "want",
 ]
 
 [[package]]
@@ -972,6 +947,15 @@ dependencies = [
  "tagptr",
  "thiserror",
  "uuid",
+]
+
+[[package]]
+name = "non-tokio"
+version = "0.0.1-alpha"
+dependencies = [
+ "futures-io",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]
@@ -1675,12 +1659,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "try-lock"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
 name = "unicode-ident"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1732,15 +1710,6 @@ name = "waker-fn"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "317211a0dc0ceedd78fb2ca9a44aed3d7b9b26f81870d485c07122b4350673b7"
-
-[[package]]
-name = "want"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfa7760aed19e106de2c7c0b581b509f2f25d3dacaf737cb82ac61bc6d760b0e"
-dependencies = [
- "try-lock",
-]
 
 [[package]]
 name = "wasi"

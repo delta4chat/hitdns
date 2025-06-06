@@ -19,7 +19,7 @@ impl DNSDatabase {
     }
 
     pub async fn cache_get<Q: DNSQuery>(&self, query: Q) -> sled::Result<Option<DNSEntry>> {
-        let key = query.to_bytes();
+        let key = query.encode();
 
         let op =
             SledOperation::new(move |db| {
