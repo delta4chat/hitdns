@@ -92,4 +92,3 @@ atomic_impls!(
     i64   = AtomicI64,
     i128  = AtomicI128,
 );
-

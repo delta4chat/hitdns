@@ -22,6 +22,8 @@ pub mod asled;
 
 pub mod database;
 
+pub mod protocol;
+
 pub use core::{
     fmt::{self, Write},
     hash::{Hash, Hasher},
@@ -43,14 +45,24 @@ pub use http_types::Url;
 pub use portable_atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering::Relaxed};
 pub use event_listener::{Event, listener};
 pub use smoltimeout::TimedExt;
-pub use asyncute::util::{AtomicChecked, AtomicDuration};
+pub use asyncute::util::{AtomicChecked, AtomicDuration, AtomicRangeStrict};
 pub use once_cell::sync::Lazy;
+pub use async_net::TcpStream;
+pub use futures_rustls::{
+    rustls,
+    pki_types::DnsName as TlsDnsName,
+    TlsConnector,
+    TlsStream,
+};
 
 pub use moka::future::CacheBuilder as MokaCacheBuilder;
 pub type MokaCache<K, V> = moka::future::Cache<K, V, ahash::RandomState>;
 
 pub type BoxFut<T> = Box<dyn Future<Output=T> + Send + 'static>;
 pub type PinFut<T> = Pin<BoxFut<T>>;
+
+pub trait Fut<T>: Future<Output=T> + Send {}
+impl<T, F: Future<Output=T> + Send> Fut<T> for F {}
 
 pub fn err_invalid_input<T, M>(msg: M) -> std::io::Result<T>
 where

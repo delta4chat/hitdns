@@ -36,6 +36,11 @@ smoltimeout = "0.6.3"
 
 # TODO publish once this crate from alpha stage to beta
 non-tokio = { path = "../toolset/non-tokio" }
+async-net = "2.0.0"
+futures-rustls = { version = "0.26.0", default-features = false, features = ["logging"] }
+async-io = "2.4.1"
+anypki = "0.2.0"
+mozilla-root-ca = { version = ">=0.0.0", features = ["std", "rustls-trust-anchor"] }
 
 [build-dependencies]
 
