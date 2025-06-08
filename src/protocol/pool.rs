@@ -6,7 +6,7 @@ use crate::*;
 
 pub struct ConnPoolInner<A, C, F>
 where
-    A: fmt::Display,
+    A: fmt::Debug,
     C: 'static,
     F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
@@ -24,7 +24,7 @@ where
 
 pub struct ConnPool<A, C, F>
 where
-    A: fmt::Display,
+    A: fmt::Debug,
     C: 'static,
     F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
@@ -33,7 +33,7 @@ where
 
 impl<A, C, F> Deref for ConnPool<A, C, F>
 where
-    A: fmt::Display,
+    A: fmt::Debug,
     C: 'static,
     F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
@@ -46,7 +46,7 @@ where
 
 impl<A, C, F> ConnPool<A, C, F>
 where
-    A: fmt::Display,
+    A: fmt::Debug,
     C: 'static,
     F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
@@ -138,14 +138,10 @@ where
         let conn_success_wait = Duration::from_secs(3);
         let conn_failed_wait = Duration::from_secs(5);
 
-        let mut start;
-        let mut elapsed;
         let mut maybe_ret;
         loop {
             while self.conns_len() < self.min_conns() {
-                start = Instant::now();
                 maybe_ret = (self.connect)(self.remote()).timeout(conn_timeout).await;
-                elapsed = start.elapsed();
 
                 if let Some(ret) = maybe_ret {
                     match ret {
@@ -156,14 +152,14 @@ where
                         },
                         Err(e) => {
                             log::warn!(
-                                "failed to establish connection to '{}': error={:?}",
+                                "failed to establish connection to '{:?}': error={:?}",
                                 self.remote(), e,
                             );
                             async_io::Timer::after(conn_failed_wait).await;
                         }
                     }
                 } else {
-                    log::warn!("failed to establish connection to '{}': timed out!", self.remote());
+                    log::warn!("failed to establish connection to '{:?}': timed out!", self.remote());
                 }
             }
         }

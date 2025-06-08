@@ -50,9 +50,8 @@ pub use once_cell::sync::Lazy;
 pub use async_net::TcpStream;
 pub use futures_rustls::{
     rustls,
-    pki_types::DnsName as TlsDnsName,
     TlsConnector,
-    TlsStream,
+    client::TlsStream,
 };
 
 pub use moka::future::CacheBuilder as MokaCacheBuilder;

@@ -3,8 +3,10 @@ use crate::{
     protocol::pool::*,
 };
 
-pub fn rust_crypto_provider() -> Arc<rustls::CryptoProvider> {
-    static PROVIDER: Lazy<Arc<rustls::CryptoProvider>> =
+use asyncute::AtomicRangeStrict;
+
+pub fn rust_crypto_provider() -> Arc<rustls::crypto::CryptoProvider> {
+    static PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> =
         Lazy::new(|| { Arc::new(rustls_rustcrypto::provider()) });
 
     PROVIDER.clone()
@@ -12,58 +14,67 @@ pub fn rust_crypto_provider() -> Arc<rustls::CryptoProvider> {
 
 pub fn anypki_filtered_mozilla() -> Arc<rustls::RootCertStore> {
     static RCS: Lazy<Arc<rustls::RootCertStore>> = Lazy::new(|| {
-        let mut roots = mozilla_root_ca::rustls_trust_anchor_list();
-        anypki::DefaultRules::mitm_threats_extra().retain(&mut roots);
-        roots.shrink_to_fit();
-        Arc::new(rustls::RootCertStore { roots })
+        Arc::new(
+            rustls::RootCertStore {
+                roots:
+                    anypki::DefaultRules::mitm_threats_extra()
+                    .apply(mozilla_root_ca::RUSTLS_CERTIFICATE_DER_LIST.iter())
+                    .map(|cd| {
+                        webpki::anchor_from_trusted_cert(cd).expect("unexpected invalid certificate")
+                    })
+                    .collect()
+            }
+        )   
     });
 
     RCS.clone()
 }
 
 pub fn tls_config() -> rustls::ClientConfig {
-    rustls::ClientConfig::builder_with_provider(rustls_crypto_provider())
+    rustls::ClientConfig::builder_with_provider(rust_crypto_provider())
         .with_safe_default_protocol_versions().unwrap()
         .with_root_certificates(anypki_filtered_mozilla())
         .with_no_client_auth()
 }
 
+#[derive(Debug)]
 pub struct TlsConnectInfo {
     pub addr: SocketAddr,
-    pub sni: Option<rustls::pki_types::DnsName>,
+    pub sni: Option<rustls::pki_types::DnsName<'static>>,
     pub config: Arc<rustls::ClientConfig>,
 }
 
-pub fn tls_connect(info: &TlsConnectInfo) -> PinFut<std::io::Result<TlsStream>> {
+pub fn tls_connect(info: &TlsConnectInfo) -> PinFut<std::io::Result<TlsStream<TcpStream>>> {
     let addr = info.addr;
     let config = info.config.clone();
     let server_name =
         if let Some(sni) = info.sni.as_ref() {
-            sni.clone()
+            rustls::pki_types::ServerName::DnsName(sni.clone())
         } else {
             rustls::pki_types::ServerName::IpAddress(addr.ip().into())
-        }
-    let server_name = info.sni.clone();
+        };
     Box::pin(async move {
         let tcp_stream = TcpStream::connect(addr).await?;
         let tls_connector = TlsConnector::from(config);
-        tls_connector.connect(sni).await
+        tls_connector.connect(server_name, tcp_stream).await
     })
 }
 
-pub type TcpStreamPoolRaw =
-    ConnPool<SocketAddr, TcpStream, fn(&SocketAddr)->PinFut<std::io::Result<TcpStream>>>;
+pub type TlsStreamPoolRaw =
+    ConnPool<
+        TlsConnectInfo,
+        TlsStream<TcpStream>,
+        fn(&TlsConnectInfo)->PinFut<std::io::Result<TlsStream<TcpStream>>>
+    >;
 
-use asyncute::AtomicRangeStrict;
-
-pub struct TcpStreamPool {
-    raw: TcpStreamPoolRaw,
+pub struct TlsStreamPool {
+    raw: TlsStreamPoolRaw,
 }
 
-impl Deref for TcpStreamPool {
-    type Target = TcpStreamPoolRaw;
+impl Deref for TlsStreamPool {
+    type Target = TlsStreamPoolRaw;
 
-    fn deref(&self) -> &TcpStreamPoolRaw {
+    fn deref(&self) -> &TlsStreamPoolRaw {
         &(self.raw)
     }
 }
@@ -71,7 +82,7 @@ impl Deref for TcpStreamPool {
 impl TlsStreamPool {
     pub fn new(protocol: &str, info: TlsConnectInfo) -> Self {
         Self {
-            raw: TcpStreamPoolRaw::new(protocol, info, tls_connect),
+            raw: TlsStreamPoolRaw::new(protocol, info, tls_connect),
         }
     }
 }

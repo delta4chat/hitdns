@@ -11,15 +11,12 @@
 
 use crate::*;
 
-
 use futures_tls::{
 };
 
 use h2::{
     client::handshake,
 }
-
-pub struct 
 
 use non_tokio::io::Compat;
 

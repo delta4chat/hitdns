@@ -40,7 +40,9 @@ async-net = "2.0.0"
 futures-rustls = { version = "0.26.0", default-features = false, features = ["logging"] }
 async-io = "2.4.1"
 anypki = "0.2.0"
-mozilla-root-ca = { version = ">=0.0.0", features = ["std", "rustls-trust-anchor"] }
+mozilla-root-ca = { version = ">=0.0.0", features = ["std", "rustls"] }
+rustls-rustcrypto = "0.0.2-alpha"
+rustls-webpki = "0.103.3"
 
 [build-dependencies]
 
