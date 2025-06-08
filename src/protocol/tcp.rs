@@ -10,8 +10,6 @@ pub fn tcp_connect(addr: &SocketAddr) -> PinFut<std::io::Result<TcpStream>> {
 pub type TcpStreamPoolRaw =
     ConnPool<SocketAddr, TcpStream, fn(&SocketAddr)->PinFut<std::io::Result<TcpStream>>>;
 
-use asyncute::AtomicRangeStrict;
-
 pub struct TcpStreamPool {
     raw: TcpStreamPoolRaw,
 }

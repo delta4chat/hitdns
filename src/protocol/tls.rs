@@ -3,8 +3,6 @@ use crate::{
     protocol::pool::*,
 };
 
-use asyncute::AtomicRangeStrict;
-
 pub fn rust_crypto_provider() -> Arc<rustls::crypto::CryptoProvider> {
     static PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> =
         Lazy::new(|| { Arc::new(rustls_rustcrypto::provider()) });

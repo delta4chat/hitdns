@@ -17,9 +17,11 @@ where
     connect: F,
 
     conns: scc::Stack<sdd::Shared<C>>,
+
+    // because conns.len() is O(n), so maintain length metadata here for almost O(1) access.
     conns_len: AtomicUsize,
 
-    conns_limit: AtomicRangeStrict<AtomicUsize>,
+    conns_min: AtomicUsize,
 }
 
 pub struct ConnPool<A, C, F>
@@ -51,7 +53,6 @@ where
     F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
     pub const MIN_CONNS: usize = 1;
-    pub const MAX_CONNS: usize = i16::MAX as usize;
 
     pub fn new(protocol: &str, remote: A, connect: F) -> Self {
         Self {
@@ -65,7 +66,7 @@ where
 
                     conns: Default::default(),
                     conns_len: AtomicUsize::new(0),
-                    conns_limit: AtomicRangeStrict::<AtomicUsize>::new(1, 11),
+                    conns_min: AtomicUsize::new(1),
                 }),
         }
     }
@@ -82,38 +83,39 @@ where
         self.conns_len.load(Relaxed)
     }
 
-    pub fn conns_limit(&self) -> std::ops::Range<usize> {
-        self.conns_limit.range()
-    }
-
     pub fn min_conns(&self) -> usize {
-        self.conns_limit.start()
-    }
-
-    pub fn max_conns(&self) -> usize {
-        self.conns_limit.end().checked_add(1).expect("you does not need to set so many connections limit, no any established connections can be reaches usize::MAX before remote server bans you...")
+        self.conns_min.load(Relaxed)
     }
 
     pub fn set_min_conns(&self, min: usize) -> bool {
         if min < Self::MIN_CONNS {
             return false;
         }
-        self.conns_limit.set_start(min)
-    }
-    pub fn set_max_conns(&self, max: usize) -> bool {
-        if max < Self::MAX_CONNS {
-            return false;
-        }
-        self.conns_limit.set_end(max)
+        self.conns_min.store(min, Relaxed);
+        true
     }
 
-    /// try to get TCP connection from pool.
+    /// add connection to pool.
+    pub fn add_conn(&self, conn: C) -> sdd::Shared<C> {
+        let conn = sdd::Shared::new(conn);
+        self.conns.push(conn.clone());
+        self.conns_len.checked_add(1);
+        conn
+    }
+
+    /// try to get connection from pool.
+    /// * returned connection will be removed from pool to ensure no others to access it.
     pub fn pop_conn(&self) -> Option<sdd::Shared<C>> {
-        self.conns.pop().map(|conn| { conn.as_ref().as_ref().clone() })
+        if let Some(conn) = self.conns.pop() {
+            self.conns_len.checked_sub(1);
+            Some(conn.as_ref().as_ref().clone())
+        } else {
+            None
+        }
     }
 
-    /// get TCP connection from pool, or start new connection if no connection avaliable in pool.
-    pub async fn get_conn(&self) -> std::io::Result<sdd::Shared<C>> {
+    /// get connection from pool, or start new connection if no connection avaliable in pool.
+    pub async fn get_or_connect(&self) -> std::io::Result<sdd::Shared<C>> {
         if let Some(entry) = self.pop_conn() {
             return Ok(entry);
         }
@@ -126,7 +128,7 @@ where
             return Err(
                 std::io::Error::new(
                     std::io::ErrorKind::ResourceBusy,
-                    "only single TcpStreamPool::run() main loop can be run in same time!",
+                    "only single ConnPool::run() main loop can be run in same time!",
                 )
             );
         }
@@ -146,8 +148,7 @@ where
                 if let Some(ret) = maybe_ret {
                     match ret {
                         Ok(conn) => {
-                            self.conns.push(sdd::Shared::new(conn));
-                            self.conns_len.checked_add(1);
+                            self.add_conn(conn);
                             async_io::Timer::after(conn_success_wait).await;
                         },
                         Err(e) => {
