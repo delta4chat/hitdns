@@ -28,11 +28,25 @@ pub fn anypki_filtered_mozilla() -> Arc<rustls::RootCertStore> {
     RCS.clone()
 }
 
-pub fn tls_config() -> rustls::ClientConfig {
-    rustls::ClientConfig::builder_with_provider(rust_crypto_provider())
+pub fn tls_config(alpn: &[u8]) -> rustls::ClientConfig {
+    let alpn_len = alpn.len();
+    if alpn_len > 255 {
+        panic!("ALPN length is too long!");
+    }
+
+    let mut config = rustls::ClientConfig::builder_with_provider(rust_crypto_provider())
         .with_safe_default_protocol_versions().unwrap()
         .with_root_certificates(anypki_filtered_mozilla())
-        .with_no_client_auth()
+        .with_no_client_auth();
+
+    config.alpn_protocols =
+        if alpn_len == 0 {
+            vec![]
+        } else {
+            vec![ alpn.to_vec() ]
+        };
+
+    config
 }
 
 #[derive(Debug)]
