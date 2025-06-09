@@ -10,6 +10,7 @@ pub fn tcp_connect(addr: &SocketAddr) -> PinFut<std::io::Result<TcpStream>> {
 pub type TcpStreamPoolRaw =
     ConnPool<SocketAddr, TcpStream, fn(&SocketAddr)->PinFut<std::io::Result<TcpStream>>>;
 
+#[derive(Debug, Clone)]
 pub struct TcpStreamPool {
     raw: TcpStreamPoolRaw,
 }

@@ -4,6 +4,7 @@ use crate::*;
 // C = Connection
 // F = Function for connecting (connector)
 
+#[derive(Debug)]
 pub struct ConnPoolInner<A, C, F>
 where
     A: fmt::Debug,
@@ -24,6 +25,7 @@ where
     conns_min: AtomicUsize,
 }
 
+#[derive(Debug)]
 pub struct ConnPool<A, C, F>
 where
     A: fmt::Debug,
@@ -31,6 +33,19 @@ where
     F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
     inner: Arc<ConnPoolInner<A, C, F>>,
+}
+
+impl<A, C, F> Clone for ConnPool<A, C, F>
+where
+    A: fmt::Debug,
+    C: 'static,
+    F: Fn(&A) -> PinFut<std::io::Result<C>>,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 impl<A, C, F> Deref for ConnPool<A, C, F>

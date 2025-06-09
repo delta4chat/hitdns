@@ -34,7 +34,8 @@ pub fn tls_config(alpn: &[u8]) -> rustls::ClientConfig {
         panic!("ALPN length is too long!");
     }
 
-    let mut config = rustls::ClientConfig::builder_with_provider(rust_crypto_provider())
+    let mut config =
+        rustls::ClientConfig::builder_with_provider(rust_crypto_provider())
         .with_safe_default_protocol_versions().unwrap()
         .with_root_certificates(anypki_filtered_mozilla())
         .with_no_client_auth();
@@ -56,7 +57,27 @@ pub struct TlsConnectInfo {
     pub config: Arc<rustls::ClientConfig>,
 }
 
-pub fn tls_connect(info: &TlsConnectInfo) -> PinFut<std::io::Result<TlsStream<TcpStream>>> {
+impl Hash for TlsConnectInfo {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.addr.hash(state);
+        self.sni.hash(state);
+        // no need to hash .config
+    }
+}
+impl PartialEq for TlsConnectInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.addr == other.addr
+        &&
+        self.sni == other.sni
+        /*
+        &&
+        self.config.ptr_eq(&other.config)
+        */
+    }
+}
+impl Eq for TlsConnectInfo {}
+
+pub fn tls_connect(info: &Arc<TlsConnectInfo>) -> PinFut<std::io::Result<TlsStream<TcpStream>>> {
     let addr = info.addr;
     let config = info.config.clone();
     let server_name =
@@ -74,11 +95,12 @@ pub fn tls_connect(info: &TlsConnectInfo) -> PinFut<std::io::Result<TlsStream<Tc
 
 pub type TlsStreamPoolRaw =
     ConnPool<
-        TlsConnectInfo,
+        Arc<TlsConnectInfo>,
         TlsStream<TcpStream>,
-        fn(&TlsConnectInfo)->PinFut<std::io::Result<TlsStream<TcpStream>>>
+        fn(&Arc<TlsConnectInfo>)->PinFut<std::io::Result<TlsStream<TcpStream>>>
     >;
 
+#[derive(Debug, Clone)]
 pub struct TlsStreamPool {
     raw: TlsStreamPoolRaw,
 }
@@ -92,7 +114,7 @@ impl Deref for TlsStreamPool {
 }
 
 impl TlsStreamPool {
-    pub fn new(protocol: &str, info: TlsConnectInfo) -> Self {
+    pub fn new(protocol: &str, info: Arc<TlsConnectInfo>) -> Self {
         Self {
             raw: TlsStreamPoolRaw::new(protocol, info, tls_connect),
         }

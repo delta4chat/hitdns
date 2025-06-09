@@ -9,22 +9,104 @@
 //! * Must not include etag support.
 //! * No Cache HTTP header support.
 
-use crate::*;
-
-use futures_tls::{
+use crate::{
+    *,
+    protocol::tls::{
+        TlsConnectInfo,
+        TlsStreamPool,
+    },
 };
 
 use h2::{
     client::handshake,
-}
+};
 
 use non_tokio::io::Compat;
 
-pub struct H2Session {
-}
-
+#[derive(Debug)]
 pub struct H2ClientInner {
+    pools: scc::HashIndex<Arc<TlsConnectInfo>, TlsStreamPool>,
+    sessions: scc::HashIndex<SocketAddr, h2::client::SendRequest<Bytes>>,
 }
 
+#[derive(Debug, Clone)]
 pub struct H2Client {
+    inner: Arc<H2ClientInner>,
+}
+
+impl Deref for H2Client {
+    type Target = H2ClientInner;
+
+    fn deref<'a>(&'a self) -> &'a H2ClientInner {
+        self.inner.as_ref()
+    }
+}
+
+impl H2Client {
+    pub fn new() -> Self {
+        Self {
+            inner:
+                Arc::new(H2ClientInner {
+                    pools: Default::default(),
+                    sessions: Default::default(),
+                }),
+        }
+    }
+    pub async fn request(&self, req: http::Request<Bytes>) -> std::io::Result<http::Response<Bytes>> {
+        match req.version() {
+            http::Version::HTTP_2 => {},
+            _ => {
+                return Err(invalid_input("unexpected http::Request is not HTTP/2 version!"));
+            }
+        }
+
+        let uri = req.uri();
+        match uri.scheme_str() {
+            Some(scheme) => {
+                if ! scheme.eq_ignore_ascii_case("https") {
+                    return Err(invalid_input("unexpected http::Request scheme is not https!"));
+                }
+            },
+            _ => {
+                return Err(invalid_input("unexpected http::Request has no scheme!"));
+            }
+        }
+
+        let host =
+            match uri.host() {
+                Some(v) => v.to_string(),
+                _ => {
+                    return Err(invalid_input("unexpected http::Request has no host!"));
+                }
+            };
+        let port = uri.port_u16().unwrap_or(443);
+
+        let resolve_ret = cached_resolve((host, port)).await;
+        let addrs =
+            match resolve_ret.deref().as_ref() {
+                Ok(addrs) => {
+                    if addrs.is_empty() {
+                        return Err(
+                            std::io::Error::new(
+                                std::io::ErrorKind::HostUnreachable,
+                                "no IP addresses resolved to provided domain name!",
+                            )
+                        );
+                    }
+                    addrs
+                },
+                Err(e) => {
+                    return Err(
+                        std::io::Error::new(
+                            std::io::ErrorKind::HostUnreachable,
+                            format!("{:?}", e)
+                        )
+                    );
+                }
+            };
+        for addr in addrs.iter() {
+        }
+        
+        todo!()
+    }
 }
