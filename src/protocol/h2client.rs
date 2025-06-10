@@ -12,6 +12,7 @@
 use crate::{
     *,
     protocol::tls::{
+        self,
         TlsConnectInfo,
         TlsStreamPool,
     },
@@ -32,6 +33,7 @@ pub struct H2ClientInner {
 #[derive(Debug, Clone)]
 pub struct H2Client {
     inner: Arc<H2ClientInner>,
+    tls_config: Arc<rustls::ClientConfig>,
 }
 
 impl Deref for H2Client {
@@ -50,8 +52,39 @@ impl H2Client {
                     pools: Default::default(),
                     sessions: Default::default(),
                 }),
+            tls_config: Arc::new(tls::tls_config(b"h2")),
         }
     }
+
+    pub fn get_session(
+        &self,
+        addr: &SocketAddr,
+        sni: &Option<rustls::pki_types::DnsName<'static>>,
+    ) -> h2::client::SendRequest<Bytes> {
+        let g = scc::ebr::Guard::new();
+        if let Some(sr) = self.sessions.peek(addr, &g) {
+            sr.clone()
+        } else {
+            let info =
+                Arc::new(TlsConnectInfo {
+                    addr: *addr,
+                    sni: sni.clone(),
+                    config: self.tls_config.clone(),
+                });
+
+            let pool = TlsStreamPool::new("http2-over-tls-over-tcp", info.clone());
+            {
+                let pool = pool.clone();
+                asyncute::spawn(async move {
+                    pool.run().await.unwrap()
+                });
+            }
+
+            self.pools.insert(info, pool);
+            todo!()
+        }
+    }
+
     pub async fn request(&self, req: http::Request<Bytes>) -> std::io::Result<http::Response<Bytes>> {
         match req.version() {
             http::Version::HTTP_2 => {},
@@ -105,6 +138,7 @@ impl H2Client {
                 }
             };
         for addr in addrs.iter() {
+            //self.get_session(addr);
         }
         
         todo!()

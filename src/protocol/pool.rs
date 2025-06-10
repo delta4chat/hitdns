@@ -2,20 +2,31 @@ use crate::*;
 
 // A = Address
 // C = Connection
-// F = Function for connecting (connector)
 
 #[derive(Debug)]
-pub struct ConnPoolInner<A, C, F>
+pub struct ConnManager<A, C>
 where
     A: fmt::Debug,
     C: 'static,
-    F: Fn(&A) -> PinFut<std::io::Result<C>>,
+{
+    /// establish new connection.
+    pub connect: fn(&A)->PinFut<std::io::Result<C>>,
+
+    /// checks whether the provided connection has been closed?
+    pub is_closed: fn(&C)->bool,
+}
+
+#[derive(Debug)]
+pub struct ConnPoolInner<A, C>
+where
+    A: fmt::Debug,
+    C: 'static,
 {
     running: AtomicBool,
     protocol: String,
 
     remote: A,
-    connect: F,
+    manager: ConnManager<A, C>,
 
     conns: scc::Stack<sdd::Shared<C>>,
 
@@ -26,20 +37,18 @@ where
 }
 
 #[derive(Debug)]
-pub struct ConnPool<A, C, F>
+pub struct ConnPool<A, C>
 where
     A: fmt::Debug,
     C: 'static,
-    F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
-    inner: Arc<ConnPoolInner<A, C, F>>,
+    inner: Arc<ConnPoolInner<A, C>>,
 }
 
-impl<A, C, F> Clone for ConnPool<A, C, F>
+impl<A, C> Clone for ConnPool<A, C>
 where
     A: fmt::Debug,
     C: 'static,
-    F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
     fn clone(&self) -> Self {
         Self {
@@ -48,28 +57,26 @@ where
     }
 }
 
-impl<A, C, F> Deref for ConnPool<A, C, F>
+impl<A, C> Deref for ConnPool<A, C>
 where
     A: fmt::Debug,
     C: 'static,
-    F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
-    type Target = ConnPoolInner<A, C, F>;
+    type Target = ConnPoolInner<A, C>;
 
-    fn deref(&self) -> &ConnPoolInner<A, C, F> {
+    fn deref(&self) -> &ConnPoolInner<A, C> {
         &(self.inner)
     }
 }
 
-impl<A, C, F> ConnPool<A, C, F>
+impl<A, C> ConnPool<A, C>
 where
     A: fmt::Debug,
     C: 'static,
-    F: Fn(&A) -> PinFut<std::io::Result<C>>,
 {
     pub const MIN_CONNS: usize = 1;
 
-    pub fn new(protocol: &str, remote: A, connect: F) -> Self {
+    pub fn new(protocol: &str, remote: A, manager: ConnManager<A, C>) -> Self {
         Self {
             inner:
                 Arc::new(ConnPoolInner {
@@ -77,7 +84,7 @@ where
                     protocol: protocol.to_string(),
 
                     remote,
-                    connect,
+                    manager,
 
                     conns: Default::default(),
                     conns_len: AtomicUsize::new(0),
@@ -135,7 +142,7 @@ where
             return Ok(entry);
         }
 
-        (self.connect)(self.remote()).await.map(sdd::Shared::new)
+        (self.manager.connect)(self.remote()).await.map(sdd::Shared::new)
     }
 
     pub async fn run(&self) -> std::io::Result<()> {
@@ -154,11 +161,31 @@ where
         let conn_timeout = Duration::from_secs(10);
         let conn_success_wait = Duration::from_secs(3);
         let conn_failed_wait = Duration::from_secs(5);
+        let interval = Duration::from_secs(5);
 
         let mut maybe_ret;
+        let mut maybe_entry;
+        let mut zzz;
         loop {
+            // remove invalid connections.
+            {
+                let g = scc::ebr::Guard::new();
+                maybe_entry = self.conns.peek(&g);
+                while let Some(entry) = maybe_entry {
+                    if (self.manager.is_closed)(entry.as_ref().as_ref()) {
+                        entry.delete_self(Relaxed);
+                        self.conns_len.checked_sub(1);
+                    }
+                    maybe_entry = entry.next_ptr(Relaxed, &g).as_ref();
+                }
+            }
+
+            // maintain minimum idle connections.
+            zzz = true;
             while self.conns_len() < self.min_conns() {
-                maybe_ret = (self.connect)(self.remote()).timeout(conn_timeout).await;
+                zzz = false;
+
+                maybe_ret = (self.manager.connect)(self.remote()).timeout(conn_timeout).await;
 
                 if let Some(ret) = maybe_ret {
                     match ret {
@@ -177,6 +204,9 @@ where
                 } else {
                     log::warn!("failed to establish connection to '{:?}': timed out!", self.remote());
                 }
+            }
+            if zzz {
+                async_io::Timer::after(interval).await;
             }
         }
     }

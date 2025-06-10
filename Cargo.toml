@@ -58,6 +58,18 @@ debug-assertions = true
 debug = "limited"
 incremental = true
 
+[profile.mydev]
+inherits = "dev"
+panic = "unwind"
+opt-level = 0
+lto = "off"
+#strip = "none"
+codegen-units = 1024
+overflow-checks = true
+debug-assertions = true
+debug = "full"
+incremental = false
+
 [profile.release]
 panic = "unwind"
 opt-level = 3

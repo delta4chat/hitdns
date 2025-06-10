@@ -1,6 +1,9 @@
 use crate::{
     *,
-    protocol::pool::*,
+    protocol::{
+        pool::*,
+        tcp::tcp_is_closed,
+    },
 };
 
 pub fn rust_crypto_provider() -> Arc<rustls::crypto::CryptoProvider> {
@@ -77,7 +80,7 @@ impl PartialEq for TlsConnectInfo {
 }
 impl Eq for TlsConnectInfo {}
 
-pub fn tls_connect(info: &Arc<TlsConnectInfo>) -> PinFut<std::io::Result<TlsStream<TcpStream>>> {
+pub fn tls_connect(info: &Arc<TlsConnectInfo>) -> PinFut<std::io::Result<TlsStream>> {
     let addr = info.addr;
     let config = info.config.clone();
     let server_name =
@@ -93,12 +96,18 @@ pub fn tls_connect(info: &Arc<TlsConnectInfo>) -> PinFut<std::io::Result<TlsStre
     })
 }
 
+pub fn tls_is_closed(conn: &TlsStream) -> bool {
+    let (tcp_conn, tls_client_conn) = conn.get_ref();
+    if tcp_is_closed(tcp_conn) {
+        return true;
+    }
+
+    //tls_client_conn.
+    todo!()
+}
+
 pub type TlsStreamPoolRaw =
-    ConnPool<
-        Arc<TlsConnectInfo>,
-        TlsStream<TcpStream>,
-        fn(&Arc<TlsConnectInfo>)->PinFut<std::io::Result<TlsStream<TcpStream>>>
-    >;
+    ConnPool<Arc<TlsConnectInfo>, TlsStream>;
 
 #[derive(Debug, Clone)]
 pub struct TlsStreamPool {
@@ -116,7 +125,15 @@ impl Deref for TlsStreamPool {
 impl TlsStreamPool {
     pub fn new(protocol: &str, info: Arc<TlsConnectInfo>) -> Self {
         Self {
-            raw: TlsStreamPoolRaw::new(protocol, info, tls_connect),
+            raw:
+                TlsStreamPoolRaw::new(
+                    protocol,
+                    info,
+                    ConnManager {
+                        connect: tls_connect,
+                        is_closed: tls_is_closed,
+                    },
+                ),
         }
     }
 }

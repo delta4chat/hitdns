@@ -47,12 +47,17 @@ pub use event_listener::{Event, listener};
 pub use smoltimeout::TimedExt;
 pub use asyncute::util::{AtomicChecked, AtomicDuration, AtomicRangeStrict};
 pub use once_cell::sync::Lazy;
-pub use async_net::TcpStream;
+pub use scc::LinkedList;
+
+pub type TcpStream = async_io::Async<std::net::TcpStream>;
+pub type TcpListener = async_io::Async<std::net::TcpListener>;
+pub type UdpSocket = async_io::Async<std::net::UdpSocket>;
+
 pub use futures_rustls::{
     rustls,
     TlsConnector,
-    client::TlsStream,
 };
+pub type TlsStream = futures_rustls::client::TlsStream<TcpStream>;
 
 pub use moka::future::CacheBuilder as MokaCacheBuilder;
 pub type MokaCache<K, V> = moka::future::Cache<K, V, ahash::RandomState>;
