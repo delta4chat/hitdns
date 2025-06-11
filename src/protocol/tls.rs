@@ -96,8 +96,8 @@ pub fn tls_connect(info: &Arc<TlsConnectInfo>) -> PinFut<std::io::Result<TlsStre
     })
 }
 
-pub fn tls_is_closed(conn: &TlsStream) -> bool {
-    let (tcp_conn, tls_client_conn) = conn.get_ref();
+pub fn tls_is_closed(conn: &mut TlsStream) -> bool {
+    let (tcp_conn, tls_client_conn) = conn.get_mut();
 
     if tcp_is_closed(tcp_conn) {
         return true;

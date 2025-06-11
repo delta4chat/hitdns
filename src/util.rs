@@ -92,3 +92,42 @@ atomic_impls!(
     i64   = AtomicI64,
     i128  = AtomicI128,
 );
+
+// TODO try replace lock to other things
+/// a getter that only can get value once.
+#[derive(Debug)]
+pub struct OnceGetter<T> {
+    empty: AtomicBool,
+    inner: std::sync::Mutex<Option<T>>,
+}
+
+impl<T> OnceGetter<T> {
+    pub const fn new(val: T) -> Self {
+        Self {
+            empty: AtomicBool::new(false),
+            inner: std::sync::Mutex::new(Some(val)),
+        }
+    }
+
+    pub fn get(&self) -> Option<T> {
+        if self.empty.load(Relaxed) {
+            return None;
+        }
+
+        let mv = self.inner.lock().unwrap_or_else(|e| { e.into_inner() }).take();
+        self.empty.store(true, Relaxed);
+        mv
+    }
+
+    pub fn with<R, F>(&self, mut f: F) -> R
+    where
+        F: FnMut(&mut Option<T>) -> R,
+    {
+        if self.empty.load(Relaxed) {
+            return f(&mut None);
+        }
+
+        let mut inner = self.inner.lock().unwrap_or_else(|e| { e.into_inner() });
+        f(&mut *inner)
+    }
+}

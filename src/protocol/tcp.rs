@@ -7,7 +7,7 @@ pub fn tcp_connect(addr: &SocketAddr) -> PinFut<std::io::Result<TcpStream>> {
     Box::pin(TcpStream::connect(*addr))
 }
 
-pub fn tcp_is_closed(conn: &TcpStream) -> bool {
+pub fn tcp_is_closed(conn: &mut TcpStream) -> bool {
     let mut inner = conn.get_ref();
     if inner.set_nonblocking(true).is_err() {
         return true;

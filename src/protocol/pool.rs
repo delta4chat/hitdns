@@ -1,4 +1,7 @@
-use crate::*;
+use crate::{
+    *,
+    util::*,
+};
 
 // A = Address
 // C = Connection
@@ -13,7 +16,7 @@ where
     pub connect: fn(&A)->PinFut<std::io::Result<C>>,
 
     /// checks whether the provided connection has been closed?
-    pub is_closed: fn(&C)->bool,
+    pub is_closed: fn(&mut C)->bool,
 }
 
 #[derive(Debug)]
@@ -28,7 +31,7 @@ where
     remote: A,
     manager: ConnManager<A, C>,
 
-    conns: scc::Stack<sdd::Shared<C>>,
+    conns: scc::Stack<sdd::Shared<OnceGetter<C>>>,
 
     // because conns.len() is O(n), so maintain length metadata here for almost O(1) access.
     conns_len: AtomicUsize,
@@ -118,8 +121,8 @@ where
     }
 
     /// add connection to pool.
-    pub fn add_conn(&self, conn: C) -> sdd::Shared<C> {
-        let conn = sdd::Shared::new(conn);
+    pub fn add_conn(&self, conn: C) -> sdd::Shared<OnceGetter<C>> {
+        let conn = sdd::Shared::new(OnceGetter::new(conn));
         self.conns.push(conn.clone());
         self.conns_len.checked_add(1);
         conn
@@ -127,22 +130,22 @@ where
 
     /// try to get connection from pool.
     /// * returned connection will be removed from pool to ensure no others to access it.
-    pub fn pop_conn(&self) -> Option<sdd::Shared<C>> {
+    pub fn pop_conn(&self) -> Option<C> {
         if let Some(conn) = self.conns.pop() {
             self.conns_len.checked_sub(1);
-            Some(conn.as_ref().as_ref().clone())
+            Some(conn.get().expect("unexpected no value in OnceGetter!"))
         } else {
             None
         }
     }
 
     /// get connection from pool, or start new connection if no connection avaliable in pool.
-    pub async fn get_or_connect(&self) -> std::io::Result<sdd::Shared<C>> {
+    pub async fn get_or_connect(&self) -> std::io::Result<C> {
         if let Some(entry) = self.pop_conn() {
             return Ok(entry);
         }
 
-        (self.manager.connect)(self.remote()).await.map(sdd::Shared::new)
+        (self.manager.connect)(self.remote()).await
     }
 
     pub async fn run(&self) -> std::io::Result<()> {
@@ -166,16 +169,27 @@ where
         let mut maybe_ret;
         let mut maybe_entry;
         let mut zzz;
+
+        let is_conn_invalid =
+            |maybe_conn: &mut Option<C>| -> bool {
+                match maybe_conn.as_mut() {
+                    Some(conn) => {
+                        (self.manager.is_closed)(conn)
+                    },
+                    _ => true,
+                }
+            };
         loop {
             // remove invalid connections.
             {
                 let g = scc::ebr::Guard::new();
                 maybe_entry = self.conns.peek(&g);
                 while let Some(entry) = maybe_entry {
-                    if (self.manager.is_closed)(entry.as_ref().as_ref()) {
+                    if entry.with(is_conn_invalid) {
                         entry.delete_self(Relaxed);
                         self.conns_len.checked_sub(1);
                     }
+
                     maybe_entry = entry.next_ptr(Relaxed, &g).as_ref();
                 }
             }

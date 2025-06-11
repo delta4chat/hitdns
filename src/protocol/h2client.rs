@@ -26,8 +26,8 @@ use non_tokio::io::Compat;
 
 #[derive(Debug)]
 pub struct H2ClientInner {
-    pools: scc::HashIndex<Arc<TlsConnectInfo>, TlsStreamPool>,
-    sessions: scc::HashIndex<SocketAddr, h2::client::SendRequest<Bytes>>,
+    tls_pools: scc::HashIndex<Arc<TlsConnectInfo>, TlsStreamPool>,
+    h2_sessions: scc::HashIndex<Arc<TlsConnectInfo>, h2::client::SendRequest<Bytes>>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,38 +49,48 @@ impl H2Client {
         Self {
             inner:
                 Arc::new(H2ClientInner {
-                    pools: Default::default(),
-                    sessions: Default::default(),
+                    tls_pools: Default::default(),
+                    h2_sessions: Default::default(),
                 }),
             tls_config: Arc::new(tls::tls_config(b"h2")),
         }
     }
 
-    pub fn get_session(
+    pub async fn get_session(
         &self,
-        addr: &SocketAddr,
-        sni: &Option<rustls::pki_types::DnsName<'static>>,
-    ) -> h2::client::SendRequest<Bytes> {
+        info: &Arc<TlsConnectInfo>,
+    ) -> std::io::Result<h2::client::SendRequest<Bytes>> {
         let g = scc::ebr::Guard::new();
-        if let Some(sr) = self.sessions.peek(addr, &g) {
-            sr.clone()
+        if let Some(sr) = self.h2_sessions.peek(info, &g) {
+            Ok(sr.clone())
         } else {
-            let info =
-                Arc::new(TlsConnectInfo {
-                    addr: *addr,
-                    sni: sni.clone(),
-                    config: self.tls_config.clone(),
-                });
-
-            let pool = TlsStreamPool::new("http2-over-tls-over-tcp", info.clone());
+            let tls_pool = TlsStreamPool::new("http2-over-tls-over-tcp", info.clone());
             {
-                let pool = pool.clone();
+                let tls_pool = tls_pool.clone();
                 asyncute::spawn(async move {
-                    pool.run().await.unwrap()
-                });
+                    tls_pool.run().await.unwrap();
+                }).detach();
             }
 
-            self.pools.insert(info, pool);
+            let _ =
+                self.tls_pools.insert_async(
+                    info.clone(),
+                    tls_pool.clone()
+                ).await;
+
+            let tls_conn =
+                Compat::new(
+                    tls_pool.get_or_connect().await?
+                );
+
+            let (h2_send_request, h2_conn) =
+                h2::client::handshake(tls_conn).await
+                .map_err(|e| {
+                    std::io::Error::other(
+                        format!("unable to doing HTTP/2 handshake: {e:?}")
+                    )
+                })?;
+
             todo!()
         }
     }
