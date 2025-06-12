@@ -30,6 +30,7 @@ pub use core::{
     pin::Pin,
     future::Future,
     ops::Deref,
+    str::FromStr,
 };
 
 pub use std::{
@@ -48,6 +49,7 @@ pub use smoltimeout::TimedExt;
 pub use asyncute::util::{AtomicChecked, AtomicDuration, AtomicRangeStrict};
 pub use once_cell::sync::Lazy;
 pub use scc::LinkedList;
+pub use futures_lite::future::FutureExt;
 
 pub type TcpStream = async_io::Async<std::net::TcpStream>;
 pub type TcpListener = async_io::Async<std::net::TcpListener>;

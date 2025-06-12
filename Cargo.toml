@@ -20,7 +20,6 @@ asyncute = { version = "0.0.5", default-features = false, features = ["crossbeam
 bytes = "1.10.1"
 country-code-enum = "0.2.0"
 event-listener = { version = "5.4.0", features = ["portable-atomic"] }
-h2 = { version = "0.4.10", default-features = false }
 heapless = { version = "0.8.0", features = ["portable-atomic"] }
 hickory-proto = { version = "0.24.4", default-features = false, features = ["dnssec"] }
 http-types = { version = "2.12.0", default-features = false }
@@ -36,14 +35,19 @@ smoltimeout = "0.6.3"
 
 # TODO publish once this crate from alpha stage to beta
 non-tokio = { path = "../toolset/non-tokio" }
+
 async-net = "2.0.0"
-futures-rustls = { version = "0.26.0", default-features = false, features = ["logging"] }
 async-io = "2.4.1"
+
+futures-rustls = { version = "0.26.0", default-features = false, features = ["logging"] }
+h2 = { version = "0.4.10", default-features = false }
+
 anypki = "0.2.0"
 mozilla-root-ca = { version = ">=0.0.0", features = ["std", "rustls"] }
 rustls-rustcrypto = "0.0.2-alpha"
 rustls-webpki = "0.103.3"
 http = "1.3.1"
+futures-lite = "2.6.0"
 
 [build-dependencies]
 
