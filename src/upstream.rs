@@ -372,10 +372,26 @@ impl DNSUpstreamMetrics {
 
         let maybe_unix = now.duration_since(SystemTime::UNIX_EPOCH);
 
+        let rel = self.reliability.deref();
         if online {
-            self.reliability.deref().checked_add(1);
+            let mut old = rel.load(Relaxed);
+            while old < 100 {
+                match
+                    rel.compare_exchange(
+                        old, old+1,
+                        Relaxed, Relaxed
+                    )
+                {
+                    Ok(_) => {
+                        break;
+                    },
+                    Err(o) => {
+                        old = o;
+                    }
+                }
+            }
         } else {
-            self.reliability.deref().checked_sub(1);
+            rel.checked_sub(1);
         }
 
         if let Ok(unix) = maybe_unix {

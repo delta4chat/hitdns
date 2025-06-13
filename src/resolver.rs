@@ -7,9 +7,6 @@ use crate::{
     entry::*,
 };
 
-// TODO metrics.rs
-type DNSMetrics = ();
-
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum DNSUpstreamFilter {
     Name(String),
@@ -53,7 +50,7 @@ impl DNSUpstreamFilter {
     }
 }
 
-type Filter = Arc<DNSUpstreamFilter>;
+pub type Filter = Arc<DNSUpstreamFilter>;
 
 #[derive(Debug)]
 pub struct DNSResolverPolicy {
@@ -69,6 +66,16 @@ impl DNSResolverPolicy {
         }
     }
 
+    pub fn wlen(&self) -> usize {
+        self.whitelist.len()
+    }
+    pub fn blen(&self) -> usize {
+        self.blacklist.len()
+    }
+    pub fn len(&self) -> usize {
+        self.wlen().checked_add(self.blen()).expect("DNSResolverPolicy: overflow in wlen + blen")
+    }
+
     pub async fn include(&self, rule: &Filter) {
         if self.whitelist.contains(rule) {
             return;
@@ -78,16 +85,44 @@ impl DNSResolverPolicy {
     }
 
     pub async fn exclude(&self, rule: &Filter) {
+        if self.blacklist.contains(rule) {
+            return;
+        }
+
+
+        let _ = self.blacklist.insert_async(rule.clone(), true).await;
     }
 
     pub fn is_valid(&self, upstream: &dyn DNSUpstream) -> bool {
-        todo!()
+        let g = scc::ebr::Guard::new();
+
+        for (bf, enable) in self.blacklist.iter(&g) {
+            if ! enable {
+                continue;
+            }
+
+            if bf.matches(upstream) {
+                return false;
+            }
+        }
+
+        for (wf, enable) in self.whitelist.iter(&g) {
+            if ! enable {
+                continue;
+            }
+
+            if wf.matches(upstream) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
 #[derive(Debug)]
 pub struct DNSResolverInner {
-    upstreams: scc::HashIndex<Arc<dyn DNSUpstream>, DNSMetrics>,
+    upstreams: scc::HashIndex<Arc<dyn DNSUpstream>, ()>,
     policy: DNSResolverPolicy,
 }
 
@@ -118,11 +153,51 @@ impl DNSResolver {
         if self.upstreams.contains(&upstream) {
             return;
         }
-        let _ = self.upstreams.insert_async(upstream, DNSMetrics::default()).await;
+
+        let _ = self.upstreams.insert_async(upstream, ()).await;
+    }
+
+    pub async fn select(&self, selector: DNSUpstreamSelector) -> std::io::Result<Arc<dyn DNSUpstream>> {
+        todo!()
+        /*
+        use DNSUpstreamSelector::*;
+
+        match selector {
+            Unspecified | Best => {
+            },
+        }
+        */
     }
 
     /// un-cached resolve.
-    pub async fn resolve(&self, query: Arc<dyn DNSQuery>) -> std::io::Result<DNSEntry> {
+    pub async fn resolve(&self, query: &Arc<dyn DNSQuery>) -> std::io::Result<DNSEntry> {
+        if self.upstreams.is_empty() {
+            return Err(std::io::Error::other("No upstreams exists!"))
+        }
         todo!()
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u8)]
+pub enum DNSUpstreamSelector {
+    /// try select upstream by default unspecified algorithm (currently `Self::Best`).
+    Unspecified,
+
+    /// try select upstream by latency and reliability.
+    /// * high reliability is important.
+    /// * select lowest latency upstream in high reliability upstreams.
+    Best,
+
+    /// try select upstream with smallest latency.
+    Fast,
+
+    /// try select upstream with highest reliability.
+    Reliable,
+
+    /// try select upstream randomly.
+    Random,
+
+    /// try select fixed of upstream.
+    Fixed,
 }
