@@ -7,11 +7,6 @@ use crate::{
     resolver::*,
 };
 
-/// notify to update DNS Entry by resolving.
-/// * this should queues to some task channel.
-/// * this must not blocking.
-pub trait ResolveNotify: Fn(&Arc<dyn DNSQuery>) + Send + Sync + fmt::Debug {}
-
 #[derive(Debug)]
 pub struct DNSCacheEntryInner {
     updating: AtomicBool,
@@ -63,12 +58,27 @@ impl DNSCacheEntry {
         );
     }
 
-    /*
-    pub async fn update(&self, resolver: &DNSResolver) -> std::io::Result<()> {
-        resolver.resolve(self.query).await?;
+    pub fn is_updating(&self) -> bool {
+        self.updating.load(Relaxed)
     }
-    */
-    
+
+    pub async fn update(&self, resolver: DNSResolver, selector: DNSUpstreamSelector) -> std::io::Result<()> {
+        if self.updating.compare_exchange(false, true, Relaxed, Relaxed).is_err() {
+            return Err(std::io::Error::new(std::io::ErrorKind::ResourceBusy, "another update task is running!"));
+        }
+        let mut defer = asyncute::Defer::new(|| {
+            self.updating.store(false, Relaxed);
+        });
+
+        let entry = resolver.resolve(&self.query, selector).await?;
+        self.set_entry(entry);
+
+        self.update_notify.notify_relaxed(usize::MAX);
+        defer.run();
+
+        Ok(())
+    }
+
     pub async fn wait_timeout(&self, timeout: Duration) -> bool {
         match Instant::now().checked_add(timeout) {
             Some(deadline) => self.wait_deadline(deadline).await,
@@ -77,7 +87,7 @@ impl DNSCacheEntry {
     }
 
     pub async fn wait_deadline(&self, deadline: Instant) -> bool {
-        while self.updating.load(Relaxed) {
+        while self.is_updating() {
             if Instant::now() >= deadline {
                 return false;
             }
@@ -92,13 +102,38 @@ impl DNSCacheEntry {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 #[repr(u8)]
 pub enum DNSCacheStatus {
-    Hit(Arc<DNSEntry>),
-    Expired(Arc<DNSEntry>),
+    Hit(sdd::Shared<DNSEntry>),
+    Expired(sdd::Shared<DNSEntry>),
     Miss,
 }
+
+impl DNSCacheStatus {
+    pub fn tuple<'g>(&self, g: &'g sdd::Guard) -> (u8, Option<&'g DNSEntry>) {
+        use DNSCacheStatus::*;
+        match self {
+            Hit(e) => {
+                (b'H', Some(e.get_guarded_ref(g)))
+            },
+            Expired(e) => {
+                (b'E', Some(e.get_guarded_ref(g)))
+            },
+            Miss => {
+                (b'M', None)
+            }
+        }
+    }
+}
+
+impl PartialEq for DNSCacheStatus {
+    fn eq(&self, other: &Self) -> bool {
+        let g = sdd::Guard::new();
+        self.tuple(&g) == other.tuple(&g)
+    }
+}
+impl Eq for DNSCacheStatus {}
 
 /// in-memory DNS Cache that focus to cache hit ratio.
 /// 1. if query miss it just waiting.
@@ -109,11 +144,11 @@ pub struct DNSCache {
     memory: MokaCache<Arc<dyn DNSQuery>, DNSCacheEntry>,
     //disk: DNSDatabase,
 
-    resolve_notify: Arc<dyn ResolveNotify>,
+    resolver: DNSResolver,
 }
 
 impl DNSCache {
-    pub fn new(resolve_notify: Arc<dyn ResolveNotify>) -> Self {
+    pub fn new(resolver: DNSResolver) -> Self {
         Self {
             memory: {
                 MokaCacheBuilder::default()
@@ -128,11 +163,11 @@ impl DNSCache {
 
                 .build_with_hasher(ahash::RandomState::default())
             },
-            resolve_notify,
+            resolver,
         }
     }
 
-    pub async fn get(&self, query: &Arc<dyn DNSQuery>) -> DNSCacheStatus {
+    pub async fn get(&self, query: &Arc<dyn DNSQuery>, selector: DNSUpstreamSelector) -> DNSCacheStatus {
         let dce =
             self.memory
                 .entry_by_ref(query)
@@ -143,23 +178,41 @@ impl DNSCache {
                     )
                 }).await.into_value();
 
-        todo!()
-        /*
+        let update = || {
+            let dce = dce.clone();
+            let resolver = self.resolver.clone();
+            asyncute::spawn(async move {
+                dce.update(resolver, selector).await.expect("DNSCacheEntry update failed");
+            }).detach();
+        };
 
-            let now = SystemTime::now();
-            if now < entry.expire_time {
-                DNSCacheStatus::Hit(entry)
-            } else {
-                if entry.update_count.fetch_add(1, Relaxed) % 1000 == 0 {
-                    (self.resolve_notify)(query);
+        let update_wait = Duration::from_millis(100);
+        let mut i = 50; // max wait time = 5 seconds
+        let entry =
+            loop {
+                if i == 0 {
+                    return DNSCacheStatus::Miss;
                 }
-                DNSCacheStatus::Expired(entry)
-            }
+                i -= 1;
+
+                match dce.get_entry() {
+                    Some(entry) => {
+                        break entry;
+                    },
+                    _ => {
+                        update();
+                        dce.wait_timeout(update_wait).await;
+                    }
+                }
+            };
+
+        let now = SystemTime::now();
+        if now < entry.expire_time {
+            DNSCacheStatus::Hit(entry)
         } else {
-            //let entry = self.disk.get(query);
-            DNSCacheStatus::Miss
+            update();
+            DNSCacheStatus::Expired(entry)
         }
-        */
     }
 
     /// update the DNSEntry.

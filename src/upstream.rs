@@ -350,8 +350,19 @@ impl Deref for DNSUpstreamMetrics {
 }
 
 impl DNSUpstreamMetrics {
+    pub const WEIGHT_RELIABILITY: f64 = 0.6;
+    pub const WEIGHT_LATENCY: f64 = 0.4;
+
+    const _WEIGHT_ASSERT: () = {
+        assert!(((Self::WEIGHT_RELIABILITY + Self::WEIGHT_LATENCY) - 1.0).abs() < 0.0001);
+    };
+
     /// create new Metrics of specified DNS Upstream.
     pub fn new() -> Self {
+        // for avoid rustc remove unused _WEIGHT_ASSERT
+        // (cold path)
+        if Self::_WEIGHT_ASSERT == () {}
+
         Self(Arc::new(DNSUpstreamMetricsInner {
             online: Atomic::<bool>::new(false),
             reliability: Atomic::<u8>::new(50),
@@ -437,19 +448,7 @@ impl DNSUpstreamMetrics {
         )
     }
 
-    pub const WEIGHT_RELIABILITY: f64 = 0.6;
-    pub const WEIGHT_LATENCY: f64 = 0.4;
-
-    const _WEIGHT_ASSERT: () = {
-        assert!(((Self::WEIGHT_RELIABILITY + Self::WEIGHT_LATENCY) - 1.0).abs() < 0.0001);
-    };
-
     pub fn score(&self) -> f64 {
-        // for avoid rustc remove unused _WEIGHT_ASSERT
-        if false {
-            Self::_WEIGHT_ASSERT;
-        }
-
         let rel_score = (self.reliability() as f64) / 100.0;
 
         let lat = self.latency().as_secs_f64();
