@@ -10,7 +10,7 @@ pub use hickory_proto::{
         dns_class::DNSClass,
         record_type::RecordType,
         record_data::RData,
-        dnssec::rdata::key::{KeyTrust, KeyUsage},
+        //dnssec::rdata::key::{KeyTrust, KeyUsage},
         rdata,
         Record,
     },

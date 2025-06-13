@@ -303,7 +303,6 @@ impl Eq for dyn DNSUpstream {}
 
 impl Hash for dyn DNSUpstream {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        format!("{:?}", self).hash(state);
         self.name().hash(state);
         self.protocol().hash(state);
         self.server_country().hash(state);
@@ -367,6 +366,7 @@ impl DNSUpstreamMetrics {
         }))
     }
 
+    /// add new record to metrics.
     pub async fn record(&self, now: SystemTime, online: bool, maybe_latency: Option<Duration>) {
         self.online.store(online, Relaxed);
 
@@ -405,5 +405,56 @@ impl DNSUpstreamMetrics {
         if let Some(latency) = maybe_latency {
             self.latency.insert(now, latency).await;
         }
+    }
+
+    /// get last request successful time.
+    pub fn last_okey(&self) -> SystemTime {
+        SystemTime::UNIX_EPOCH.checked_add(self.last_okey.get()).expect("timestamp overflow!")
+    }
+
+    /// get last request failed time.
+    pub fn last_fail(&self) -> SystemTime {
+        SystemTime::UNIX_EPOCH.checked_add(self.last_fail.get()).expect("timestamp overflow!")
+    }
+
+    /// get reliability percentage of this server.
+    /// * 0 = all times offline.
+    /// * 100 = all times online.
+    pub fn reliability(&self) -> u8 {
+        self.reliability.load(Relaxed)
+    }
+
+    /// get latency in average value.
+    /// * it's DNS application-layer latency between send request and received DNS response from server.
+    /// * it's not ICMP ping, TCP ping, or HTTP ping.
+    pub fn latency(&self) -> Duration {
+        Duration::from_secs_f64(
+            average(
+                self.latency
+                    .iter()
+                    .map(|(_, v)| { v.as_secs_f64() })
+            )
+        )
+    }
+
+    const WEIGHT_RELIABILITY: f64 = 0.6;
+    const WEIGHT_LATENCY: f64 = 0.4;
+
+    const _WEIGHT_ASSERT: () = {
+        assert!(((Self::WEIGHT_RELIABILITY + Self::WEIGHT_LATENCY) - 1.0).abs() <= 0.0001);
+    };
+
+    pub fn score(&self) -> f64 {
+        let rel_score = (self.reliability() as f64) / 100.0;
+
+        let lat = self.latency().as_secs_f64();
+        let lat_score =
+            if lat == 0.0 {
+                0.0
+            } else {
+                1.0 / lat
+            };
+
+        (rel_score * Self::WEIGHT_RELIABILITY) + (lat_score * Self::WEIGHT_LATENCY)
     }
 }

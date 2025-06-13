@@ -41,7 +41,7 @@ impl DNSResponseSource {
         }
     }
 
-    pub fn to_bytes(&self, out: &mut Vec<u8>) -> usize {
+    pub fn encode(&self, out: &mut Vec<u8>) -> usize {
         let mut written = 0;
         match self {
             Self::Plugin(id) => {
@@ -114,7 +114,7 @@ impl DNSResponseSource {
         written
     }
 
-    pub fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<()> {
+    pub fn decode<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<()> {
         todo!()
     }
 }
@@ -186,7 +186,7 @@ impl DNSEntry {
     /// +---------------------+----------------+
     /// ```
     /// 
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Vec<u8> {
         let mut resp: Vec<u8> = self.response.to_vec().expect("unexpectedly dns::Message invalid");
         let resp_len = resp.len();
 
@@ -202,7 +202,7 @@ impl DNSEntry {
         out
     }
 
-    pub fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> {
+    pub fn decode<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> {
         todo!()
     }
 }

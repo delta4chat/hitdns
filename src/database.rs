@@ -27,11 +27,11 @@ impl DNSDatabase {
                     move || -> sled::Result<Option<DNSEntry>> {
                         db
                         .open_tree(b"hitdns_cache_v1")?
-                        .transaction(|tree| {
+                        .transaction(move |tree| {
                             let key: &[u8] = key.as_ref();
                             if let Some(value) = tree.get(key)? {
                                 let value: &[u8] = value.as_ref();
-                                match DNSEntry::from_bytes(value) {
+                                match DNSEntry::decode(value) {
                                     Ok(entry) => Ok(Some(entry)),
                                     Err(_err) => {
                                         let _ = tree.remove(key)?;
@@ -64,5 +64,45 @@ impl DNSDatabase {
 
         let res: &sled::Result<Option<DNSEntry>> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_get()");
         res.clone() // this clone is cheap due to DNSEntry internally uses Arc.
+    }
+
+    pub async fn cache_put<Q: DNSQuery>(&self, query: Q, entry: &DNSEntry) -> sled::Result<()> {
+        let key = query.encode();
+        let value = entry.encode();
+
+        let op =
+            SledOperation::new(move |db| {
+                let f =
+                    move || -> sled::Result<()> {
+                        db
+                        .open_tree(b"hitdns_cache_v1")?
+                        .transaction(move |tree| {
+                            let key: &[u8] = key.as_ref();
+                            if let Some(old_value) = tree.get(key)? {
+                                let old_value: &[u8] = old_value.as_ref();
+                                if old_value == value {
+                                    return Ok(());
+                                }
+                            }
+
+                            tree.insert(key, &value[..])?;
+                            Ok(())
+                        }).map_err(|tx_err: sled::transaction::TransactionError<()>| {
+                            use sled::transaction::TransactionError::*;
+                            match tx_err {
+                                Storage(err) => err,
+                                Abort(_) => {
+                                    unreachable!("no code for abort transaction!");
+                                },
+                            }
+                        })
+                    };
+                Box::new(f())
+            });
+        let sw_fut = self.sled.queue(op).await;
+        let sw_res = sw_fut.await;
+
+        let res: &sled::Result<()> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_get()");
+        res.clone()
     }
 }

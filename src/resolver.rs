@@ -149,32 +149,104 @@ impl DNSResolver {
         }
     }
 
-    pub async fn add_upstream(&self, upstream: Arc<dyn DNSUpstream>) {
-        if self.upstreams.contains(&upstream) {
-            return;
+    pub async fn retain(&self) {
+        self.upstreams.retain_async(|upstream, _| {
+            self.policy.is_valid(&**upstream)
+        }).await;
+    }
+
+    pub async fn add_upstream(&self, upstream: &Arc<dyn DNSUpstream>) -> bool {
+        self.retain().await;
+
+        if self.upstreams.contains(upstream) {
+            return true;
         }
 
-        let _ = self.upstreams.insert_async(upstream, ()).await;
+        if ! self.policy.is_valid(&**upstream) {
+            return false;
+        }
+
+        let _ = self.upstreams.insert_async(upstream.clone(), ()).await;
+
+        true
     }
 
     pub async fn select(&self, selector: DNSUpstreamSelector) -> std::io::Result<Arc<dyn DNSUpstream>> {
-        todo!()
-        /*
         use DNSUpstreamSelector::*;
 
-        match selector {
-            Unspecified | Best => {
-            },
+        self.retain().await;
+
+        let mut upstreams: Vec<&Arc<dyn DNSUpstream>> = Vec::with_capacity(self.upstreams.len());
+
+        let g = scc::ebr::Guard::new();
+        for (k, _) in self.upstreams.iter(&g) {
+            if upstreams.contains(&k) {
+                continue;
+            }
+            upstreams.push(k);
         }
-        */
+
+        let upstreams_len = upstreams.len();
+        if upstreams_len == 0 {
+            return err_invalid_data("empty list of DNSUpstream!");
+        }
+
+        if selector == Random {
+            fastrand::shuffle(&mut upstreams);
+            fastrand::shuffle(&mut upstreams);
+            return Ok(upstreams[0].clone());
+        }
+        if selector == Fixed {
+            return Ok(upstreams[0].clone());
+        }
+
+        let mut selected = None;
+        let mut old;
+        for new in upstreams.into_iter() {
+            old =
+                match selected {
+                    Some(v) => v,
+                    _ => {
+                        selected = Some(new);
+                        continue;
+                    }
+                };
+
+            match selector {
+                Unspecified | Best => {
+                    if new.metrics().score() < old.metrics().score() {
+                        continue;
+                    }
+                },
+                Fast => {
+                    if new.metrics().latency() > old.metrics().latency() {
+                        continue;
+                    }
+                },
+                Reliable => {
+                    if new.metrics().reliability() < old.metrics().reliability() {
+                        continue;
+                    }
+                },
+                _ => {
+                    unreachable!();
+                },
+            }
+
+            selected = Some(new);
+        }
+
+        Ok(selected.expect("must select one from non-empty upstreams").clone())
     }
 
     /// un-cached resolve.
-    pub async fn resolve(&self, query: &Arc<dyn DNSQuery>) -> std::io::Result<DNSEntry> {
-        if self.upstreams.is_empty() {
-            return Err(std::io::Error::other("No upstreams exists!"))
-        }
-        todo!()
+    pub async fn resolve(
+        &self,
+        query: &Arc<dyn DNSQuery>,
+        selector: DNSUpstreamSelector,
+    ) -> std::io::Result<DNSEntry> {
+        let upstream = self.select(selector).await?;
+        upstream.resolve(query.clone()).await
     }
 }
 

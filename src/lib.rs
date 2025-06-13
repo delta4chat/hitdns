@@ -29,7 +29,7 @@ pub use core::{
     hash::{Hash, Hasher, BuildHasher},
     pin::Pin,
     future::Future,
-    ops::Deref,
+    ops::{Deref, AddAssign, DivAssign},
     str::FromStr,
 };
 
@@ -70,18 +70,48 @@ pub type PinFut<T> = Pin<BoxFut<T>>;
 pub trait Fut<T>: Future<Output=T> + Send {}
 impl<T, F: Future<Output=T> + Send> Fut<T> for F {}
 
+pub fn average<T, I>(iter: I) -> T
+where
+    T: Default + Clone + AddAssign + DivAssign + From<bool>,
+    I: Iterator<Item=T>,
+{
+    let mut sum = T::default();
+    let mut len = T::default();
+
+    let one = T::from(true);
+    for item in iter {
+        len += one.clone();
+        sum += item;
+    }
+
+    sum /= len;
+    sum
+}
+
 pub fn err_invalid_input<T, M>(msg: M) -> std::io::Result<T>
 where
     M: Into<Box<(dyn std::error::Error + Send + Sync + 'static)>>,
 {
     Err(invalid_input(msg))
 }
-
 pub fn invalid_input<M>(msg: M) -> std::io::Error
 where
     M: Into<Box<(dyn std::error::Error + Send + Sync + 'static)>>,
 {
     std::io::Error::new(std::io::ErrorKind::InvalidInput, msg)
+}
+
+pub fn err_invalid_data<T, M>(msg: M) -> std::io::Result<T>
+where
+    M: Into<Box<(dyn std::error::Error + Send + Sync + 'static)>>,
+{
+    Err(invalid_data(msg))
+}
+pub fn invalid_data<M>(msg: M) -> std::io::Error
+where
+    M: Into<Box<(dyn std::error::Error + Send + Sync + 'static)>>,
+{
+    std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
 }
 
 /// calls system resolve but cached.
@@ -116,3 +146,4 @@ where
     CACHE.insert(key, ret.clone()).await;
     ret
 }
+
