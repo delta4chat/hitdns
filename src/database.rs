@@ -11,6 +11,10 @@ pub struct DNSDatabase {
 }
 
 impl DNSDatabase {
+    pub const NS_CACHE_V1: &'static [u8] = b"hitdns_cache_v1";
+    pub const NS_LOGS_V1: &'static [u8] = b"hitdns_logs_v1";
+    pub const NS_STATS_V1: &'static [u8] = b"hitdns_stats_v1";
+
     pub fn open<P: AsRef<Path>>(path: P) -> sled::Result<Self> {
         let sled = SledRunner::open(path)?;
         Ok(Self {
@@ -26,7 +30,7 @@ impl DNSDatabase {
                 let f =
                     move || -> sled::Result<Option<DNSEntry>> {
                         db
-                        .open_tree(b"hitdns_cache_v1")?
+                        .open_tree(Self::NS_CACHE_V1)?
                         .transaction(move |tree| {
                             let key: &[u8] = key.as_ref();
                             if let Some(value) = tree.get(key)? {
@@ -75,7 +79,7 @@ impl DNSDatabase {
                 let f =
                     move || -> sled::Result<()> {
                         db
-                        .open_tree(b"hitdns_cache_v1")?
+                        .open_tree(Self::NS_CACHE_V1)?
                         .transaction(move |tree| {
                             let key: &[u8] = key.as_ref();
                             if let Some(old_value) = tree.get(key)? {

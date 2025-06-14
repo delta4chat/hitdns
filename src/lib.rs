@@ -25,8 +25,9 @@ pub mod database;
 pub mod protocol;
 
 pub use core::{
+    any::Any,
     fmt::{self, Write},
-    hash::{Hash, Hasher, BuildHasher},
+    hash::{Hash, Hasher, BuildHasher, BuildHasherDefault},
     pin::Pin,
     future::Future,
     ops::{Deref, AddAssign, DivAssign},
@@ -40,10 +41,12 @@ pub use std::{
     path::{Path, PathBuf},
 };
 
+pub use nohash::NoHashHasher as NoHasher;
+
 pub use bytes::Bytes;
 pub use country_code_enum::CountryCode;
 pub use http_types::Url;
-pub use portable_atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering::Relaxed};
+pub use portable_atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicUsize, Ordering::Relaxed};
 pub use event_listener::{Event, listener};
 pub use smoltimeout::TimedExt;
 pub use asyncute::util::{AtomicChecked, AtomicDuration, AtomicRangeStrict};
@@ -120,27 +123,33 @@ where
     std::io::Error::new(std::io::ErrorKind::InvalidData, msg)
 }
 
-/// calls system resolve but cached.
-pub async fn cached_resolve<A>(addr: A) -> Arc<std::io::Result<Vec<SocketAddr>>>
+/// cached result from system resolver.
+pub async fn cached_resolve<A>(addr: A, clear: bool) -> Arc<std::io::Result<Vec<SocketAddr>>>
 where
     A: async_net::AsyncToSocketAddrs + Hash,
 {
     static CACHE_HASHER_BUILD: Lazy<ahash::RandomState> = Lazy::new(ahash::RandomState::new);
     static CACHE:
-        Lazy<MokaCache<
-            u64,
+        Lazy<moka::future::Cache<
+            u64, // in static scope, it's impossible to use generic type A.
             Arc<std::io::Result<Vec<SocketAddr>>>,
+            BuildHasherDefault<NoHasher<u64>>,
         >> = Lazy::new(|| {
             MokaCacheBuilder::default()
             .name("hitdns system resolve cache")
             .max_capacity(65535)
             //.async_eviction_listener(|_query, _entry, cause| {})
-            .time_to_idle(Duration::from_secs(60*3)) // 3 minutes for time-to-idle
-            .time_to_live(Duration::from_secs(60*15)) // 15 minutes for time-to-live
-            .build_with_hasher(ahash::RandomState::default())
+            .time_to_idle(Duration::from_secs(60*30)) // 30 minutes for time-to-idle
+            .time_to_live(Duration::from_secs(60*60*2)) // 2 hours for time-to-live
+            .build_with_hasher(Default::default())
         });
 
+    if clear {
+        CACHE.invalidate_all();
+    }
+
     let mut hasher = CACHE_HASHER_BUILD.build_hasher();
+    core::any::type_name::<A>().hash(&mut hasher);
     addr.hash(&mut hasher);
     let key = hasher.finish();
 

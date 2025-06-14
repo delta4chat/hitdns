@@ -3,6 +3,6 @@ pub mod tcp;
 pub mod tls;
 pub mod h2;
 
-pub mod incoming;
-pub mod outgoing;
+pub mod inbound;
+pub mod outbound;
 

@@ -156,7 +156,7 @@ impl H2Client {
             };
         let port = uri.port_u16().unwrap_or(443);
 
-        let resolve_ret = cached_resolve((host.as_str(), port)).await;
+        let resolve_ret = cached_resolve((host.as_str(), port), false).await;
         let addrs =
             match resolve_ret.deref().as_ref() {
                 Ok(addrs) => {

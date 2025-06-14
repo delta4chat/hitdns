@@ -4,6 +4,7 @@ use crate::{
     *,
     query::*,
     entry::*,
+    database::*,
     resolver::*,
 };
 
@@ -174,13 +175,13 @@ impl Eq for DNSCacheStatus {}
 #[derive(Debug, Clone)]
 pub struct DNSCache {
     memory: MokaCache<Arc<dyn DNSQuery>, DNSCacheEntry>,
-    //disk: DNSDatabase,
+    disk: DNSDatabase,
 
     resolver: DNSResolver,
 }
 
 impl DNSCache {
-    pub fn new(resolver: DNSResolver) -> Self {
+    pub fn new(disk: DNSDatabase, resolver: DNSResolver) -> Self {
         Self {
             memory: {
                 MokaCacheBuilder::default()
@@ -195,6 +196,7 @@ impl DNSCache {
 
                 .build_with_hasher(ahash::RandomState::default())
             },
+            disk,
             resolver,
         }
     }
