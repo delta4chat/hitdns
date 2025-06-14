@@ -22,6 +22,69 @@ impl DNSDatabase {
         })
     }
 
+    pub async fn cache_scan<Q: DNSQuery + Any>(&self) -> sled::Result<Vec<(Q, DNSEntry)>> {
+        let op =
+            SledOperation::new(move |db| {
+                let f =
+                    move || -> Cell<Option<sled::Result<Vec<(Q, DNSEntry)>>>> {
+                        let tree =
+                            match db.open_tree(Self::NS_CACHE_V1) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    return Cell::new(Some(Err(e)));
+                                }
+                            };
+
+                        let mut out = Vec::with_capacity(1024);
+                        let mut query;
+                        let mut entry;
+                        for ret in tree.iter() {
+                            match ret {
+                                Ok((key, value)) => {
+                                    let key: &[u8] = key.as_ref();
+
+                                    query =
+                                        match Q::decode(key) {
+                                            Ok(v) => v,
+                                            Err(e) => {
+                                                log::warn!("corrupted DNSQuery format! error={:?}", e);
+                                                let _ = tree.remove(key);
+                                                continue;
+                                            }
+                                        };
+
+                                    entry =
+                                        match DNSEntry::decode(value) {
+                                            Ok(v) => v,
+                                            Err(e) => {
+                                                log::warn!("corrupted DNSEntry format! error={:?}", e);
+                                                let _ = tree.remove(key);
+                                                continue;
+                                            }
+                                        };
+
+                                    out.push((query, entry));
+                                },
+                                Err(e) => {
+                                    log::warn!("failed to iterating in-disk DNS cache! error={:?}", e);
+                                }
+                            }
+                        }
+
+                        Cell::new(Some(Ok(out)))
+                    };
+                Box::new(f())
+            });
+
+        let sw_fut = self.sled.queue(op).await;
+        let sw_res = sw_fut.await;
+        let sw_res: &Box<dyn Any+Send> = sw_res.deref();
+        let sw_res: &(dyn Any+Send) = sw_res.deref();
+
+        let res: &Cell<Option<sled::Result<Vec<(Q, DNSEntry)>>>> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_scan()");
+        res.replace(None).take().expect("must have value")
+    }
+
     pub async fn cache_get<Q: DNSQuery>(&self, query: Q) -> sled::Result<Option<DNSEntry>> {
         let key = query.encode();
 
@@ -65,6 +128,8 @@ impl DNSDatabase {
 
         let sw_fut = self.sled.queue(op).await;
         let sw_res = sw_fut.await;
+        let sw_res: &Box<dyn Any+Send> = sw_res.deref();
+        let sw_res: &(dyn Any+Send) = sw_res.deref();
 
         let res: &sled::Result<Option<DNSEntry>> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_get()");
         res.clone() // this clone is cheap due to DNSEntry internally uses Arc.
@@ -105,8 +170,10 @@ impl DNSDatabase {
             });
         let sw_fut = self.sled.queue(op).await;
         let sw_res = sw_fut.await;
+        let sw_res: &Box<dyn Any+Send> = sw_res.deref();
+        let sw_res: &(dyn Any+Send) = sw_res.deref();
 
-        let res: &sled::Result<()> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_get()");
+        let res: &sled::Result<()> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_put()");
         res.clone()
     }
 }

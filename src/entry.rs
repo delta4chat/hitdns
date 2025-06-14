@@ -25,11 +25,11 @@ pub enum DNSResponseSource {
 }
 
 impl DNSResponseSource {
-    pub const PLUGIN: u8 = 1;
-    pub const HOSTS: u8 = 2;
-    pub const LOCAL: u8 = 3;
-    pub const INTERNET: u8 = 4;
-    pub const UNKNOWN: u8 = u8::MAX;
+    pub const PLUGIN:   u8 = b'P';
+    pub const HOSTS:    u8 = b'H';
+    pub const LOCAL:    u8 = b'L';
+    pub const INTERNET: u8 = b'I';
+    pub const UNKNOWN:  u8 = u8::MAX;
 
     pub fn variant(&self) -> u8 {
         match self {
@@ -41,6 +41,64 @@ impl DNSResponseSource {
         }
     }
 
+    /// serialize DNSResponseSource to bytes.
+    ///
+    /// format (all multi-bytes numeric field is encoded in big endian):
+    /// ```text
+    /// +-----------------------+---------+----------------+
+    /// |  Field Name           | Unit    | Length (Bytes) |
+    /// +-----------------------+---------+----------------+
+    /// | Kind                  | Byte    | 1              |
+    /// +-----------------------+---------+----------------+
+    /// | Data (Kind-specific)  | N/A     | ?              |
+    /// +-----------------------+---------+----------------+
+    /// ```
+    ///
+    /// * if Kind is Plugin:
+    /// ```text
+    /// +-----------------------+---------+----------------+
+    /// |  Field Name           | Unit    | Length (Bytes) |
+    /// +-----------------------+---------+----------------+
+    /// | Data (Plugin ID)      | Integer | 4              |
+    /// +-----------------------+---------+----------------+
+    /// ```
+    ///
+    /// * if Kind is Hosts:
+    /// ```text
+    /// +-----------------------+---------+----------------+
+    /// |  Field Name           | Unit    | Length (Bytes) |
+    /// +-----------------------+---------+----------------+
+    /// | Data 1 (Path Length)  | Integer | 2              |
+    /// +-----------------------+---------+----------------+
+    /// | Data 2 (Path)         | String  | variable       |
+    /// +-----------------------+---------+----------------+
+    /// ```
+    ///
+    /// * if Kind is Local:
+    /// ```text
+    /// +-----------------------+---------+----------------+
+    /// |  Field Name           | Unit    | Length (Bytes) |
+    /// +-----------------------+---------+----------------+
+    /// | Data 1 (IP Length)    | Byte    | 1              |
+    /// +-----------------------+---------+----------------+
+    /// | Data 2 (IP Address)   | Integer | 4 or 16        |
+    /// +-----------------------+---------+----------------+
+    /// | Data 3 (Port)         | Integer | 2              |
+    /// +-----------------------+---------+----------------+
+    /// ```
+    ///
+    /// * if Kind is Internet:
+    /// ```text
+    /// +-----------------------+---------+----------------+
+    /// |  Field Name           | Unit    | Length (Bytes) |
+    /// +-----------------------+---------+----------------+
+    /// | Data 1 (URL Length)   | Integer | 2              |
+    /// +-----------------------+---------+----------------+
+    /// | Data 2 (URL)          | String  | variable       |
+    /// +-----------------------+---------+----------------+
+    /// ```
+    ///
+    /// * if Kind is Unknown, it's no data fields.
     pub fn encode(&self, out: &mut Vec<u8>) -> usize {
         let mut written = 0;
         match self {
@@ -100,10 +158,21 @@ impl DNSResponseSource {
                 written += 2;
             },
             Self::Internet(upstream) => {
+                let mut url = upstream.protocol().url().to_string().into_bytes();
+
+                let url_len = url.len();
+                if url_len > (u16::MAX as usize) {
+                    panic!("unexpected url length too long!");
+                }
+
                 out.push(Self::INTERNET);
                 written += 1;
 
-                todo!()
+                out.extend((url_len as u16).to_be_bytes());
+                written += 2;
+
+                out.append(&mut url);
+                written += url_len;
             },
             Self::Unknown => {
                 out.push(Self::UNKNOWN);
@@ -115,6 +184,43 @@ impl DNSResponseSource {
     }
 
     pub fn decode<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<()> {
+        let mut bytes = bytes.as_ref();
+
+        let bytes_len = bytes.len();
+        if bytes_len < 1 {
+            return err_invalid_input("DNSResponseSource too short!");
+        }
+
+        let kind = bytes[0];
+        bytes = &bytes[1..];
+
+        let this =
+            match kind {
+                Self::PLUGIN => {
+                    if bytes.len() != 4 {
+                        return err_invalid_input("DNSResponseSource: Plugin ID too short or has trail junk!");
+                    }
+                    let id = u32::from_be_bytes(asyncute::slice_to_array(bytes, 0).unwrap());
+
+                    Self::Plugin(id)
+                },
+                Self::HOSTS => {
+                    todo!()
+                },
+                Self::LOCAL => {
+                    todo!()
+                },
+                Self::INTERNET => {
+                    todo!()
+                },
+                Self::UNKNOWN => {
+                    todo!()
+                },
+                _ => {
+                    return err_invalid_input("unknown kind");
+                }
+            };
+
         todo!()
     }
 }
@@ -177,15 +283,23 @@ impl DNSEntry {
     /// Serialize to bytes for store in databases.
     /// * DNS response sometimes too large, so need to store in heap.
     ///
-    /// format:
+    /// format (all multi-bytes numeric field is encoded in big endian):
+    /// * see
     /// ```text
-    /// +---------------------+----------------+
-    /// |  Field Name         | Length (Bytes) |
-    /// +---------------------+----------------+
-    /// |                     |                |
-    /// +---------------------+----------------+
+    /// +-----------------------+---------+----------------+
+    /// |  Field Name           | Unit    | Length (Bytes) |
+    /// +-----------------------+---------+----------------+
+    /// | Version               | Byte    | 1              |
+    /// +-----------------------+---------+----------------+
+    /// | Expire Unix Timestamp | Seconds | 8              |
+    /// +-----------------------+---------+----------------+
+    /// | DNS Response Length   | Integer | 2              |
+    /// +-----------------------+---------+----------------+
+    /// | DNS Response          | Length  | variable       |
+    /// +-----------------------+---------+----------------+
+    /// | DNS Upstream Source   | Source  | variable       |
+    /// +-----------------------+---------+----------------+
     /// ```
-    /// 
     pub fn encode(&self) -> Vec<u8> {
         let mut resp: Vec<u8> = self.response.to_vec().expect("unexpectedly dns::Message invalid");
         let resp_len = resp.len();
@@ -202,7 +316,33 @@ impl DNSEntry {
         out
     }
 
+    /// decode DNSEntry from serialized format.
     pub fn decode<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> {
+        let mut bytes = bytes.as_ref();
+
+        let bytes_len = bytes.len();
+        if bytes_len < (1 + 8 + 2) {
+            return err_invalid_input("serialized DNSEntry too short!");
+        }
+
+        let version = bytes[0];
+        if version != query::serialized::VERSION {
+            return err_invalid_input("unknown DNSEntry serialization version");
+        }
+        bytes = &bytes[1..];
+
+        let expire = u64::from_be_bytes(asyncute::slice_to_array(bytes, 0).unwrap());
+        bytes = &bytes[8..];
+
+        let resp_len = u16::from_be_bytes(asyncute::slice_to_array(bytes, 0).unwrap()) as usize;
+        bytes = &bytes[2..];
+
+        if bytes.len() != resp_len {
+            return err_invalid_input("DNSEntry field `.resp` length is mismatch the `resp_len` field!");
+        }
+
+        let resp = dns::Message::from_vec(bytes).map_err(invalid_input)?;
+
         todo!()
     }
 }

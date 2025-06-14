@@ -111,11 +111,13 @@ impl DNSProtocol {
                     return plain.is_valid();
                 },
                 Self::DoH(url) => {
-                    match url.scheme().to_ascii_lowercase().as_str() {
-                        "doh2" | "doh3" => {},
-                        _ => {
-                            return false;
-                        }
+                    let scheme = url.scheme();
+                    if scheme.eq_ignore_ascii_case("doh2") {
+                        // valid
+                    } else if scheme.eq_ignore_ascii_case("doh3") {
+                        // valid
+                    } else {
+                        return false;
                     }
 
                     if url.port() == Some(0) {
@@ -134,10 +136,10 @@ impl DNSProtocol {
                             return false;
                         }
                         if sni.num_labels() == 4 {
-                            if let Some(tld) = sni.iter().last() {
+                            for label in sni.iter() {
                                 // Iterator::all() returns true even if iterator is empty.
                                 // this is no problem due to empty TLD always invalid.
-                                if tld.into_iter().all(u8::is_ascii_digit) {
+                                if label.into_iter().all(u8::is_ascii_digit) {
                                     return false;
                                 }
                             }
@@ -148,11 +150,7 @@ impl DNSProtocol {
                 },
             };
 
-        if addr.port() != 0 {
-            true
-        } else {
-            false
-        }
+        addr.port() != 0
     }
 
     /// format any protocol's address to URL format.
@@ -176,7 +174,7 @@ impl DNSProtocol {
     /// TCP URL: `tcp://172.16.0.1:53`
     ///
     /// # non-encrypted DNS over HTTP over TCP
-    /// DoH(plaintext): `dohp://127.0.0.1:8053` (non-fixed-path: `/dns-query` and `/resolve`)
+    /// DoH(plaintext) URL: `dohp://127.0.0.1:8053` (non-fixed-path: `/dns-query` and `/resolve`)
     pub fn url(&self) -> Url {
         if ! self.is_valid() {
             panic!("unexpectedly invalid inner data of DNSProtocol");

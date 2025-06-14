@@ -201,7 +201,18 @@ impl DNSCache {
         }
     }
 
-    pub async fn get(&self, query: &Arc<dyn DNSQuery>, selector: DNSUpstreamSelector) -> DNSCacheStatus {
+    pub async fn load_all(&self) -> usize {
+        todo!()
+    }
+    pub async fn load_one(&self, query: &Arc<dyn DNSQuery>) -> bool {
+        todo!()
+    }
+
+    pub async fn get(
+        &self,
+        query: &Arc<dyn DNSQuery>,
+        selector: DNSUpstreamSelector,
+    ) -> DNSCacheStatus {
         let dce =
             self.memory
                 .entry_by_ref(query)
@@ -224,23 +235,25 @@ impl DNSCache {
 
         let update_wait = Duration::from_millis(100);
         let mut i = 50; // max wait time = 5 seconds
-        let entry =
-            loop {
-                if i == 0 {
-                    return DNSCacheStatus::Miss;
-                }
-                i -= 1;
+        let entry = loop {
+            if i == 0 {
+                return DNSCacheStatus::Miss;
+            }
+            i -= 1;
 
-                match dce.get_entry() {
-                    Some(entry) => {
-                        break entry;
-                    },
-                    _ => {
-                        update();
-                        dce.wait_timeout(update_wait).await;
+            match dce.get_entry() {
+                Some(entry) => {
+                    break entry;
+                },
+                _ => {
+                    if self.load_one(query).await {
+                        continue;
                     }
+                    update();
+                    dce.wait_timeout(update_wait).await;
                 }
-            };
+            }
+        };
 
         let now = SystemTime::now();
         if now < entry.expire_time {

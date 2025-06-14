@@ -26,6 +26,7 @@ pub mod protocol;
 
 pub use core::{
     any::Any,
+    cell::Cell,
     fmt::{self, Write},
     hash::{Hash, Hasher, BuildHasher, BuildHasherDefault},
     pin::Pin,
