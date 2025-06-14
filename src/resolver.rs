@@ -124,6 +124,7 @@ impl DNSResolverPolicy {
 pub struct DNSResolverInner {
     upstreams: scc::HashIndex<Arc<dyn DNSUpstream>, ()>,
     policy: DNSResolverPolicy,
+    idx: AtomicUsize,
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +146,7 @@ impl DNSResolver {
             inner: Arc::new(DNSResolverInner {
                 upstreams: Default::default(),
                 policy: DNSResolverPolicy::new(),
+                idx: AtomicUsize::new(0),
             }),
         }
     }
@@ -171,6 +173,14 @@ impl DNSResolver {
         true
     }
 
+    pub async fn del_upstream(&self, upstream: &Arc<dyn DNSUpstream>) -> bool {
+        self.upstreams.remove_async(upstream).await
+    }
+
+    pub fn policy(&self) -> &DNSResolverPolicy {
+        &(self.policy)
+    }
+
     pub async fn select(&self, selector: DNSUpstreamSelector) -> std::io::Result<Arc<dyn DNSUpstream>> {
         use DNSUpstreamSelector::*;
 
@@ -195,6 +205,10 @@ impl DNSResolver {
             fastrand::shuffle(&mut upstreams);
             fastrand::shuffle(&mut upstreams);
             return Ok(upstreams[0].clone());
+        }
+        if selector == RoundRobin {
+            upstreams.sort();
+            return Ok(upstreams[self.idx.fetch_add(1, Relaxed) % upstreams_len].clone());
         }
         if selector == Fixed {
             return Ok(upstreams[0].clone());
@@ -252,13 +266,15 @@ impl DNSResolver {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum DNSUpstreamSelector {
-    /// try select upstream by default unspecified algorithm (currently `Self::Best`).
+    /// try select upstream by default unspecified algorithm.
+    /// * currently it alias to `Self::Best`, but this may changed for optimization in future.
     Unspecified,
 
     /// try select upstream by latency and reliability.
-    /// * high reliability is important.
-    /// * select lowest latency upstream in high reliability upstreams.
+    /// * high-reliability is important.
+    /// * but low-latency also matter.
     Best,
 
     /// try select upstream with smallest latency.
@@ -270,6 +286,23 @@ pub enum DNSUpstreamSelector {
     /// try select upstream randomly.
     Random,
 
-    /// try select fixed of upstream.
+    /// try select upstream by circular (around back) iterating.
+    /// * in some specified length, maybe duplicate index 0 if AtomicUsize overflows.
+    /// * for example, have 3 upstreams (A, B, C):
+    /// 1. A
+    /// 2. B
+    /// 3. C
+    /// 4. A
+    /// 5. B
+    RoundRobin,
+
+    /// (almost useless)
+    /// try select upstream by fixed order.
+    /// * for example, have 3 upstreams (A, B, C):
+    /// 1. A
+    /// 2. A
+    /// 3. A
+    /// 4. A
+    /// 5. A
     Fixed,
 }

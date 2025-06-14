@@ -312,6 +312,26 @@ impl Hash for dyn DNSUpstream {
     }
 }
 
+impl Ord for dyn DNSUpstream {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        static RS: ahash::RandomState =
+            ahash::RandomState::with_seeds(
+                0xffb6fe463adb4e07,
+                0xb781c06b46683c4d,
+                0xfa37e657b817bf14,
+                0xaeef0174bb5ca0ce,
+            );
+
+        RS.hash_one(self).cmp(&(RS.hash_one(other)))
+    }
+}
+
+impl PartialOrd for dyn DNSUpstream {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// the inner of [`DNSUpstreamMetrics`].
 #[derive(Debug)]
 pub struct DNSUpstreamMetricsInner {
