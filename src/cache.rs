@@ -30,13 +30,15 @@ impl Deref for DNSCacheEntry {
 }
 
 impl DNSCacheEntry {
+    pub const UPDATE_TIMEOUT: Duration = Duration::from_secs(10);
+
     pub fn new(query: Arc<dyn DNSQuery>, entry: Option<DNSEntry>) -> Self {
         Self {
             query,
             entry: entry.map(sdd::AtomicShared::new).unwrap_or_else(sdd::AtomicShared::null),
             inner: Arc::new(DNSCacheEntryInner {
                 updating: AtomicBool::new(false),
-                update_notify: Event::new()
+                update_notify: Event::new(),
             }),
         }
     }
@@ -62,21 +64,51 @@ impl DNSCacheEntry {
         self.updating.load(Relaxed)
     }
 
-    pub async fn update(&self, resolver: DNSResolver, selector: DNSUpstreamSelector) -> std::io::Result<()> {
+    pub fn update(
+        &self,
+        resolver: DNSResolver,
+        selector: DNSUpstreamSelector,
+    ) -> Option<impl Fut<std::io::Result<()>>> {
         if self.updating.compare_exchange(false, true, Relaxed, Relaxed).is_err() {
-            return Err(std::io::Error::new(std::io::ErrorKind::ResourceBusy, "another update task is running!"));
+            // another update task is running
+            return None;
         }
-        let mut defer = asyncute::Defer::new(|| {
-            self.updating.store(false, Relaxed);
-        });
 
-        let entry = resolver.resolve(&self.query, selector).await?;
-        self.set_entry(entry);
+        let this = self.clone();
 
-        self.update_notify.notify_relaxed(usize::MAX);
-        defer.run();
+        let mut defer = {
+            let this = self.clone();
+            asyncute::Defer::new(move || {
+                this.updating.store(false, Relaxed);
+            })
+        };
 
-        Ok(())
+        Some(async move {
+            match resolver.resolve(&this.query, selector).timeout(Self::UPDATE_TIMEOUT).await {
+                Some(ret) => {
+                    match ret {
+                        Ok(entry) => {
+                            this.set_entry(entry);
+                            this.update_notify.notify_relaxed(usize::MAX);
+                            defer.run();
+                            Ok(())
+                        },
+                        Err(e) => {
+                            defer.run();
+                            Err(e)
+                        }
+                    }
+                },
+                _ => {
+                    Err(
+                        std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "DNSCacheEntry::update() timed out"
+                        )
+                    )
+                }
+            }
+        })
     }
 
     pub async fn wait_timeout(&self, timeout: Duration) -> bool {
@@ -136,7 +168,7 @@ impl PartialEq for DNSCacheStatus {
 impl Eq for DNSCacheStatus {}
 
 /// in-memory DNS Cache that focus to cache hit ratio.
-/// 1. if query miss it just waiting.
+/// 1. if query miss, start update task and waiting.
 /// 2. if response exists but TTL expired, it start update task in background.
 /// 3. if response exists and TTL does not expired, cache hit.
 #[derive(Debug, Clone)]
@@ -181,9 +213,11 @@ impl DNSCache {
         let update = || {
             let dce = dce.clone();
             let resolver = self.resolver.clone();
-            asyncute::spawn(async move {
-                dce.update(resolver, selector).await.expect("DNSCacheEntry update failed");
-            }).detach();
+            if let Some(fut) = dce.update(resolver, selector) {
+                asyncute::spawn(async move {
+                    fut.await.expect("DNSCacheEntry update failed");
+                }).detach();
+            }
         };
 
         let update_wait = Duration::from_millis(100);

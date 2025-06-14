@@ -79,9 +79,15 @@ where
     let mut len = T::default();
 
     let one = T::from(true);
+    let mut empty = true;
     for item in iter {
+        empty = false;
         len += one.clone();
         sum += item;
+    }
+
+    if empty {
+        return T::default();
     }
 
     sum /= len;
