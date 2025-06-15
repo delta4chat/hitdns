@@ -6,9 +6,38 @@ use crate::{
     },
 };
 
+pub fn crypto_provider() -> Arc<rustls::crypto::CryptoProvider> {
+    #[cfg(feature="aws-lc-rs")]
+    return aws_lc_rs_provider();
+
+    #[cfg(feature="ring")]
+    return ring_provider();
+
+    #[cfg(feature="rust-crypto")]
+    return rust_crypto_provider();
+
+    // if no provider, it just compile failed (type mismatch).
+    // if multi providers co-exists, it causes compile warnings (unreachable code)
+}
+
+
+#[cfg(feature="aws-lc-rs")]
+pub fn aws_lc_rs_provider() -> Arc<rustls::crypto::CryptoProvider> {
+    static PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = Lazy::new(|| { Arc::new(rustls::crypto::aws_lc_rs::default_provider()) });
+
+    PROVIDER.clone()
+}
+
+#[cfg(feature="ring")]
+pub fn ring_provider() -> Arc<rustls::crypto::CryptoProvider> {
+    static PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = Lazy::new(|| { Arc::new(rustls::crypto::ring::default_provider()) });
+
+    PROVIDER.clone()
+}
+
+#[cfg(feature="rust-crypto")]
 pub fn rust_crypto_provider() -> Arc<rustls::crypto::CryptoProvider> {
-    static PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> =
-        Lazy::new(|| { Arc::new(rustls_rustcrypto::provider()) });
+    static PROVIDER: Lazy<Arc<rustls::crypto::CryptoProvider>> = Lazy::new(|| { Arc::new(rustls_rustcrypto::provider()) });
 
     PROVIDER.clone()
 }
@@ -38,7 +67,7 @@ pub fn tls_config(alpn: &[u8]) -> rustls::ClientConfig {
     }
 
     let mut config =
-        rustls::ClientConfig::builder_with_provider(rust_crypto_provider())
+        rustls::ClientConfig::builder_with_provider(crypto_provider())
         .with_safe_default_protocol_versions().unwrap()
         .with_root_certificates(anypki_filtered_mozilla())
         .with_no_client_auth();
