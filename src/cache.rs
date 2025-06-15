@@ -194,18 +194,33 @@ impl DNSCache {
                             .time_to_live(Duration::from_secs(60*60*24*365*100))
                 */
 
-                .build_with_hasher(ahash::RandomState::default())
+                .build_with_hasher(ahash::RandomState::new())
             },
             disk,
             resolver,
         }
     }
 
-    pub async fn load_all(&self) -> usize {
-        todo!()
+    pub async fn load_all<Q: DNSQuery + Any + Sized>(&self) -> std::io::Result<usize> {
+        let mut arr: Vec<(Q, DNSEntry)> = self.disk.cache_scan().await.map_err(std::io::Error::other)?;
+
+        let len = arr.len();
+        log::info!("loaded {} cache items from in-disk database.", len);
+
+        let mut query: Arc<dyn DNSQuery>;
+        while let Some((q, entry)) = arr.pop() {
+            query = Arc::new(q);
+            self.put(&query, &entry).await;
+        }
+        Ok(len)
     }
-    pub async fn load_one(&self, query: &Arc<dyn DNSQuery>) -> bool {
-        todo!()
+    pub async fn load_one(&self, query: &Arc<dyn DNSQuery>) -> std::io::Result<bool> {
+        if let Some(entry) = self.disk.cache_get(&**query).await.map_err(std::io::Error::other)? {
+            self.put(query, &entry).await;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 
     /// try to get a DNSEntry from DNSCache:
@@ -250,7 +265,7 @@ impl DNSCache {
                     break entry;
                 },
                 _ => {
-                    if self.load_one(query).await {
+                    if self.load_one(query).await.ok() == Some(true) {
                         i += 1;
                         continue;
                     }

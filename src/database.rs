@@ -8,6 +8,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct DNSDatabase {
     sled: SledRunner,
+    negative_keys: MokaCache<DNSQuerySerialized, ()>,
 }
 
 impl DNSDatabase {
@@ -19,10 +20,19 @@ impl DNSDatabase {
         let sled = SledRunner::open(path)?;
         Ok(Self {
             sled,
+            negative_keys: {
+                MokaCacheBuilder::default()
+                .name("hitdns database negative keys cache")
+                .max_capacity(65535)
+                //.async_eviction_listener(|_query, _entry, cause| {})
+                .time_to_idle(Duration::from_secs(30)) // 30 seconds for time-to-idle
+                .time_to_live(Duration::from_secs(60)) // one minute for time-to-live
+                .build_with_hasher(ahash::RandomState::new())
+            },
         })
     }
 
-    pub async fn cache_scan<Q: DNSQuery + Any>(&self) -> sled::Result<Vec<(Q, DNSEntry)>> {
+    pub async fn cache_scan<Q: DNSQuery + Any + Sized>(&self) -> sled::Result<Vec<(Q, DNSEntry)>> {
         let op =
             SledOperation::new(move |db| {
                 let f =
@@ -88,6 +98,10 @@ impl DNSDatabase {
     pub async fn cache_get(&self, query: &dyn DNSQuery) -> sled::Result<Option<DNSEntry>> {
         let key = query.encode();
 
+        if self.negative_keys.get(&key).await.is_some() {
+            return Ok(None);
+        }
+
         let op =
             SledOperation::new(move |db| {
                 let f =
@@ -139,8 +153,10 @@ impl DNSDatabase {
         let key = query.encode();
         let value = entry.encode();
 
-        let op =
+        let op = {
+            let key = key.clone();
             SledOperation::new(move |db| {
+
                 let f =
                     move || -> sled::Result<()> {
                         db
@@ -167,13 +183,17 @@ impl DNSDatabase {
                         })
                     };
                 Box::new(f())
-            });
+            })
+        };
         let sw_fut = self.sled.queue(op).await;
         let sw_res = sw_fut.await;
         let sw_res: &Box<dyn Any+Send> = sw_res.deref();
         let sw_res: &(dyn Any+Send) = sw_res.deref();
 
         let res: &sled::Result<()> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_put()");
+        if res.is_ok() {
+            self.negative_keys.invalidate(&key).await;
+        }
         res.clone()
     }
 }

@@ -51,7 +51,7 @@ pub mod serialized {
 
 }
 
-use serialized::Serialized;
+pub use serialized::Serialized as DNSQuerySerialized;
 
 /// DomainString: heapless version of String and it's max length up to 255.
 pub type DomainString = heapless::String<{serialized::len_max::DOMAIN}>;
@@ -195,7 +195,7 @@ pub trait DNSQueryExt: DNSQuery {
     }
 
     /// serialize to bytes for store to database.
-    fn encode(&self) -> Serialized {
+    fn encode(&self) -> DNSQuerySerialized {
         let domain_str = self.domain_str();
 
         let domain = domain_str.as_bytes();

@@ -43,6 +43,7 @@ pub use std::{
 };
 
 pub use nohash::NoHashHasher as NoHasher;
+pub type NoHasherU64 = NoHasher<u64>;
 
 pub use bytes::Bytes;
 pub use country_code_enum::CountryCode;
@@ -134,7 +135,7 @@ where
         Lazy<moka::future::Cache<
             u64, // in static scope, it's impossible to use generic type A.
             Arc<std::io::Result<Vec<SocketAddr>>>,
-            BuildHasherDefault<NoHasher<u64>>,
+            BuildHasherDefault<NoHasherU64>,
         >> = Lazy::new(|| {
             MokaCacheBuilder::default()
             .name("hitdns system resolve cache")
