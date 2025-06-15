@@ -112,12 +112,12 @@ impl Future for SledWith {
 
         // register waker.
         if self.waker.is_null(Relaxed) {
-            let waker = ctx.waker();
+            let waker = sdd::Shared::new(ctx.waker().clone());
             loop {
                 // compare exchange is not needed:
                 // it just performs update waker if it already has value.
                 self.waker.swap(
-                    (Some(sdd::Shared::new(waker.clone())), sdd::Tag::None),
+                    (Some(waker.clone()), sdd::Tag::None),
                     Relaxed,
                 );
 
@@ -255,6 +255,10 @@ impl SledRunner {
         let mut shared_res;
 
         loop {
+            if state.please_exit.load(Relaxed) {
+                break;
+            }
+
             SledOperation { with_db, sw } =
                 match self.ops_rx.recv_blocking() {
                     Ok(v) => v,

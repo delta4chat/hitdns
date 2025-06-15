@@ -85,7 +85,7 @@ impl DNSDatabase {
         res.replace(None).take().expect("must have value")
     }
 
-    pub async fn cache_get<Q: DNSQuery>(&self, query: Q) -> sled::Result<Option<DNSEntry>> {
+    pub async fn cache_get(&self, query: &dyn DNSQuery) -> sled::Result<Option<DNSEntry>> {
         let key = query.encode();
 
         let op =
@@ -135,7 +135,7 @@ impl DNSDatabase {
         res.clone() // this clone is cheap due to DNSEntry internally uses Arc.
     }
 
-    pub async fn cache_put<Q: DNSQuery>(&self, query: Q, entry: &DNSEntry) -> sled::Result<()> {
+    pub async fn cache_put(&self, query: &dyn DNSQuery, entry: &DNSEntry) -> sled::Result<()> {
         let key = query.encode();
         let value = entry.encode();
 

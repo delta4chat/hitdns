@@ -208,6 +208,10 @@ impl DNSCache {
         todo!()
     }
 
+    /// try to get a DNSEntry from DNSCache:
+    /// 1. first lookup in-memory cache, and return if any.
+    /// 2. if in-memory cache miss, then try to load from in-disk database, and return if any.
+    /// 3. if in-disk database miss, finally try to resolve.
     pub async fn get(
         &self,
         query: &Arc<dyn DNSQuery>,
@@ -247,6 +251,7 @@ impl DNSCache {
                 },
                 _ => {
                     if self.load_one(query).await {
+                        i += 1;
                         continue;
                     }
                     update();
@@ -265,9 +270,8 @@ impl DNSCache {
     }
 
     /// update the DNSEntry.
-    /// return false if the DNSEntry is exists, and provided DNSEntry is older.
-    ///
-    /// the parameters is passed by reference for "copy-on-write", so the `&DNSEntry` will only be cloned if needed to update it to DNSCacheEntry.
+    /// * return false if the DNSEntry is exists, and provided DNSEntry is older.
+    /// * the parameters is passed by reference for "copy-on-write", so the `&DNSEntry` will only be cloned if needed to update it to DNSCacheEntry.
     pub async fn put(&self, query: &Arc<dyn DNSQuery>, entry: &DNSEntry) -> bool {
         let moka_entry =
             self.memory
@@ -296,6 +300,17 @@ impl DNSCache {
         }
 
         dce.set_entry(entry.clone());
+
+        // spawn background task to update in-disk database due to operation may causes a lot of time.
+        {
+            let query = query.clone();
+            let entry = entry.clone();
+            let disk = self.disk.clone();
+            asyncute::spawn(async move {
+                disk.cache_put(query.deref(), &entry).await.expect("unable to store DNSEntry to disk!");
+            }).detach();
+        }
+
         true
     }
 }

@@ -52,7 +52,7 @@ impl DNSPlaintext {
                 Self::UDP(ua) => ua,
                 Self::TCP(ta) => ta,
                 Self::HTTP(url) => {
-                    if url.scheme().to_ascii_lowercase() != "dohp" {
+                    if ! url.scheme().eq_ignore_ascii_case("dohp") {
                         return false;
                     }
                     if url.port() == Some(0) {
@@ -64,11 +64,7 @@ impl DNSPlaintext {
                 }
             };
 
-        if addr.port() != 0 {
-            true
-        } else {
-            false
-        }
+        addr.port() != 0
     }
 }
 

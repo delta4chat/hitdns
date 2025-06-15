@@ -280,5 +280,5 @@ pub trait DNSQueryExt: DNSQuery {
     }
 }
 
-impl<T: DNSQuery> DNSQueryExt for T {}
+impl<T: DNSQuery + ?Sized> DNSQueryExt for T {}
 

@@ -20,7 +20,7 @@ pub enum DNSResponseSource {
     Plugin(u32) = Self::PLUGIN,
     Hosts(String) = Self::HOSTS,
     Local(SocketAddr) = Self::LOCAL,
-    Internet(Arc<dyn DNSUpstream>) = Self::INTERNET,
+    Internet(Result<Arc<dyn DNSUpstream>, Url>) = Self::INTERNET,
     Unknown = Self::UNKNOWN,
 }
 
@@ -103,6 +103,8 @@ impl DNSResponseSource {
         let mut written = 0;
         match self {
             Self::Plugin(id) => {
+                out.reserve(1 + 4);
+
                 out.push(Self::PLUGIN);
                 written += 1;
 
@@ -115,8 +117,11 @@ impl DNSResponseSource {
 
                 let path_len = path.len();
                 if path_len > (u16::MAX as usize) {
+                    log::warn!("DNSResponseSource::encode(): unexpected hosts path length too long!");
                     return 0;
                 }
+
+                out.reserve(1 + 2 + path_len);
 
                 out.push(Self::HOSTS);
                 written += 1;
@@ -128,13 +133,15 @@ impl DNSResponseSource {
                 written += path_len;
             },
             Self::Local(addr) => {
-                out.push(Self::LOCAL);
-                written += 1;
-
                 match addr.ip() {
                     IpAddr::V4(ip4) => {
                         let ip4 = ip4.octets();
                         assert!(ip4.len() == 4);
+
+                        out.reserve(1 + 1 + 4 + 2);
+
+                        out.push(Self::LOCAL);
+                        written += 1;
 
                         out.push(4);
                         written += 1;
@@ -145,6 +152,11 @@ impl DNSResponseSource {
                     IpAddr::V6(ip6) => {
                         let ip6 = ip6.octets();
                         assert!(ip6.len() == 16);
+
+                        out.reserve(1 + 1 + 16 + 2);
+
+                        out.push(Self::LOCAL);
+                        written += 1;
 
                         out.push(16);
                         written += 1;
@@ -157,13 +169,24 @@ impl DNSResponseSource {
                 out.extend(addr.port().to_be_bytes());
                 written += 2;
             },
-            Self::Internet(upstream) => {
-                let mut url = upstream.protocol().url().to_string().into_bytes();
+            Self::Internet(peer) => {
+                let mut url =
+                    match peer {
+                        Ok(upstream) => {
+                            upstream.protocol().url().to_string().into_bytes()
+                        },
+                        Err(url) => {
+                            url.to_string().into_bytes()
+                        }
+                    };
 
                 let url_len = url.len();
                 if url_len > (u16::MAX as usize) {
-                    panic!("unexpected url length too long!");
+                    log::warn!("DNSResponseSource::encode(): unexpected url length too long!");
+                    return 0;
                 }
+
+                out.reserve(1 + 2 + url_len);
 
                 out.push(Self::INTERNET);
                 written += 1;
@@ -183,7 +206,7 @@ impl DNSResponseSource {
         written
     }
 
-    pub fn decode<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<()> {
+    pub fn decode<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> {
         let mut bytes = bytes.as_ref();
 
         let bytes_len = bytes.len();
@@ -197,35 +220,121 @@ impl DNSResponseSource {
         let this =
             match kind {
                 Self::PLUGIN => {
-                    if bytes.len() != 4 {
-                        return err_invalid_input("DNSResponseSource: Plugin ID too short or has trail junk!");
+                    if bytes.len() < 4 {
+                        return err_invalid_input("DNSResponseSource: Plugin ID too short!");
                     }
                     let id = u32::from_be_bytes(asyncute::slice_to_array(bytes, 0).unwrap());
 
                     Self::Plugin(id)
                 },
                 Self::HOSTS => {
-                    todo!()
+                    if bytes.len() < 2 {
+                        return err_invalid_input("DNSResponseSource: Hosts Path Length too short!");
+                    }
+
+                    let len = u16::from_be_bytes([ bytes[0], bytes[1] ]) as usize;
+                    bytes = &bytes[2..];
+
+                    if bytes.len() < len {
+                        return err_invalid_input("DNSResponseSource: Hosts Path too short!");
+                    }
+                    let path =
+                        // 1. first zero-copy decode UTF-8 string.
+                        // 2. only clone if success, so avoid some attacks.
+                        match core::str::from_utf8(&bytes[..len]) {
+                            Ok(p) => {
+                                p.to_string()
+                            },
+                            _ => {
+                                return err_invalid_input("DNSResponseSource: Hosts Path is not valid UTF-8 encoded!");
+                            }
+                        };
+
+                    Self::Hosts(path)
                 },
                 Self::LOCAL => {
-                    todo!()
+                    if bytes.len() < (1 + 4 + 2) {
+                        return err_invalid_input("DNSResponseSource: Local data fields is too short!");
+                    }
+
+                    let ip_len = bytes[0];
+                    bytes = &bytes[1..];
+
+                    let ip = 
+                        match ip_len {
+                            4 => {
+                                if bytes.len() < 4 {
+                                    return err_invalid_input("DNSResponseSource: Local IP4 too short!");
+                                }
+                                let ip4 = Ipv4Addr::from(asyncute::slice_to_array(bytes, 0).unwrap());
+                                bytes = &bytes[4..];
+                                IpAddr::V4(ip4)
+                            },
+                            16 => {
+                                if bytes.len() < 16 {
+                                    return err_invalid_input("DNSResponseSource: Local IP6 too short!");
+                                }
+                                let ip6 = Ipv6Addr::from(asyncute::slice_to_array(bytes, 0).unwrap());
+                                bytes = &bytes[16..];
+                                IpAddr::V6(ip6)
+                            },
+                            _ => {
+                                return err_invalid_input("DNSResponseSource: Local IP Length unknown!");
+                            }
+                        };
+
+                    if bytes.len() < 2 {
+                        return err_invalid_input("DNSResponseSource: Local Port is too short!");
+                    }
+
+                    let port = u16::from_be_bytes([ bytes[0], bytes[1] ]);
+
+                    Self::Local(SocketAddr::new(ip, port))
                 },
                 Self::INTERNET => {
-                    todo!()
+                    if bytes.len() < 2 {
+                        return err_invalid_input("DNSResponseSource: Internet Upstream URL Length too short!");
+                    }
+
+                    let len = u16::from_be_bytes([ bytes[0], bytes[1] ]) as usize;
+                    bytes = &bytes[2..];
+
+                    if bytes.len() < len {
+                        return err_invalid_input("DNSResponseSource: Internet Upstream URL too short!");
+                    }
+                    let url =
+                        // 1. first zero-copy decode UTF-8 string.
+                        // 2. only parse if success, so avoid some attacks.
+                        match core::str::from_utf8(&bytes[..len]) {
+                            Ok(u) => {
+                                match Url::parse(u) {
+                                    Ok(v) => v,
+                                    _ => {
+                                        return err_invalid_input("DNSResponseSource: Internet Upstream URL is unable parsed as url::Url!");
+                                    }
+                                }
+                            },
+                            _ => {
+                                return err_invalid_input("DNSResponseSource: Internet Upstream URL is not valid UTF-8 encoded!");
+                            }
+                        };
+
+                    Self::Internet(Err(url))
                 },
                 Self::UNKNOWN => {
-                    todo!()
+                    Self::Unknown
                 },
                 _ => {
-                    return err_invalid_input("unknown kind");
+                    return err_invalid_input("DNSResponseSource: Kind is unknown!");
                 }
             };
 
-        todo!()
+        Ok(this)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct DNSEntry {
     /// whole DNS Response
     pub response: Arc<dns::Message>,
@@ -304,13 +413,15 @@ impl DNSEntry {
         let mut resp: Vec<u8> = self.response.to_vec().expect("unexpectedly dns::Message invalid");
         let resp_len = resp.len();
 
-        let out_len = 1 + 8 + 2 + resp_len;
+        let mut out_len = 1 + 8 + 2 + resp_len;
         let mut out = Vec::with_capacity(out_len);
 
         out.push(query::serialized::VERSION);
         out.extend(self.expire_time.duration_since(SystemTime::UNIX_EPOCH).expect("system time earlier unix epoch!?").as_secs().to_be_bytes());
         out.extend(resp_len.to_be_bytes());
         out.append(&mut resp);
+
+        out_len += self.source.encode(&mut out);
 
         assert_eq!(out.len(), out_len);
         out
@@ -331,18 +442,30 @@ impl DNSEntry {
         }
         bytes = &bytes[1..];
 
-        let expire = u64::from_be_bytes(asyncute::slice_to_array(bytes, 0).unwrap());
+        let expire_time =
+            SystemTime::UNIX_EPOCH.checked_add(
+                Duration::from_secs(
+                    u64::from_be_bytes(asyncute::slice_to_array(bytes, 0).unwrap())
+                )
+            ).expect("timestamp overflow!");
         bytes = &bytes[8..];
 
-        let resp_len = u16::from_be_bytes(asyncute::slice_to_array(bytes, 0).unwrap()) as usize;
+        let resp_len = u16::from_be_bytes([ bytes[0], bytes[1] ]) as usize;
         bytes = &bytes[2..];
 
-        if bytes.len() != resp_len {
-            return err_invalid_input("DNSEntry field `.resp` length is mismatch the `resp_len` field!");
+        if bytes.len() < resp_len {
+            return err_invalid_input("DNSEntry: Response too short!");
         }
 
-        let resp = dns::Message::from_vec(bytes).map_err(invalid_input)?;
+        let response = Arc::new(dns::Message::from_vec(&bytes[..resp_len]).map_err(invalid_input)?);
+        bytes = &bytes[resp_len..];
 
-        todo!()
+        let source = DNSResponseSource::decode(bytes).unwrap_or(DNSResponseSource::Unknown);
+
+        Ok(Self {
+            response,
+            expire_time,
+            source,
+        })
     }
 }

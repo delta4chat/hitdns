@@ -36,7 +36,7 @@ pub use core::{
 };
 
 pub use std::{
-    net::{SocketAddr, IpAddr},
+    net::{SocketAddr, IpAddr, Ipv4Addr, Ipv6Addr},
     time::{SystemTime, Instant, Duration},
     sync::Arc,
     path::{Path, PathBuf},
