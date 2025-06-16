@@ -93,8 +93,8 @@ impl TcpDNSInbound {
                     Ok(v) => v,
                     Err(e) => {
                     log::debug!(
-                        "received invalid DNS query from TCPStream: peer={:?} | data={}",
-                        peer, data.escape_ascii(),
+                        "received invalid DNS query from TCPStream: peer={:?} | error = {:?} | data={}",
+                        peer, e, data.escape_ascii(),
                     );
                     return;
                 }
@@ -194,7 +194,7 @@ impl TcpDNSInbound {
                     }
                 },
                 Err(e) => {
-                    log::error!("unexpected hickory-proto unable serialize Message to bytes!");
+                    log::error!("unexpected hickory-proto unable serialize Message to bytes! error={:?}", e);
                     return;
                 }
             }

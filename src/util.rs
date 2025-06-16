@@ -133,7 +133,8 @@ impl<T> OnceGetter<T> {
         }
 
         let mut inner = self.inner.lock().unwrap_or_else(|e| { e.into_inner() });
-        let r = f(&mut *inner);
+        let inner = &mut *inner;
+        let r = f(inner);
 
         if inner.is_none() {
             self.empty.store(true, Relaxed);

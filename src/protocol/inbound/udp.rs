@@ -62,8 +62,8 @@ impl UdpDNSInbound {
                 Ok(v) => v,
                 Err(e) => {
                     log::debug!(
-                        "received invalid DNS query from incoming UDP: peer={:?} | data={}",
-                        peer, data.escape_ascii(),
+                        "received invalid DNS query from incoming UDP: peer={:?} | error={:?} | data={}",
+                        peer, e, data.escape_ascii(),
                     );
                     return;
                 }
@@ -142,7 +142,7 @@ impl UdpDNSInbound {
                     .expect("failed to send DNS response to UDP client");
             },
             Err(e) => {
-                log::error!("unexpected hickory-proto unable serialize Message to bytes!");
+                log::error!("unexpected hickory-proto unable serialize Message to bytes! error={:?}", e);
                 return;
             }
         }
