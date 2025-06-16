@@ -6,23 +6,48 @@
 // TODO re-enable this after alpha developing completes
 //#![warn(missing_docs)]
 
+pub mod mixed {
+    pub use super::*;
+    pub use {
+        config::*,
+        dns::*,
+        query::*,
+        entry::*,
+        cache::*,
+        upstream::*,
+        resolver::*,
+        util::*,
+        asled::*,
+        database::*,
+        protocol::{
+            *,
+            pool::*,
+            tcp::*,
+            tls::*,
+            h2::*,
+            inbound::{
+                *,
+                tcp::*,
+                udp::*,
+            },
+            outbound::*,
+        },
+        data::*,
+    };
+}
+
 pub mod config;
-
 pub mod dns;
-
 pub mod query;
 pub mod entry;
-
 pub mod cache;
 pub mod upstream;
 pub mod resolver;
-
 pub mod util;
 pub mod asled;
-
 pub mod database;
-
 pub mod protocol;
+pub mod data;
 
 pub use core::{
     any::Any,

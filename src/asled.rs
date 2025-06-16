@@ -220,7 +220,7 @@ impl SledRunner {
 
     /// create new runner with provided config.
     /// * config must set path otherwise open failed.
-    pub fn new<P: AsRef<Path>>(config: sled::Config) -> sled::Result<Self> {
+    pub fn new(config: sled::Config) -> sled::Result<Self> {
         let db = config.open()?;
         Ok(Self::from(db))
     }

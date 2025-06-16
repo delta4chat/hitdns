@@ -714,6 +714,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dns-stamp-parser"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1826f6bc7bdd2008d4c2191d1249dc6a8b4e30f0df858027292751fefb1fc06"
+dependencies = [
+ "base64 0.22.1",
+ "bitflags 2.9.1",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1207,6 +1218,7 @@ dependencies = [
  "bytes",
  "country-code-enum",
  "directories",
+ "dns-stamp-parser",
  "event-listener 5.4.0",
  "fastrand 2.3.0",
  "futures-lite 2.6.0",
@@ -2299,7 +2311,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
