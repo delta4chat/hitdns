@@ -74,7 +74,7 @@ pub fn tls_config(alpn: &[u8]) -> rustls::ClientConfig {
 
     config.alpn_protocols =
         if alpn_len == 0 {
-            vec![]
+            Vec::new()
         } else {
             vec![ alpn.to_vec() ]
         };
@@ -142,7 +142,16 @@ pub fn tls_is_closed(conn: &mut TlsStream) -> bool {
         return false;
     }
 
-    todo!()
+    // TODO understanding whether this process_new_packets() has side-effects if without calling read_tls().
+    match tls_client_conn.process_new_packets() {
+        Ok(state) => {
+            state.peer_has_closed()
+        },
+        Err(e) => {
+            log::warn!("tls pool connection error: {e:?}");
+            true
+        }
+    }
 }
 
 pub type TlsStreamPoolRaw =
