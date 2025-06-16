@@ -131,12 +131,13 @@ where
     /// try to get connection from pool.
     /// * returned connection will be removed from pool to ensure no others to access it.
     pub fn pop_conn(&self) -> Option<C> {
-        if let Some(conn) = self.conns.pop() {
-            self.conns_len.checked_sub(1);
-            Some(conn.get().expect("unexpected no value in OnceGetter!"))
-        } else {
-            None
+        while let Some(getter) = self.conns.pop() {
+            if let Some(conn) = getter.get() {
+                self.conns_len.checked_sub(1);
+                return Some(conn);
+            }
         }
+        None
     }
 
     /// get connection from pool, or start new connection if no connection avaliable in pool.
@@ -167,30 +168,25 @@ where
         let interval = Duration::from_secs(5);
 
         let mut maybe_ret;
-        let mut maybe_entry;
         let mut zzz;
 
-        let is_conn_invalid =
-            |maybe_conn: &mut Option<C>| -> bool {
-                match maybe_conn.as_mut() {
-                    Some(conn) => {
-                        (self.manager.is_closed)(conn)
-                    },
-                    _ => true,
+        let conn_checker =
+            |maybe_conn: &mut Option<C>| {
+                // Some(false) = conn exists and active open: no problem.
+                // Some(true)  = conn exists and has been closed: should update conns_len.
+                // None        = conn not found: should not update conns_len repeatedly.
+                if maybe_conn.as_mut().map(self.manager.is_closed) == Some(true) {
+                    maybe_conn.take();
+                    self.conns_len.checked_sub(1);
                 }
             };
+
         loop {
             // remove invalid connections.
             {
-                let g = scc::ebr::Guard::new();
-                maybe_entry = self.conns.peek(&g);
-                while let Some(entry) = maybe_entry {
-                    if entry.with(is_conn_invalid) {
-                        entry.delete_self(Relaxed);
-                        self.conns_len.checked_sub(1);
-                    }
-
-                    maybe_entry = entry.next_ptr(Relaxed, &g).as_ref();
+                let guard = scc::ebr::Guard::new();
+                for getter in self.conns.iter(&guard) {
+                    getter.with(conn_checker);
                 }
             }
 

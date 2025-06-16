@@ -127,7 +127,7 @@ impl DNSCacheEntry {
 
             // start listening
             {
-                listener!(self.update_notify => update_notify_listener);
+                event_listen!(self.update_notify => update_notify_listener);
                 update_notify_listener.deadline(deadline).await;
             }
         }
@@ -254,26 +254,27 @@ impl DNSCache {
 
         let update_wait = Duration::from_millis(100);
         let mut i = 50; // max wait time = 5 seconds
-        let entry = loop {
-            if i == 0 {
-                return DNSCacheStatus::Miss;
-            }
-            i -= 1;
-
-            match dce.get_entry() {
-                Some(entry) => {
-                    break entry;
-                },
-                _ => {
-                    if self.load_one(query).await.ok() == Some(true) {
-                        i += 1;
-                        continue;
-                    }
-                    update();
-                    dce.wait_timeout(update_wait).await;
+        let entry =
+            loop {
+                if i == 0 {
+                    return DNSCacheStatus::Miss;
                 }
-            }
-        };
+                i -= 1;
+
+                match dce.get_entry() {
+                    Some(entry) => {
+                        break entry;
+                    },
+                    _ => {
+                        if self.load_one(query).await.ok() == Some(true) {
+                            i += 1;
+                            continue;
+                        }
+                        update();
+                        dce.wait_timeout(update_wait).await;
+                    }
+                }
+            };
 
         let now = SystemTime::now();
         if now < entry.expire_time {

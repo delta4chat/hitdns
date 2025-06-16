@@ -270,21 +270,21 @@ impl DNSResolver {
 pub enum DNSUpstreamSelector {
     /// try select upstream by default unspecified algorithm.
     /// * currently it alias to `Self::Best`, but this may changed for optimization in future.
-    Unspecified,
+    Unspecified = Self::UNSPECIFIED,
 
     /// try select upstream by latency and reliability.
     /// * high-reliability is important.
     /// * but low-latency also matter.
-    Best,
+    Best = Self::BEST,
 
     /// try select upstream with smallest latency.
-    Fast,
+    Fast = Self::FAST,
 
     /// try select upstream with highest reliability.
-    Reliable,
+    Reliable = Self::RELIABLE,
 
     /// try select upstream randomly.
-    Random,
+    Random = Self::RANDOM,
 
     /// try select upstream by circular (around back) iterating.
     /// * in some specified length, maybe duplicate index 0 if AtomicUsize overflows.
@@ -294,7 +294,7 @@ pub enum DNSUpstreamSelector {
     /// 3. C
     /// 4. A
     /// 5. B
-    RoundRobin,
+    RoundRobin = Self::ROUND_ROBIN,
 
     /// (almost useless)
     /// try select upstream by fixed order.
@@ -304,5 +304,40 @@ pub enum DNSUpstreamSelector {
     /// 3. A
     /// 4. A
     /// 5. A
-    Fixed,
+    Fixed = Self::FIXED,
+}
+
+impl DNSUpstreamSelector {
+    pub const UNSPECIFIED: u8 = 0xff;
+    pub const BEST:        u8 = b'B';
+    pub const FAST:        u8 = b'F';
+    pub const RELIABLE:    u8 = b'R';
+    pub const RANDOM:      u8 = b'?';
+    pub const ROUND_ROBIN: u8 = b';';
+    pub const FIXED:       u8 = b'1';
+
+    pub const fn new(val: u8) -> Option<Self> {
+        match val {
+            Self::UNSPECIFIED => Some(Self::Unspecified),
+            Self::BEST        => Some(Self::Best),
+            Self::FAST        => Some(Self::Fast),
+            Self::RELIABLE    => Some(Self::Reliable),
+            Self::RANDOM      => Some(Self::Random),
+            Self::ROUND_ROBIN => Some(Self::RoundRobin),
+            Self::FIXED       => Some(Self::Fixed),
+            _                 => None
+        }
+    }
+
+    pub const fn value(self) -> u8 {
+        match self {
+            Self::Unspecified => Self::UNSPECIFIED,
+            Self::Best        => Self::BEST,
+            Self::Fast        => Self::FAST,
+            Self::Reliable    => Self::RELIABLE,
+            Self::Random      => Self::RANDOM,
+            Self::RoundRobin  => Self::ROUND_ROBIN,
+            Self::Fixed       => Self::FIXED,
+        }
+    }
 }

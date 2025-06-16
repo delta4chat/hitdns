@@ -109,13 +109,18 @@ impl<T> OnceGetter<T> {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.empty.load(Relaxed)
+    }
+
     pub fn get(&self) -> Option<T> {
-        if self.empty.load(Relaxed) {
+        if self.is_empty() {
             return None;
         }
 
         let mv = self.inner.lock().unwrap_or_else(|e| { e.into_inner() }).take();
         self.empty.store(true, Relaxed);
+
         mv
     }
 
@@ -128,6 +133,12 @@ impl<T> OnceGetter<T> {
         }
 
         let mut inner = self.inner.lock().unwrap_or_else(|e| { e.into_inner() });
-        f(&mut *inner)
+        let r = f(&mut *inner);
+
+        if inner.is_none() {
+            self.empty.store(true, Relaxed);
+        }
+
+        r
     }
 }

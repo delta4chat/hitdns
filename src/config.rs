@@ -1,4 +1,7 @@
-use crate::*;
+use crate::{
+    *,
+    resolver::*,
+};
 
 pub static DATA_DIR: Lazy<String> = Lazy::new(make_data_dir);
 
@@ -42,24 +45,62 @@ fn get_data_dir() -> String {
     }
 }
 
+#[derive(Debug)]
 pub struct ProtocolConfig {
-    allow_edns: bool,
+    allow_edns: AtomicBool,
+}
+impl ProtocolConfig {
+    pub const fn global() -> &'static Self {
+        static GLOBAL: ProtocolConfig =
+            ProtocolConfig {
+                allow_edns: AtomicBool::new(false),
+            };
+
+        &GLOBAL
+    }
+
+    pub fn allow_edns(&self) -> bool {
+        self.allow_edns.load(Relaxed)
+    }
+
+    pub fn set_allow_edns(&self, allow: bool) {
+        self.allow_edns.store(allow, Relaxed)
+    }
 }
 
+#[derive(Debug)]
 pub struct ResolverConfig {
     selector: AtomicU8,
 }
+impl ResolverConfig {
+    pub const fn global() -> &'static Self {
+        static GLOBAL: ResolverConfig =
+            ResolverConfig {
+                selector: AtomicU8::new(DNSUpstreamSelector::UNSPECIFIED),
+            };
 
+        &GLOBAL
+    }
+
+    pub fn selector(&self) -> DNSUpstreamSelector {
+        DNSUpstreamSelector::new(self.selector.load(Relaxed)).expect("unexpected AtomicU8 has invalid value")
+    }
+
+    pub fn set_selector(&self, selector: DNSUpstreamSelector) {
+        self.selector.store(selector.value(), Relaxed)
+    }
+}
+
+#[derive(Debug)]
 pub struct CacheConfig {
     min_ttl: AtomicU32,
     max_ttl: AtomicU32,
 }
-
 impl CacheConfig {
     pub const fn global() -> &'static Self {
         static GLOBAL: CacheConfig = CacheConfig {
-            min_ttl: AtomicU32::new(0),
-            max_ttl: AtomicU32::new(60*60*24),
+            min_ttl: AtomicU32::new(30), // 30 seconds
+            max_ttl: AtomicU32::new(60*60*24), // 1 day
         };
 
         &GLOBAL
@@ -69,19 +110,31 @@ impl CacheConfig {
         self.min_ttl.load(Relaxed)
     }
     pub fn set_min_ttl(&self, ttl: u32) {
-        self.min_ttl.store(ttl, Relaxed);
+        self.min_ttl.store(ttl, Relaxed)
     }
 
     pub fn max_ttl(&self) -> u32 {
         self.max_ttl.load(Relaxed)
     }
     pub fn set_max_ttl(&self, ttl: u32) {
-        self.max_ttl.store(ttl, Relaxed);
+        self.max_ttl.store(ttl, Relaxed)
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
 pub struct Config {
     pub protocol: &'static ProtocolConfig,
     pub resolver: &'static ResolverConfig,
     pub cache: &'static CacheConfig,
 }
+impl Config {
+    pub const fn global() -> Self {
+        Self {
+            protocol: ProtocolConfig::global(),
+            resolver: ResolverConfig::global(),
+            cache: CacheConfig::global(),
+        }
+    }
+}
+

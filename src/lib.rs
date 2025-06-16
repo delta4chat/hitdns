@@ -45,16 +45,24 @@ pub use std::{
 pub use nohash::NoHashHasher as NoHasher;
 pub type NoHasherU64 = NoHasher<u64>;
 
-pub use bytes::Bytes;
-pub use country_code_enum::CountryCode;
-pub use http_types::Url;
-pub use portable_atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicUsize, Ordering::Relaxed};
-pub use event_listener::{Event, listener};
-pub use smoltimeout::TimedExt;
-pub use asyncute::util::{AtomicChecked, AtomicDuration, AtomicRangeStrict};
-pub use once_cell::sync::Lazy;
-pub use scc::LinkedList;
-pub use futures_lite::future::FutureExt;
+pub use {
+    bytes::{Bytes, BytesMut},
+    country_code_enum::CountryCode,
+    http_types::Url,
+    portable_atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicUsize, Ordering::Relaxed},
+    event_listener::{
+        Event,
+        listener as event_listen,
+    },
+    smoltimeout::TimedExt,
+    asyncute::util::{AtomicChecked, AtomicDuration, AtomicRangeStrict},
+    once_cell::sync::Lazy,
+    scc::LinkedList,
+    futures_lite::{
+        future::FutureExt,
+        io::{AsyncReadExt, AsyncWriteExt},
+    },
+};
 
 pub type TcpStream = async_io::Async<std::net::TcpStream>;
 pub type TcpListener = async_io::Async<std::net::TcpListener>;
