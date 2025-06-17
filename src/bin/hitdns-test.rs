@@ -11,11 +11,13 @@ use hitdns::{
     cache::*,
     database::*,
     resolver::*,
+    data::upstreams_list::dnscrypt::*,
 };
 
 async fn main_async() {
     eprintln!("log4rs logger init: {:?}", &*logs::HANDLE);
     log::warn!("Test log");
+    log::info!("sdns list: {:#?}", &*DNSCRYPT_SDNS_LIST);
 
     let db = DNSDatabase::auto_open().unwrap();
     let resolver = DNSResolver::new();

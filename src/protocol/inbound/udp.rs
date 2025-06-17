@@ -62,12 +62,13 @@ impl UdpDNSInbound {
                 Ok(v) => v,
                 Err(e) => {
                     log::debug!(
-                        "received invalid DNS query from incoming UDP: peer={:?} | error={:?} | data={}",
+                        "received invalid DNS query message from incoming UDP: peer={:?} | error={:?} | data={}",
                         peer, e, data.escape_ascii(),
                     );
                     return;
                 }
             };
+        log::debug!("parsed DNS request message = {:?}", &req);
 
         // remove edns if needed.
         if ! allow_edns {
@@ -80,9 +81,15 @@ impl UdpDNSInbound {
                     Arc::new(q.clone())
                 },
                 _ => {
+                    log::debug!(
+                        "received invalid DNS message without queries from incoming UDP: peer={:?} | msg={:?}",
+                        peer, req,
+                    );
                     return;
                 }
             };
+
+        log::debug!("parsed DNS Query = {:?}", &query);
 
         use DNSCacheStatus::*;
         let entry =

@@ -38,7 +38,13 @@ pub mod c_flatland {
             },
             outbound::*,
         },
-        data::*,
+        data::{
+            *,
+            upstreams_list::{
+                *,
+                dnscrypt::*,
+            },
+        },
     };
 
     #[cfg(feature="log4rs")]

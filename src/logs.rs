@@ -113,7 +113,7 @@ pub fn stderr_appender() -> ConsoleAppender {
 
 pub fn disk_filename() -> PathBuf {
     let mut path = config::LOG_DIR.deref().clone();
-    path.push("hitdns.log.gz");
+    path.push("hitdns.log");
     path
 }
 
@@ -122,9 +122,9 @@ pub fn disk_rolling_policy() -> CompoundPolicy {
         // maximum single file size: 5.0 MB
         Box::new(SizeTrigger::new(1024*1024*5)),
 
-        // * hitdns.log
         // * hitdns.2.log.gz
         // * hitdns.3.log.gz
+        // * hitdns.4.log.gz
         // * etc...
         //
         // maximum total file size: 95.0 MB

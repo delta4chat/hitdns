@@ -249,6 +249,8 @@ impl DNSCache {
                 asyncute::spawn(async move {
                     fut.await.expect("DNSCacheEntry update failed");
                 }).detach();
+            } else {
+                // another update task running
             }
         };
 
