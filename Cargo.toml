@@ -12,10 +12,20 @@ categories = ["command-line-utilities", "network-programming", "caching", "web-p
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = [ "aws-lc-rs" ]
-aws-lc-rs = [ "futures-rustls/aws-lc-rs" ]
-ring = [ "futures-rustls/ring" ]
-rust-crypto = [ "dep:rustls-rustcrypto" ]
+default = ["aws-lc-rs"]
+aws-lc-rs = ["futures-rustls/aws-lc-rs"]
+ring = ["futures-rustls/ring"]
+rust-crypto = ["dep:rustls-rustcrypto"]
+log4rs = ["dep:log4rs"]
+bin = ["log4rs"]
+
+[[bin]]
+name = "hitdns"
+required-features = ["bin"]
+
+[[bin]]
+name = "hitdns-test"
+required-features = ["bin"]
 
 [dependencies]
 ahash = { version = "0.8.12", default-features = false, features = ["atomic-polyfill", "compile-time-rng"] }
@@ -56,6 +66,7 @@ fastrand = "2.3.0"
 nohash = "0.2.0"
 directories = "6.0.0"
 dns-stamp-parser = { version = "3.0.1", default-features = false }
+log4rs = { version = "1.3.0", default-features = false, features = ["console_appender", "rolling_file_appender", "gzip", "background_rotation", "compound_policy", "fixed_window_roller", "size_trigger"], optional = true }
 
 [build-dependencies]
 
@@ -76,7 +87,7 @@ panic = "unwind"
 opt-level = 0
 lto = "off"
 #strip = "none"
-codegen-units = 1024
+codegen-units = 1048576
 overflow-checks = true
 debug-assertions = true
 debug = "full"

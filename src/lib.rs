@@ -6,7 +6,13 @@
 // TODO re-enable this after alpha developing completes
 //#![warn(missing_docs)]
 
-pub mod mixed {
+/// The C Language's Flat Earth Theory.
+/// * this should not be used in cases other than for-fun or for-satire.
+/// * so you can see what happens if your programming language does not have name-space:
+/// 1. almost all C projects uses function prefix or global variable prefix to prevent name conflation.
+/// 2. but this requirements other projects also uses prefixes "as a standard or guideline", which it's hardly. 
+/// 3. also prefixes is not easy to parsed separately, so you cannot easy to listing all of items within specified name-space, and causes more different works in IDE or syntax analyzer that can be avoided if has name-space.
+pub mod c_flatland {
     pub use super::*;
     pub use {
         config::*,
@@ -34,6 +40,9 @@ pub mod mixed {
         },
         data::*,
     };
+
+    #[cfg(feature="log4rs")]
+    pub use logs::*;
 }
 
 pub mod config;
@@ -48,6 +57,9 @@ pub mod asled;
 pub mod database;
 pub mod protocol;
 pub mod data;
+
+#[cfg(feature="log4rs")]
+pub mod logs;
 
 pub use core::{
     any::Any,

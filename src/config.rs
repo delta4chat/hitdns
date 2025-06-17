@@ -3,29 +3,37 @@ use crate::{
     resolver::*,
 };
 
-pub static DATA_DIR: Lazy<String> = Lazy::new(make_data_dir);
+pub static DATA_DIR: Lazy<PathBuf> = Lazy::new(make_data_dir);
+pub static LOG_DIR: Lazy<PathBuf> = Lazy::new(make_log_dir);
 
-/// try to get data dir, and create it if missing.
-fn make_data_dir() -> String {
-    let dir = get_data_dir();
-    log::info!("got data dir: {:?}", &dir);
+/// try to create directory if missing.
+fn make_dir<P: AsRef<Path>>(dir: P) {
+    //log::info!("got dir: {:?}", &dir);
 
-    if ! std::fs::exists(&dir).expect("unable to check whether data dir exists!") {
-        std::fs::create_dir_all(&dir).expect("unable to create data dir!");
+    if ! std::fs::exists(&dir).expect("unable to check whether dir exists!") {
+        std::fs::create_dir_all(&dir).expect("unable to create dir!");
     }
 
-    let md = std::fs::metadata(&dir).expect("unable to get metadata of data dir!");
+    let md = std::fs::metadata(&dir).expect("unable to get metadata of dir!");
     if ! md.file_type().is_dir() {
-        panic!("the location of data dir is not path to a directory!");
+        panic!("the location of dir is not path to a directory!");
     }
-
+}
+fn make_data_dir() -> PathBuf {
+    let dir = get_data_dir();
+    make_dir(&dir);
+    dir
+}
+fn make_log_dir() -> PathBuf {
+    let dir = get_log_dir();
+    make_dir(&dir);
     dir
 }
 
-/// try to get data dir (but not to create it if missing).
-fn get_data_dir() -> String {
+/// try to get data directory (but not to create it if missing).
+fn get_data_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("HITDNS_DATA_DIR") {
-        return dir;
+        return dir.into();
     }
 
     let pd =
@@ -35,14 +43,18 @@ fn get_data_dir() -> String {
             "hitdns"
         ).expect("unable to determine the location of hitdns data directory!");
 
-    let path = pd.data_dir();
-    if let Some(d) = path.to_str() {
-        d.to_string()
-    } else {
-        log::warn!("invalid UTF-8 data dir ({:?}) return by `directories` crate! performing lossy convert to UTF-8, your platform may have misbehavior.", path);
+    pd.data_dir().to_path_buf()
+}
 
-        path.to_string_lossy().into_owned()
+/// try to get logging directory
+pub fn get_log_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("HITDNS_LOG_DIR") {
+        return dir.into();
     }
+
+    let mut dir = (&*config::DATA_DIR).clone();
+    dir.push("hitdns-log4rs");
+    dir
 }
 
 #[derive(Debug)]

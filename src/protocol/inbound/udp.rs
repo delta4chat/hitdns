@@ -161,7 +161,7 @@ impl UdpDNSInbound {
             self.running.store(false, Relaxed);
         });
 
-        let mut buf = [0u8; 65599];
+        let mut buf = [0u8; 65535];
         let mut data;
 
         let mut len;

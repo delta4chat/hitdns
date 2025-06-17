@@ -1,6 +1,22 @@
-use hitdns::mixed::*;
+use hitdns::{
+    *,
+    logs,
+    protocol::{
+        *,
+        inbound::{
+            *,
+            udp::*,
+        },
+    },
+    cache::*,
+    database::*,
+    resolver::*,
+};
 
 async fn main_async() {
+    eprintln!("log4rs logger init: {:?}", &*logs::HANDLE);
+    log::warn!("Test log");
+
     let db = DNSDatabase::auto_open().unwrap();
     let resolver = DNSResolver::new();
     let cache = DNSCache::new(db, resolver);

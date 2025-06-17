@@ -34,9 +34,9 @@ impl DNSDatabase {
 
     /// try to open DNS Database automatically using DATA_DIR
     pub fn auto_open() -> sled::Result<Self> {
-        let data_dir = Path::new(config::DATA_DIR.as_str());
-        let sled_path = data_dir.join("hitdns-db-sled-v0.34");
-        Self::open(sled_path)
+        let mut path = (&*config::DATA_DIR).clone();
+        path.push("hitdns-db-sled-v0.34");
+        Self::open(path)
     }
 
     pub async fn cache_scan<Q: DNSQuery + Any + Sized>(&self) -> sled::Result<Vec<(Q, DNSEntry)>> {
