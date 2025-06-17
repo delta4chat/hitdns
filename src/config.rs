@@ -1,5 +1,9 @@
 use crate::{
     *,
+    logs::{
+        u8_to_loglevel,
+        loglevel_to_u8,
+    },
     resolver::*,
 };
 
@@ -55,6 +59,47 @@ pub fn get_log_dir() -> PathBuf {
     let mut dir = (&*config::DATA_DIR).clone();
     dir.push("hitdns-log4rs");
     dir
+}
+
+#[derive(Debug)]
+pub struct LoggerConfig {
+    no_log_extern_libs: AtomicBool,
+    always_log_self: AtomicBool,
+    level: AtomicU8,
+}
+impl LoggerConfig {
+    pub const fn global() -> &'static Self {
+        static GLOBAL: LoggerConfig =
+            LoggerConfig {
+                no_log_extern_libs: AtomicBool::new(false),
+                always_log_self: AtomicBool::new(true),
+                level: AtomicU8::new(loglevel_to_u8(log::Level::Warn)),
+            };
+
+        &GLOBAL
+    }
+
+    pub fn no_log_extern_libs(&self) -> bool {
+        self.no_log_extern_libs.load(Relaxed)
+    }
+    pub fn set_no_log_extern_libs(&self, nel: bool) {
+        self.no_log_extern_libs.store(nel, Relaxed)
+    }
+
+    pub fn always_log_self(&self) -> bool {
+        self.always_log_self.load(Relaxed)
+    }
+    pub fn set_always_log_self(&self, als: bool) {
+        self.always_log_self.store(als, Relaxed)
+    }
+
+    pub fn level(&self) -> log::Level {
+        u8_to_loglevel(self.level.load(Relaxed))
+        .expect("unexpected AtomicU8 value invalid")
+    }
+    pub fn set_level(&self, lv: log::Level) {
+        self.level.store(loglevel_to_u8(lv), Relaxed)
+    }
 }
 
 #[derive(Debug)]
@@ -139,6 +184,7 @@ pub struct Config {
     pub protocol: &'static ProtocolConfig,
     pub resolver: &'static ResolverConfig,
     pub cache: &'static CacheConfig,
+    pub logger: &'static LoggerConfig,
 }
 impl Config {
     pub const fn global() -> Self {
@@ -146,6 +192,7 @@ impl Config {
             protocol: ProtocolConfig::global(),
             resolver: ResolverConfig::global(),
             cache: CacheConfig::global(),
+            logger: LoggerConfig::global(),
         }
     }
 }

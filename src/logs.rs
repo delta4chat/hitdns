@@ -28,8 +28,80 @@ pub use log4rs::{
     },
 };
 
+pub const fn u8_to_loglevel(n: u8) -> Option<log::Level> {
+    use log::Level::*;
+
+    match n {
+        b'T' | 5 => Some(Trace),
+        b'D' | 4 => Some(Debug),
+        b'I' | 3 => Some(Info),
+        b'W' | 2 => Some(Warn),
+        b'E' | 1 => Some(Error),
+        _        => None
+    }
+}
+
+pub const fn loglevel_to_u8(lv: log::Level) -> u8 {
+    use log::Level::*;
+
+    match lv {
+        Trace => b'T',
+        Debug => b'D',
+        Info  => b'I',
+        Warn  => b'W',
+        Error => b'E',
+    }
+}
+
+
+pub fn my_filter() -> impl log4rs::filter::Filter {
+    use log4rs::filter::{Filter, Response};
+    use log::Record;
+
+    #[derive(Debug)]
+    struct MyFilter;
+
+    impl Filter for MyFilter {
+        fn filter(&self, rec: &Record) -> Response {
+            let cfg = config::LoggerConfig::global();
+
+            let log_self = cfg.always_log_self();
+            let nolog_lib = cfg.no_log_extern_libs();
+
+            if log_self || nolog_lib {
+                let is_self = {
+                    rec.target().contains("hitdns")
+                    ||
+                    if let Some(m)=rec.module_path(){
+                        m.contains("hitdns")
+                    } else {
+                        false
+                    }
+                };
+
+                if log_self && is_self {
+                    return Response::Accept;
+                }
+                if nolog_lib {
+                    if ! is_self {
+                        return Response::Reject;
+                    }
+                }
+            }
+
+            if rec.level() <= cfg.level() {
+                Response::Accept
+            } else {
+                Response::Reject
+            }
+        }
+    }
+
+    MyFilter
+}
+
 pub fn my_encoder() -> PatternEncoder {
-    PatternEncoder::new("{date(%Y-%m-%d %H:%M:%S %Z)(utc)} {highlight([{level}])} |{thread}| (({module}:{line})) {message} {n}")
+    PatternEncoder::new("{date(%Y-%m-%d %H:%M:%S %Z)(utc)} {highlight([{level}])} |{thread}| (({module}#{line})) {message} {n}")
 }
 
 pub fn stderr_appender() -> ConsoleAppender {
@@ -41,7 +113,7 @@ pub fn stderr_appender() -> ConsoleAppender {
 
 pub fn disk_filename() -> PathBuf {
     let mut path = config::LOG_DIR.deref().clone();
-    path.push("hitdns.log");
+    path.push("hitdns.log.gz");
     path
 }
 
@@ -51,8 +123,8 @@ pub fn disk_rolling_policy() -> CompoundPolicy {
         Box::new(SizeTrigger::new(1024*1024*5)),
 
         // * hitdns.log
-        // * hitdns.2.log
-        // * hitdns.3.log
+        // * hitdns.2.log.gz
+        // * hitdns.3.log.gz
         // * etc...
         //
         // maximum total file size: 95.0 MB
@@ -76,33 +148,31 @@ pub fn disk_appender() -> RollingFileAppender {
     ).expect("unable to build RollingFileAppender!")
 }
 
-pub fn log4rs_config(level: log::LevelFilter) -> log4rs::Config {
+pub fn log4rs_config() -> log4rs::Config {
     log4rs::Config::builder()
     .appender(
-        Appender::builder().build(
-            "stderr",
-            Box::new(stderr_appender()),
-        )
+        Appender::builder()
+        .filter(Box::new(my_filter()))
+        .build("stderr", Box::new(stderr_appender()))
     )
     .appender(
-        Appender::builder().build(
-            "disk",
-            Box::new(disk_appender()),
-        )
+        Appender::builder()
+        .filter(Box::new(my_filter()))
+        .build("disk", Box::new(disk_appender()))
     )
     .build(
         RootLogger::builder()
         .appender("stderr")
         .appender("disk")
-        .build(level)
+        // filtered by function-based filter
+        .build(log::LevelFilter::Trace)
     ).expect("unable to build log4rs::Config!")
 
 }
 
 pub static HANDLE: Lazy<log4rs::Handle> =
     Lazy::new(|| {
-        log4rs::init_config(
-            log4rs_config(log::LevelFilter::Debug)
-        ).expect("unable to set global logger")
+        log4rs::init_config(log4rs_config())
+        .expect("unable to set global logger")
     });
 
