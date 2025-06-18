@@ -17,7 +17,13 @@ use hitdns::{
 async fn main_async() {
     eprintln!("log4rs logger init: {:?}", &*logs::HANDLE);
     log::warn!("Test log");
-    log::info!("sdns list: {:#?}", &*DNSCRYPT_SDNS_LIST);
+    log::info!("sdns list: \n{}", {
+        let mut s = String::new();
+        for it in SDNS_LIST.iter() {
+            writeln!(s, "{:?}", it);
+        }
+        s
+    });
 
     let db = DNSDatabase::auto_open().unwrap();
     let resolver = DNSResolver::new();

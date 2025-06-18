@@ -1,5 +1,6 @@
 use crate::*;
 
+#[cfg(feature="log4rs")]
 pub use log4rs::{
     Logger,
     config::{
@@ -53,7 +54,7 @@ pub const fn loglevel_to_u8(lv: log::Level) -> u8 {
     }
 }
 
-
+#[cfg(feature="log4rs")]
 pub fn my_filter() -> impl log4rs::filter::Filter {
     use log4rs::filter::{Filter, Response};
     use log::Record;
@@ -100,10 +101,12 @@ pub fn my_filter() -> impl log4rs::filter::Filter {
     MyFilter
 }
 
+#[cfg(feature="log4rs")]
 pub fn my_encoder() -> PatternEncoder {
     PatternEncoder::new("{date(%Y-%m-%d %H:%M:%S %Z)(utc)} {highlight([{level}])} |{thread}| (({module}#{line})) {message} {n}")
 }
 
+#[cfg(feature="log4rs")]
 pub fn stderr_appender() -> ConsoleAppender {
     ConsoleAppender::builder()
     .encoder(Box::new(my_encoder()))
@@ -117,6 +120,7 @@ pub fn disk_filename() -> PathBuf {
     path
 }
 
+#[cfg(feature="log4rs")]
 pub fn disk_rolling_policy() -> CompoundPolicy {
     CompoundPolicy::new(
         // maximum single file size: 5.0 MB
@@ -138,6 +142,7 @@ pub fn disk_rolling_policy() -> CompoundPolicy {
     )
 }
 
+#[cfg(feature="log4rs")]
 pub fn disk_appender() -> RollingFileAppender {
     RollingFileAppender::builder()
     .encoder(Box::new(my_encoder()))
@@ -148,6 +153,7 @@ pub fn disk_appender() -> RollingFileAppender {
     ).expect("unable to build RollingFileAppender!")
 }
 
+#[cfg(feature="log4rs")]
 pub fn log4rs_config() -> log4rs::Config {
     log4rs::Config::builder()
     .appender(
@@ -170,6 +176,7 @@ pub fn log4rs_config() -> log4rs::Config {
 
 }
 
+#[cfg(feature="log4rs")]
 pub static HANDLE: Lazy<log4rs::Handle> =
     Lazy::new(|| {
         log4rs::init_config(log4rs_config())

@@ -24,12 +24,12 @@ impl DNSUpstreamFilter {
                 upstream.name() == name
             }
             Self::Country(code) => {
-                upstream.server_country() == *code
+                upstream.server_country() == Some(*code)
                 ||
-                upstream.operator_country() == *code
+                upstream.operator_country() == Some(*code)
             },
             Self::Protocol(proto) => {
-                upstream.protocol() == *proto
+                &(upstream.protocol()) == proto
             },
             Self::AnonymizedLogs(is) => {
                 upstream.is_anonymized_logs() == *is
@@ -254,13 +254,14 @@ impl DNSResolver {
     }
 
     /// un-cached resolve.
+    /// * this does not spawn any background tasks.
     pub async fn resolve(
         &self,
-        query: &Arc<dyn DNSQuery>,
+        query: &dyn DNSQuery,
         selector: DNSUpstreamSelector,
     ) -> std::io::Result<DNSEntry> {
         let upstream = self.select(selector).await?;
-        upstream.resolve(query.clone()).await
+        upstream.resolve(query).await
     }
 }
 

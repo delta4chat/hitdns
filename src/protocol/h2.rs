@@ -56,19 +56,23 @@ impl H2Client {
         }
     }
 
+    pub fn global() -> &'static Self {
+        static GLOBAL: Lazy<H2Client> = Lazy::new(H2Client::new);
+
+        &*GLOBAL
+    }
+
     pub async fn get_session(
         &self,
         info: &Arc<TlsConnectInfo>,
     ) -> std::io::Result<h2::client::SendRequest<Bytes>> {
-        let g = scc::ebr::Guard::new();
-
-        if let Some(sr) = self.h2_sessions.peek(info, &g) {
-            return Ok(sr.clone());
+        if let Some(sr) = self.h2_sessions.peek_with(info, |_, v| { v.clone() }) {
+            return Ok(sr);
         }
         
         let tls_pool =
-            if let Some(pool) = self.tls_pools.peek(info, &g) {
-                pool.clone()
+            if let Some(pool) = self.tls_pools.peek_with(info, |_, v| { v.clone() }) {
+                pool
             } else {
                 let pool = TlsStreamPool::new("http2-over-tls-over-tcp", info.clone());
                 {

@@ -54,8 +54,8 @@ impl UdpDNSInbound {
             peer, data.escape_ascii(),
         );
 
-        let config = Config::global();
-        let allow_edns = config.protocol.allow_edns();
+        // no need to store this in struct field due to this is no cost.
+        let cfg = Config::global();
 
         let mut req =
             match dns::Message::from_vec(&data) {
@@ -70,10 +70,11 @@ impl UdpDNSInbound {
             };
         log::debug!("parsed DNS request message = {:?}", &req);
 
-        // remove edns if needed.
+        /* no need do this due to DNSQuery trait will always remove EDNS from queries.
         if ! allow_edns {
             req.extensions_mut().take();
         }
+        */
 
         let query: Arc<dyn DNSQuery> =
             match req.queries().first() {
@@ -93,7 +94,7 @@ impl UdpDNSInbound {
 
         use DNSCacheStatus::*;
         let entry =
-            match self.cache.get(&query, config.resolver.selector()).await {
+            match self.cache.get(&query, cfg.resolver.selector()).await {
                 Hit(v) => {
                     log::trace!("DNS Cache Hit: peer={:?} | query={:?} | entry={:?}", peer, query, &v);
                     v
@@ -111,10 +112,11 @@ impl UdpDNSInbound {
         let mut resp = entry.response.deref().clone();
         resp.set_id(req.id());
 
-        // remove edns if needed.
+        /* no need do this due to this logic already implemented in the constructor of DNSEntry.
         if ! allow_edns {
             resp.extensions_mut().take();
         }
+        */
 
         // calculate response TTL.
         let ttl: u32 = entry.expire_time

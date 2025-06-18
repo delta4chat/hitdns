@@ -169,7 +169,7 @@ pub trait DNSQueryExt: DNSQuery {
         q
     }
 
-    /// try to build query message.
+    /// build new [`dns::Message`] using information from this DNSQuery.
     fn message(&self) -> dns::Message {
         let q = self.query();
 

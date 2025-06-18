@@ -64,11 +64,8 @@ impl TcpDNSInbound {
         let mut ttl;
         let mut encoder;
 
-        let config = Config::global();
-        let mut allow_edns;
+        let cfg = Config::global();
         loop {
-            allow_edns = config.protocol.allow_edns();
-
             if let Err(e) = conn.read_exact(&mut len_buf).await {
                 log::debug!(
                     "unable read length from TCPStream (may client close connection?): peer={:?}, error={:?}",
@@ -100,10 +97,11 @@ impl TcpDNSInbound {
                 }
             };
 
-            // remove edns if needed.
+            /* no need do this due to the DNSQuery trait will always remove EDNS from queries.
             if ! allow_edns {
                 req.extensions_mut().take();
             }
+            */
 
             query =
                 match req.queries().first() {
@@ -117,7 +115,7 @@ impl TcpDNSInbound {
 
             use DNSCacheStatus::*;
             entry =
-                match self.cache.get(&query, config.resolver.selector()).await {
+                match self.cache.get(&query, cfg.resolver.selector()).await {
                     Hit(v) => {
                         log::trace!("DNS Cache Hit: peer={:?} | query={:?} | entry={:?}", peer, query, &v);
                         v
@@ -135,10 +133,11 @@ impl TcpDNSInbound {
             resp = entry.response.deref().clone();
             resp.set_id(req.id());
 
-            // remove edns if needed.
+            /* no need do this due to this logic already implemented in the constructor of DNSEntry.
             if ! allow_edns {
                 resp.extensions_mut().take();
             }
+            */
 
             // calculate response TTL.
             ttl = entry.expire_time

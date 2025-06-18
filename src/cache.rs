@@ -85,7 +85,7 @@ impl DNSCacheEntry {
         };
 
         Some(async move {
-            match resolver.resolve(&this.query, selector).timeout(Self::UPDATE_TIMEOUT).await {
+            match resolver.resolve(this.query.deref(), selector).timeout(Self::UPDATE_TIMEOUT).await {
                 Some(ret) => {
                     match ret {
                         Ok(entry) => {

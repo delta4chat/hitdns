@@ -1,2 +1,3 @@
-pub mod upstreams_list;
+pub mod list;
 
+pub use list::upstreams as upstreams_list;

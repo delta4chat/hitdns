@@ -20,7 +20,7 @@ pub enum DNSResponseSource {
     Plugin(u32) = Self::PLUGIN,
     Hosts(String) = Self::HOSTS,
     Local(SocketAddr) = Self::LOCAL,
-    Internet(Result<Arc<dyn DNSUpstream>, Url>) = Self::INTERNET,
+    Internet(Result<Arc<dyn DNSUpstream>, Arc<Url>>) = Self::INTERNET,
     Unknown = Self::UNKNOWN,
 }
 
@@ -319,7 +319,7 @@ impl DNSResponseSource {
                             }
                         };
 
-                    Self::Internet(Err(url))
+                    Self::Internet(Err(Arc::new(url)))
                 },
                 Self::UNKNOWN => {
                     Self::Unknown
@@ -355,7 +355,15 @@ impl DNSEntry {
     }
 
     /// create from DNS Message.
-    pub fn new(msg: dns::Message, source: DNSResponseSource) -> Self {
+    pub fn new(mut msg: dns::Message, source: DNSResponseSource) -> Self {
+        // clear request id
+        msg.set_id(0);
+
+        // remove edns if needed.
+        if ! ProtocolConfig::global().allow_edns() {
+            msg.extensions_mut().take();
+        }
+
         Self::new_arc(Arc::new(msg), source)
     }
 
@@ -365,10 +373,8 @@ impl DNSEntry {
         let min_ttl = conf.min_ttl();
         let max_ttl = conf.max_ttl();
 
-        let mut ttl = max_ttl;
-        let mut it;
-        for record in response.all_sections() {
-            it = record.ttl();
+        let mut ttl = min_ttl;
+        for it in response.all_sections().map(|record| { record.ttl() }) {
             if it < ttl {
                 ttl = it;
             }

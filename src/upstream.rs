@@ -41,7 +41,7 @@ pub enum DNSPlaintext {
     /// * useful for your reverse-proxy to serve DoH requests.
     /// for example:
     /// `client <===> nginx (https://doh.test/dns-query) <===> hitdns (127.0.0.1:port)`
-    HTTP(Url),
+    HTTP(Arc<Url>),
 }
 
 impl DNSPlaintext {
@@ -80,7 +80,7 @@ pub enum DNSProtocol {
     /// * this only includes HTTP/2 and HTTP/3.
     /// * the scheme must be `doh2://` or `doh3://`.
     /// * disallowed well-known schemes such as `https://` or `http://`.
-    DoH(Url),
+    DoH(Arc<Url>),
 
     /// DNS over TLS.
     /// * this only referring to TCP-based TLS.
@@ -171,7 +171,7 @@ impl DNSProtocol {
     ///
     /// # non-encrypted DNS over HTTP over TCP
     /// DoH(plaintext) URL: `dohp://127.0.0.1:8053` (non-fixed-path: `/dns-query` and `/resolve`)
-    pub fn url(&self) -> Url {
+    pub fn url(&self) -> Arc<Url> {
         if ! self.is_valid() {
             panic!("unexpectedly invalid inner data of DNSProtocol");
         }
@@ -223,7 +223,7 @@ impl DNSProtocol {
             url.set_fragment(Some(note.as_str()));
         }
 
-        url
+        Arc::new(url)
     }
 }
 
@@ -236,31 +236,52 @@ pub trait DNSUpstream: Send + Sync {
     fn protocol(&self) -> DNSProtocol;
 
     /// the Country Code of this Upstream server itself.
+    /// * return None if this information unavailable.
     /// * usually this is the server location, hosting platform location, or GeoIP location.
     /// * if server uses IP Anycast, Web CDN or Dynamic DNS, then should use the location of server operator's organization, company/corporation, or personal.
-    fn server_country(&self) -> CountryCode;
+    fn server_country(&self) -> Option<CountryCode> { None }
 
     /// the Country Code of the operator that running this Upstream.
+    /// * return None if this information unavailable.
     /// * usually this is the location of server operator's organization, company/corporation, or personal.
     /// * only the mainly entity that operates Upstream server. not any 3rd-parties.
-    fn operator_country(&self) -> CountryCode;
+    fn operator_country(&self) -> Option<CountryCode> { None }
 
     /// whether the logs kept in Upstream server is anonymized?
-    /// * usually return true if server is zero-logging (does not kept logs).
     /// * it's should return false if this is unclear.
+    /// * usually return true if upstream server is zero-logging (does not kept logs).
     fn is_anonymized_logs(&self) -> bool { false }
 
     /// whether this Upstream server is zero-logging?
-    /// * only return true if servers that have policy that clarify claimed it does not kept logs.
     /// * it's should return false if this is unclear.
+    /// * only return true if upstream server has policy that clarify claimed it does not kept logs.
     fn is_without_logs(&self) -> bool { false }
+
+    /// whether this Upstream server is without any kind of content filtering? (such as AD-blocker, adult-filter, malicious-filter, etc.)
+    /// * it's should return false if this is unclear.
+    /// * must return false for any DNS resolver operated by any kind of safe browsing platforms.
+    /// * this includes any kind of censorship from national network infrastructure.
+    /// * only return true if upstream server has policy that clarify claimed it does not filtering.
+    fn is_without_filter(&self) -> bool { false }
+
+    /// whether this Upstream server is without any kind of censorship by countries, nationals, or states? (such as IDS, firewall, routing-blackhole, etc.)
+    /// * it's should return false if this is unclear.
+    /// * must return false for any DNS resolver located or operated in well-known Internet-censorship countries (such as mainland-China, Iran, Russia, Turkmenistan, etc.)
+    /// * only return true if upstream server has policy that clarify claimed it does not have censorship.
+    fn is_without_censorship(&self) -> bool { false }
+
+    /// whether this Upstream server supports DNS Security extensions (DNSSEC)?
+    /// * it's should return false if this is unclear.
+    /// * only return true if DNSSEC is supported by upstream server.
+    fn is_support_dnssec(&self) -> bool { false }
 
     /// return the metrics of this upstream.
     /// * metrics is about to online status, reliability status and server latency, etc.
     fn metrics<'a>(&'a self) -> &'a DNSUpstreamMetrics;
 
     /// (un-cached) try to resolve DNS query using this upstream.
-    fn resolve(&self, query: Arc<dyn DNSQuery>) -> PinFut<std::io::Result<DNSEntry>>;
+    /// * this should not spawn any background tasks (do not spawn and detach `async_task::Task`).
+    fn resolve(&self, query: &dyn DNSQuery) -> PinFut<std::io::Result<DNSEntry>>;
 }
 
 impl fmt::Debug for dyn DNSUpstream {
