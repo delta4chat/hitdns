@@ -103,7 +103,7 @@ pub fn my_filter() -> impl log4rs::filter::Filter {
 
 #[cfg(feature="log4rs")]
 pub fn my_encoder() -> PatternEncoder {
-    PatternEncoder::new("{date(%Y-%m-%d %H:%M:%S %Z)(utc)} {highlight([{level}])} |{thread}| (({module}#{line})) {message} {n}")
+    PatternEncoder::new("{date(%Y-%m-%d %H:%M:%S %Z)(utc)} {highlight([{level}])} |{thread}| (({module}:{line})) {message}\n") // use Unix LF newline for all platforms
 }
 
 #[cfg(feature="log4rs")]

@@ -1,0 +1,54 @@
+# This file should never be generated automatically. #
+## HitDNS developer selected list for DoH upstreams.
+## * almost IP-Certificate (no-SNI)
+## * almost without any filters
+
+# Cloudflare (1.1.1.1) DNS-over-HTTPS (no-filtering)
+sdns://AgcAAAAAAAAAAAAHMS4xLjEuMQovZG5zLXF1ZXJ5 # https://1.1.1.1/dns-query
+sdns://AgcAAAAAAAAAAAAHMS4wLjAuMQovZG5zLXF1ZXJ5 # https://1.0.0.1/dns-query
+sdns://AgcAAAAAAAAAAAAMMTYyLjE1OS4zNi4xCi9kbnMtcXVlcnk # https://162.159.36.1/dns-query
+sdns://AgcAAAAAAAAAAAAMMTYyLjE1OS40Ni4xCi9kbnMtcXVlcnk # https://162.159.46.1/dns-query
+
+sdns://AgcAAAAAAAAAAAAWWzI2MDY6NDcwMDo0NzAwOjoxMTExXQovZG5zLXF1ZXJ5 # https://[2606:4700:4700::1111]/dns-query
+sdns://AgcAAAAAAAAAAAAWWzI2MDY6NDcwMDo0NzAwOjoxMDAxXQovZG5zLXF1ZXJ5 # https://[2606:4700:4700::1001]/dns-query
+
+# Google (8.8.8.8) DNS-over-HTTPS (with EDNS Client Subnet!)
+sdns://AgcAAAAAAAAAAAAHOC44LjguOAovZG5zLXF1ZXJ5 # https://8.8.8.8/dns-query
+sdns://AgcAAAAAAAAAAAAHOC44LjQuNAovZG5zLXF1ZXJ5 # https://8.8.4.4/dns-query
+
+sdns://AgUAAAAAAAAAAAAWWzIwMDE6NDg2MDo0ODYwOjo4ODg4XQovZG5zLXF1ZXJ5 # https://[2001:4860:4860::8888]/dns-query
+sdns://AgUAAAAAAAAAAAAWWzIwMDE6NDg2MDo0ODYwOjo4ODQ0XQovZG5zLXF1ZXJ5 # https://[2001:4860:4860::8844]/dns-query
+
+# Quad101 (dns.twnic.tw) DNS-over-HTTPS
+sdns://AgcAAAAAAAAAAAAPMTAxLjEwMS4xMDEuMTAxCi9kbnMtcXVlcnk # https://101.101.101.101/dns-query
+
+# Quad9 (dns10.quad9.net) DNS-over-HTTPS (no-DNSSEC)
+sdns://AgYAAAAAAAAAAAAIOS45LjkuMTAKL2Rucy1xdWVyeQ # https://9.9.9.10/dns-query
+sdns://AgYAAAAAAAAAAAAOMTQ5LjExMi4xMTIuMTAKL2Rucy1xdWVyeQ # https://149.112.112.10/dns-query
+
+sdns://AgYAAAAAAAAAAAANWzI2MjA6ZmU6OjEwXQovZG5zLXF1ZXJ5 # https://[2620:fe::10]/dns-query
+sdns://AgYAAAAAAAAAAAAQWzI2MjA6ZmU6OmZlOjEwXQovZG5zLXF1ZXJ5 # https://[2620:fe::fe:10]/dns-query
+
+# AdGuard (unfiltered) DNS-over-HTTPS
+sdns://AgcAAAAAAAAAAAANOTQuMTQwLjE0LjE0MAovZG5zLXF1ZXJ5 # https://94.140.14.140/dns-query
+sdns://AgcAAAAAAAAAAAANOTQuMTQwLjE0LjE0MQovZG5zLXF1ZXJ5 # https://94.140.14.141/dns-query
+
+sdns://AgcAAAAAAAAAAAARWzJhMTA6NTBjMDo6MTpmZl0KL2Rucy1xdWVyeQ # https://[2a10:50c0::1:ff]/dns-query
+sdns://AgcAAAAAAAAAAAARWzJhMTA6NTBjMDo6MjpmZl0KL2Rucy1xdWVyeQ # https://[2a10:50c0::2:ff]/dns-query
+
+# dns.sb DNS-over-HTTPS
+sdns://AgcAAAAAAAAAAAAPMTg1LjIyMi4yMjIuMjIyCi9kbnMtcXVlcnk # https://185.222.222.222/dns-query
+sdns://AgcAAAAAAAAAAAALNDUuMTEuNDUuMTEKL2Rucy1xdWVyeQ # https://45.11.45.11/dns-query
+
+# dns.switch.ch DNS-over-HTTPS (filtered malware)
+sdns://AgMAAAAAAAAAAAANMTMwLjU5LjMxLjI0OAovZG5zLXF1ZXJ5 # https://130.59.31.248/dns-query
+sdns://AgMAAAAAAAAAAAANMTMwLjU5LjMxLjI1MQovZG5zLXF1ZXJ5 # https://130.59.31.251/dns-query
+sdns://AgMAAAAAAAAAAAASWzIwMDE6NjIwOjA6ZmY6OjJdCi9kbnMtcXVlcnk # https://[2001:620:0:ff::2]/dns-query
+sdns://AgcAAAAAAAAAAAASWzIwMDE6NjIwOjA6ZmY6OjNdCi9kbnMtcXVlcnk # https://[2001:620:0:ff::3]/dns-query
+
+# Wikimedia DNS-over-HTTPS (non IP-certificate)
+sdns://AgcAAAAAAAAADjE4NS43MS4xMzguMTM4ABF3aWtpbWVkaWEtZG5zLm9yZwovZG5zLXF1ZXJ5 # https://wikimedia-dns.org/dns-query (185.71.138.138)
+sdns://AgcAAAAAAAAAEVsyMDAxOjY3Yzo5MzA6OjFdABF3aWtpbWVkaWEtZG5zLm9yZwovZG5zLXF1ZXJ5 # https://wikimedia-dns.org/dns-query (2001:67c:930::1)
+
+
+

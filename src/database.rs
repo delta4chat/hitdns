@@ -3,6 +3,7 @@ use crate::{
     query::*,
     entry::*,
     asled::{SledRunner, SledOperation},
+    util::*,
 };
 
 #[derive(Debug, Clone)]
@@ -43,12 +44,12 @@ impl DNSDatabase {
         let op =
             SledOperation::new(move |db| {
                 let f =
-                    move || -> Cell<Option<sled::Result<Vec<(Q, DNSEntry)>>>> {
+                    move || -> OnceGetter<sled::Result<Vec<(Q, DNSEntry)>>> {
                         let tree =
                             match db.open_tree(Self::NS_CACHE_V1) {
                                 Ok(v) => v,
                                 Err(e) => {
-                                    return Cell::new(Some(Err(e)));
+                                    return OnceGetter::new(Err(e));
                                 }
                             };
 
@@ -88,18 +89,18 @@ impl DNSDatabase {
                             }
                         }
 
-                        Cell::new(Some(Ok(out)))
+                        OnceGetter::new(Ok(out))
                     };
                 Box::new(f())
             });
 
         let sw_fut = self.sled.queue(op).await;
         let sw_res = sw_fut.await;
-        let sw_res: &Box<dyn Any+Send> = sw_res.deref();
-        let sw_res: &(dyn Any+Send) = sw_res.deref();
+        let sw_res: &Box<dyn Any+Send+Sync> = sw_res.deref();
+        let sw_res: &(dyn Any+Send+Sync) = sw_res.deref();
 
-        let res: &Cell<Option<sled::Result<Vec<(Q, DNSEntry)>>>> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_scan()");
-        res.replace(None).take().expect("must have value")
+        let res: &OnceGetter<sled::Result<Vec<(Q, DNSEntry)>>> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_scan()");
+        res.get().expect("must have value")
     }
 
     pub async fn cache_get(&self, query: &dyn DNSQuery) -> sled::Result<Option<DNSEntry>> {
@@ -149,8 +150,8 @@ impl DNSDatabase {
 
         let sw_fut = self.sled.queue(op).await;
         let sw_res = sw_fut.await;
-        let sw_res: &Box<dyn Any+Send> = sw_res.deref();
-        let sw_res: &(dyn Any+Send) = sw_res.deref();
+        let sw_res: &Box<dyn Any+Send+Sync> = sw_res.deref();
+        let sw_res: &(dyn Any+Send+Sync) = sw_res.deref();
 
         let res: &sled::Result<Option<DNSEntry>> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_get()");
         res.clone() // this clone is cheap due to DNSEntry internally uses Arc.
@@ -194,8 +195,8 @@ impl DNSDatabase {
         };
         let sw_fut = self.sled.queue(op).await;
         let sw_res = sw_fut.await;
-        let sw_res: &Box<dyn Any+Send> = sw_res.deref();
-        let sw_res: &(dyn Any+Send) = sw_res.deref();
+        let sw_res: &Box<dyn Any+Send+Sync> = sw_res.deref();
+        let sw_res: &(dyn Any+Send+Sync) = sw_res.deref();
 
         let res: &sled::Result<()> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_put()");
         if res.is_ok() {

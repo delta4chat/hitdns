@@ -31,7 +31,7 @@ where
     remote: A,
     manager: ConnManager<A, C>,
 
-    conns: scc::Stack<sdd::Shared<OnceGetter<C>>>,
+    conns: scc2::Stack<sdd::Shared<OnceGetter<C>>>,
 
     // because conns.len() is O(n), so maintain length metadata here for almost O(1) access.
     conns_len: AtomicUsize,
@@ -184,7 +184,7 @@ where
         loop {
             // remove invalid connections.
             {
-                let guard = scc::ebr::Guard::new();
+                let guard = scc2::ebr::Guard::new();
                 for getter in self.conns.iter(&guard) {
                     getter.with(conn_checker);
                 }

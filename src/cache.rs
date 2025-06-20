@@ -242,22 +242,28 @@ impl DNSCache {
                     )
                 }).await.into_value();
 
+        log::debug!("entering dce: {:?}", &dce);
+
         let update = || {
             let dce = dce.clone();
             let resolver = self.resolver.clone();
+            log::debug!("updating");
             if let Some(fut) = dce.update(resolver, selector) {
+                log::debug!("spawning");
                 asyncute::spawn(async move {
                     fut.await.expect("DNSCacheEntry update failed");
                 }).detach();
             } else {
+                log::debug!("not spawning");
                 // another update task running
             }
         };
 
         let update_wait = Duration::from_millis(100);
-        let mut i = 50; // max wait time = 5 seconds
+        let mut i = 50u8; // max wait time = 5 seconds
         let entry =
             loop {
+                log::debug!("loop {}", i);
                 if i == 0 {
                     return DNSCacheStatus::Miss;
                 }
@@ -265,13 +271,18 @@ impl DNSCache {
 
                 match dce.get_entry() {
                     Some(entry) => {
+                        log::debug!("dce geted de: {:?}", &entry);
                         break entry;
                     },
                     _ => {
+                        log::debug!("dce geted nothing");
                         if self.load_one(query).await.ok() == Some(true) {
+                            log::debug!("load_one ok");
                             i += 1;
                             continue;
                         }
+                        log::debug!("load_one err");
+
                         update();
                         dce.wait_timeout(update_wait).await;
                     }

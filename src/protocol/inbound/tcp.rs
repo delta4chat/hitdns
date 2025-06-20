@@ -73,9 +73,13 @@ impl TcpDNSInbound {
                 );
                 return;
             }
+            log::trace!("read dns message length buffer = {}", len_buf.escape_ascii());
 
             len = u16::from_be_bytes(len_buf) as usize;
+            log::trace!("read dns message length = {:?}", len);
+
             buf.resize(len, 0x00);
+            log::trace!("buf.len = {} | buf.cap = {}", buf.len(), buf.capacity());
 
             if let Err(e) = conn.read_exact(&mut buf[..len]).await {
                 log::debug!(
@@ -83,7 +87,9 @@ impl TcpDNSInbound {
                     peer, e,
                 );
             }
+
             data = &buf[..len];
+            log::trace!("read dns msg bytes = {}", data.escape_ascii());
 
             req =
                 match dns::Message::from_vec(data) {
@@ -96,6 +102,8 @@ impl TcpDNSInbound {
                     return;
                 }
             };
+
+            log::trace!("read dns msg = {:?}", &req);
 
             /* no need do this due to the DNSQuery trait will always remove EDNS from queries.
             if ! allow_edns {
@@ -112,6 +120,7 @@ impl TcpDNSInbound {
                         return;
                     }
                 };
+            log::trace!("read dns query = {:?}", &query);
 
             use DNSCacheStatus::*;
             entry =

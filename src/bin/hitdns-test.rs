@@ -5,32 +5,40 @@ use hitdns::{
         *,
         inbound::{
             *,
-            udp::*,
+            tcp::*,
         },
     },
     cache::*,
     database::*,
     resolver::*,
-    data::upstreams_list::dnscrypt::*,
+    data::upstreams_list as ulist,
 };
 
 async fn main_async() {
     eprintln!("log4rs logger init: {:?}", &*logs::HANDLE);
     log::warn!("Test log");
-    log::info!("sdns list: \n{}", {
+    log::info!("dnscrypt sdns list: \n{}", {
         let mut s = String::new();
-        for it in SDNS_LIST.iter() {
-            writeln!(s, "{:?}", it);
+        for it in ulist::dnscrypt::SDNS_LIST.iter() {
+            writeln!(s, "{:?}", it).expect("failed to stringify sdns");
+        }
+        s
+    });
+    log::info!("hitdns sdns list: \n{}", {
+        let mut s = String::new();
+        for it in ulist::hitdns::SDNS_LIST.iter() {
+            writeln!(s, "{:?}", it).expect("failed to stringify sdns");
         }
         s
     });
 
     let db = DNSDatabase::auto_open().unwrap();
-    let resolver = DNSResolver::new();
+    let resolver = DNSResolver::new_builtin_upstreams("hitdns").await;
     let cache = DNSCache::new(db, resolver);
-    let udp = UdpSocket::bind(SocketAddr::from_str("127.0.0.1:10053").unwrap()).expect("cannot bind udp");
-    let udp_inbound = UdpDNSInbound::new(udp, cache).expect("cannot create udp inbound");
-    udp_inbound.run().await.expect("udp inbound die");
+    let tcp = TcpListener::bind(SocketAddr::from_str("127.0.0.1:10053").unwrap()).expect("cannot bind tcp");
+    let tcp_inbound = TcpDNSInbound::new(tcp, cache).expect("cannot create tcp inbound");
+
+    tcp_inbound.run().await.expect("tcp inbound die");
 }
 
 fn main() {

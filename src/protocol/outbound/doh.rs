@@ -11,7 +11,8 @@ use dns_stamp_parser::{Props, DnsOverHttps};
 #[derive(Debug, Clone)]
 pub struct DoHUpstream {
     sdns: Arc<DnsOverHttps>,
-    url: Arc<Url>,
+    protocol: DNSProtocol,
+    url: Arc<String>,
     metrics: DNSUpstreamMetrics,
 }
 
@@ -44,8 +45,12 @@ impl DoHUpstream {
 
         url.set_path(sdns.path.as_str());
 
+        let protocol = DNSProtocol::DoH(Arc::new(url.clone()));
+
+        let url: String = "https".chars().chain(url.as_str().chars().skip(4)).collect();
         Self {
             sdns,
+            protocol,
             url: Arc::new(url),
             metrics: DNSUpstreamMetrics::new(),
         }
@@ -57,8 +62,8 @@ impl DNSUpstream for DoHUpstream {
         self.hostname.as_str()
     }
 
-    fn protocol(&self) -> DNSProtocol {
-        DNSProtocol::DoH(self.url.clone())
+    fn protocol<'a>(&'a self) -> &'a DNSProtocol {
+        &(self.protocol)
     }
 
     fn server_country(&self) -> Option<CountryCode> {
@@ -104,6 +109,7 @@ impl DNSUpstream for DoHUpstream {
 
             let doh_req =
                 http::Request::post(this.url.as_str())
+                .version(http::Version::HTTP_2)
                 .header("content-type", "application/dns-message")
                 .header("content-length", dns_req_len.as_bytes())
                 .body(dns_req).map_err(std::io::Error::other)?;

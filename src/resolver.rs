@@ -5,6 +5,7 @@ use crate::{
     upstream::*,
     query::*,
     entry::*,
+    data::upstreams_list,
 };
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -29,7 +30,7 @@ impl DNSUpstreamFilter {
                 upstream.operator_country() == Some(*code)
             },
             Self::Protocol(proto) => {
-                &(upstream.protocol()) == proto
+                upstream.protocol() == proto
             },
             Self::AnonymizedLogs(is) => {
                 upstream.is_anonymized_logs() == *is
@@ -54,8 +55,8 @@ pub type Filter = Arc<DNSUpstreamFilter>;
 
 #[derive(Debug)]
 pub struct DNSResolverPolicy {
-    whitelist: scc::HashIndex<Filter, bool>,
-    blacklist: scc::HashIndex<Filter, bool>,
+    whitelist: scc2::HashIndex<Filter, bool>,
+    blacklist: scc2::HashIndex<Filter, bool>,
 }
 
 impl DNSResolverPolicy {
@@ -94,7 +95,7 @@ impl DNSResolverPolicy {
     }
 
     pub fn is_valid(&self, upstream: &dyn DNSUpstream) -> bool {
-        let g = scc::ebr::Guard::new();
+        let g = scc2::ebr::Guard::new();
 
         for (bf, enable) in self.blacklist.iter(&g) {
             if ! enable {
@@ -122,7 +123,7 @@ impl DNSResolverPolicy {
 
 #[derive(Debug)]
 pub struct DNSResolverInner {
-    upstreams: scc::HashIndex<Arc<dyn DNSUpstream>, ()>,
+    upstreams: scc2::HashIndex<Arc<dyn DNSUpstream>, ()>,
     policy: DNSResolverPolicy,
     idx: AtomicUsize,
 }
@@ -151,6 +152,18 @@ impl DNSResolver {
         }
     }
 
+    /// uses [`upstreams_list`]
+    pub async fn new_builtin_upstreams(provider: &str) -> Self {
+        let this = Self::new();
+
+        this.policy.include(&Arc::new(DNSUpstreamFilter::WithoutLogs(true))).await;
+
+        let loaded = this.add_builtin_upstreams(provider).await.expect("matches");
+        log::info!("loaded {} upstreams from built-in upstreams list (sdns).", loaded);
+
+        this
+    }
+
     pub async fn retain(&self) {
         self.upstreams.retain_async(|upstream, _| {
             self.policy.is_valid(&**upstream)
@@ -173,6 +186,27 @@ impl DNSResolver {
         true
     }
 
+    pub async fn add_builtin_upstreams(&self, provider: &str) -> Option<usize> {
+        let provider = provider.trim();
+
+        let iter =
+            if provider.eq_ignore_ascii_case("dnscrypt") {
+                upstreams_list::dnscrypt::SDNS_UPSTREAM_LIST.iter()
+            } else if provider.eq_ignore_ascii_case("hitdns") {
+                upstreams_list::hitdns::SDNS_UPSTREAM_LIST.iter()
+            } else {
+                return None;
+            };
+
+        let mut i = 0;
+        for upstream in iter {
+            if self.add_upstream(upstream).await {
+                i += 1;
+            }
+        }
+        Some(i)
+    }
+
     pub async fn del_upstream(&self, upstream: &Arc<dyn DNSUpstream>) -> bool {
         self.upstreams.remove_async(upstream).await
     }
@@ -188,7 +222,7 @@ impl DNSResolver {
 
         let mut upstreams: Vec<&Arc<dyn DNSUpstream>> = Vec::with_capacity(self.upstreams.len());
 
-        let g = scc::ebr::Guard::new();
+        let g = scc2::ebr::Guard::new();
         for (k, _) in self.upstreams.iter(&g) {
             if upstreams.contains(&k) {
                 continue;

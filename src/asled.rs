@@ -15,9 +15,10 @@ use std::{
     panic::catch_unwind,
     sync::Arc,
     path::Path,
+    time::Instant,
 };
 
-use portable_atomic::{AtomicBool, Ordering::Relaxed};
+use portable_atomic::{AtomicBool, Ordering::{Relaxed, SeqCst}};
 use once_cell::sync::OnceCell;
 use async_channel::{Sender, Receiver};
 
@@ -32,10 +33,10 @@ pub fn sled_config() -> sled::Config {
         .print_profile_on_drop(false)
 }
 
-pub type Res = Box<dyn Any + Send>;
+pub type Res = Box<dyn Any + Send + Sync>;
 
-pub trait WithDb: (FnOnce(&sled::Db) -> Res) + Send + 'static {}
-impl<T: (FnOnce(&sled::Db) -> Res) + Send + 'static> WithDb for T {}
+pub trait WithDb: (FnOnce(&sled::Db) -> Res) + Send + Sync + 'static {}
+impl<T: (FnOnce(&sled::Db) -> Res) + Send + Sync + 'static> WithDb for T {}
 
 impl fmt::Debug for dyn WithDb {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -75,7 +76,7 @@ impl Deref for SledOperation {
 }
 
 #[derive(Debug)]
-pub struct SledWith {
+pub struct SledWithInner {
     /// the returned value of [`SledOperation::with_db`].
     res: sdd::AtomicShared<Res>,
 
@@ -83,20 +84,26 @@ pub struct SledWith {
     waker: sdd::AtomicShared<Waker>,
 }
 
-impl Clone for SledWith {
-    fn clone(&self) -> Self {
-        Self {
-            res: Clone::clone(&self.res),
-            waker: Clone::clone(&self.waker),
-        }
+#[derive(Debug, Clone)]
+pub struct SledWith {
+    inner: Arc<SledWithInner>,
+}
+
+impl Deref for SledWith {
+    type Target = SledWithInner;
+
+    fn deref<'a>(&'a self) -> &'a SledWithInner {
+        &(self.inner)
     }
 }
 
 impl SledWith {
-    pub const fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            res: sdd::AtomicShared::null(),
-            waker: sdd::AtomicShared::null(),
+            inner: Arc::new(SledWithInner {
+                res: sdd::AtomicShared::null(),
+                waker: sdd::AtomicShared::null(),
+            }),
         }
     }
 }
@@ -105,27 +112,33 @@ impl Future for SledWith {
     type Output = sdd::Shared<Res>;
 
     fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<Self::Output> {
-        // check whether operation completes.
-        if let Some(shared) = self.res.get_shared(Relaxed, &{ sdd::Guard::new() }) {
-            return Poll::Ready(shared);
-        }
+        log::trace!("sledwith poll: self={:?}, ctx={:?}", self, ctx);
 
         // register waker.
-        if self.waker.is_null(Relaxed) {
-            let waker = sdd::Shared::new(ctx.waker().clone());
-            loop {
-                // compare exchange is not needed:
-                // it just performs update waker if it already has value.
-                self.waker.swap(
-                    (Some(waker.clone()), sdd::Tag::None),
-                    Relaxed,
-                );
+        let g = sdd::Guard::new();
+        let waker = sdd::Shared::new(ctx.waker().clone());
+        loop {
+            // compare exchange is not needed:
+            // it just performs update waker if it already has value.
+            self.waker.swap(
+                (Some(waker.clone()), sdd::Tag::None),
+                SeqCst,
+            );
 
-                if ! self.waker.is_null(Relaxed) {
-                    break;
-                }
+            if self.waker.get_shared(Relaxed, &g).is_some() {
+                log::trace!("asled poll: completed reg waker");
+                break;
             }
         }
+
+        // check whether operation completes.
+        for _ in 0..1000 {
+            if let Some(shared) = self.res.get_shared(SeqCst, &{ sdd::Guard::new() }) {
+                log::trace!("geted res: {:?}", &shared);
+                return Poll::Ready(shared);
+            }
+        }
+        log::trace!("pending: completed reg waker");
 
         Poll::Pending
     }
@@ -204,18 +217,29 @@ pub struct SledRunner {
     db: sled::Db,
     ops_tx: Sender<SledOperation>,
     ops_rx: Receiver<SledOperation>,
-    threads: Arc<scc::HashIndex<u128, Arc<SledRunnerThreadState>>>,
+    threads: Arc<scc2::HashIndex<u128, Arc<SledRunnerThreadState>>>,
 }
 
 impl SledRunner {
     /// create new runner from exists sled::Db instance.
     pub fn from(db: sled::Db) -> Self {
         let (ops_tx, ops_rx) = async_channel::bounded(1048576 * 5);
-        Self {
+
+        let this = Self {
             db,
             ops_tx, ops_rx,
             threads: Default::default(),
+        };
+
+        // spawn
+        {
+            let this = this.clone();
+            asyncute::spawn(async move {
+                this.spawn_thread().await.expect("unable spawn initial sled runner thread");
+            }).detach();
         }
+
+        this
     }
 
     /// create new runner with provided config.
@@ -241,12 +265,16 @@ impl SledRunner {
         parker: parking::Parker,
     ) {
         const FAIL_SLEEP_TIME: Duration = Duration::from_secs(3);
+        const WAKE_TIMEOUT: Duration = Duration::from_secs(1);
 
         let id = state.id;
+        let idc = id as u64;
 
         let _defer = asyncute::Defer::new(|| {
             self.threads.remove(&id);
         });
+
+        let g = sdd::Guard::new();
 
         let mut with_db;
         let mut sw;
@@ -254,10 +282,13 @@ impl SledRunner {
         let mut res;
         let mut shared_res;
 
+        let mut t;
         loop {
             if state.please_exit.load(Relaxed) {
                 break;
             }
+
+            log::trace!("sled runner recv blocking...");
 
             SledOperation { with_db, sw } =
                 match self.ops_rx.recv_blocking() {
@@ -265,12 +296,14 @@ impl SledRunner {
                     Err(e) => {
                         log::error!(
                             "[async sled {}] failed to receive operations from channel!!! Error: {:?}",
-                            id, e,
+                            idc, e,
                         );
                         parker.park_timeout(FAIL_SLEEP_TIME);
                         continue;
                     }
                 };
+
+            log::trace!("sled runner run");
 
             res =
                 // any user code's panic must be catched!
@@ -280,26 +313,35 @@ impl SledRunner {
                     Err(e) => {
                         log::error!(
                             "[async sled {}] panic from user provided code! Error: dyn Any = {:?}",
-                            id, e,
+                            idc, e,
                         );
                         continue;
                     }
                 };
             shared_res = sdd::Shared::new(res);
+            log::trace!("sled runner run done: {:?}", &shared_res);
             loop {
                 sw.res.swap(
                     (Some(shared_res.clone()), sdd::Tag::None),
-                    Relaxed,
+                    SeqCst,
                 );
-                if ! sw.res.is_null(Relaxed) {
+                if sw.res.get_shared(Relaxed, &g).is_some() {
                     break;
                 }
             }
             core::mem::drop(shared_res);
 
-            // if waker missed, it's no problem! because next `SledWith::poll()` will checks `self.res`.
-            if let Some(shared_waker) = sw.waker.get_shared(Relaxed, &{ sdd::Guard::new() }) {
-                shared_waker.wake_by_ref();
+            // if waker missed, it's almost no problem! because next `SledWith::poll()` will checks `self.res`.
+            // but some executors not to polling if not waked, so must wait waker to complete or timed out.
+            t = Instant::now();
+            while t.elapsed() < WAKE_TIMEOUT {
+                if let Some(shared_waker) = sw.waker.get_shared(SeqCst, &g) {
+                    shared_waker.wake_by_ref();
+                    log::debug!("sled runner wake done");
+                    break;
+                } else {
+                    log::trace!("sled runner no waker");
+                }
             }
 
             core::mem::drop(sw);
@@ -416,7 +458,15 @@ impl SledRunner {
     pub fn try_queue(&self, op: SledOperation) -> core::result::Result<SledWith, SledOperation> {
         let sw = op.sw.clone();
         match self.ops_tx.try_send(op) {
-            Ok(_) => Ok(sw),
+            Ok(_) => {
+                if self.threads.is_empty() {
+                    let this = self.clone();
+                    asyncute::spawn(async move {
+                        this.spawn_thread().await.expect("unable to spawn new sled runner thread");
+                    }).detach();
+                }
+                Ok(sw)
+            },
             Err(e) => {
                 if e.is_closed() {
                     panic!("bug: unexpectedly operations channel closed!");

@@ -96,7 +96,7 @@ pub use {
     smoltimeout::TimedExt,
     asyncute::util::{AtomicChecked, AtomicDuration, AtomicRangeStrict},
     once_cell::sync::Lazy,
-    scc::LinkedList,
+    scc2::LinkedList,
     futures_lite::{
         future::FutureExt,
         io::{AsyncReadExt, AsyncWriteExt},

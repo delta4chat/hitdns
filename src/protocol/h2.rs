@@ -26,8 +26,8 @@ use non_tokio::io::Compat;
 
 #[derive(Debug)]
 pub struct H2ClientInner {
-    tls_pools: scc::HashIndex<Arc<TlsConnectInfo>, TlsStreamPool>,
-    h2_sessions: scc::HashIndex<Arc<TlsConnectInfo>, h2::client::SendRequest<Bytes>>,
+    tls_pools: scc2::HashIndex<Arc<TlsConnectInfo>, TlsStreamPool>,
+    h2_sessions: scc2::HashIndex<Arc<TlsConnectInfo>, h2::client::SendRequest<Bytes>>,
 }
 
 #[derive(Debug, Clone)]
@@ -67,23 +67,31 @@ impl H2Client {
         info: &Arc<TlsConnectInfo>,
     ) -> std::io::Result<h2::client::SendRequest<Bytes>> {
         if let Some(sr) = self.h2_sessions.peek_with(info, |_, v| { v.clone() }) {
+            log::trace!("h2.rs client geted session {:?}", &sr);
             return Ok(sr);
         }
         
         let tls_pool =
             if let Some(pool) = self.tls_pools.peek_with(info, |_, v| { v.clone() }) {
+                log::trace!("h2.rs client geted pool {:?}", &pool);
                 pool
             } else {
                 let pool = TlsStreamPool::new("http2-over-tls-over-tcp", info.clone());
                 {
                     // start background task for running main loop of ConnPool
                     let pool = pool.clone();
+                    log::trace!("h2.rs client spawning pool main loop {:?}", &pool);
                     asyncute::spawn(async move {
+                        log::trace!("h2.rs client running pool main loop {:?}", &pool);
                         pool.run().await.expect("unexpected pool.run() exited!");
                     }).detach();
                 }
 
-                let _ = self.tls_pools.insert_async(info.clone(), pool.clone()).await;
+                if self.tls_pools.insert_async(info.clone(), pool.clone()).await.is_ok() {
+                    log::trace!("h2.rs client inserted pool {:?}", &pool);
+                } else {
+                    log::trace!("h2.rs client failed to insert pool {:?}", &pool);
+                }
                 pool
             };
 
@@ -132,6 +140,8 @@ impl H2Client {
     }
 
     pub async fn request(&self, req: http::Request<Bytes>) -> std::io::Result<http::Response<Bytes>> {
+        log::debug!("h2.rs request: {:?}", &req);
+
         match req.version() {
             http::Version::HTTP_2 => {},
             _ => {
@@ -160,7 +170,20 @@ impl H2Client {
             };
         let port = uri.port_u16().unwrap_or(443);
 
-        let resolve_ret = cached_resolve((host.as_str(), port), false).await;
+        let resolve_ret =
+            if let Ok(ip) =
+                IpAddr::from_str(
+                    if host.starts_with('[') && host.ends_with(']') {
+                        &host[1 .. host.len()-1]
+                    } else {
+                        &host
+                    }
+                )
+            {
+                Arc::new(Ok(vec![SocketAddr::new(ip, port)]))
+            } else {
+                cached_resolve((host.as_str(), port), false).await
+            };
         let addrs =
             match resolve_ret.deref().as_ref() {
                 Ok(addrs) => {

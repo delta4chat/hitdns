@@ -233,7 +233,7 @@ pub trait DNSUpstream: Send + Sync {
     fn name<'a>(&'a self) -> &'a str;
 
     /// DNS protocol used by this upstream.
-    fn protocol(&self) -> DNSProtocol;
+    fn protocol<'a>(&'a self) -> &'a DNSProtocol;
 
     /// the Country Code of this Upstream server itself.
     /// * return None if this information unavailable.
