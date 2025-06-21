@@ -27,6 +27,10 @@ required-features = ["bin"]
 name = "hitdns-test"
 required-features = ["bin"]
 
+[[bin]]
+name = "hitdns-h2test"
+required-features = ["bin"]
+
 [dependencies]
 ahash = { version = "0.8.12", default-features = false, features = ["atomic-polyfill", "compile-time-rng"] }
 async-channel = "2.3.1"

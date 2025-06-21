@@ -1,6 +1,6 @@
 use hitdns::{
     *,
-    logs,
+    logs::*,
     protocol::{
         *,
         inbound::{
@@ -15,7 +15,7 @@ use hitdns::{
 };
 
 async fn main_async() {
-    eprintln!("log4rs logger init: {:?}", &*logs::HANDLE);
+    eprintln!("log4rs logger init: {:?}", log4rs_handle());
     log::warn!("Test log");
     log::info!("dnscrypt sdns list: \n{}", {
         let mut s = String::new();

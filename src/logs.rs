@@ -177,9 +177,16 @@ pub fn log4rs_config() -> log4rs::Config {
 }
 
 #[cfg(feature="log4rs")]
-pub static HANDLE: Lazy<log4rs::Handle> =
+static HANDLE: Lazy<log4rs::Handle> =
     Lazy::new(|| {
         log4rs::init_config(log4rs_config())
         .expect("unable to set global logger")
     });
 
+pub fn log4rs_handle() -> &'static log4rs::Handle {
+    &*HANDLE
+}
+
+pub fn setup() {
+    let _ = log4rs_handle();
+}
