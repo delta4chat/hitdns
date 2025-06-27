@@ -31,5 +31,11 @@ pub fn disk_filename() -> PathBuf {
     path
 }
 
+pub fn disk_filename_gzip() -> PathBuf {
+    let mut path = config::LOG_DIR.deref().clone();
+    path.push("hitdns.{}.log.gz");
+    path
+}
+
 #[cfg(feature="log4rs")]
 include!("log4.rs");

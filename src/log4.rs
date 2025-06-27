@@ -1,5 +1,3 @@
-use crate::*;
-
 pub use log4rs::{
     Logger,
     config::{
@@ -100,7 +98,7 @@ pub fn disk_rolling_policy() -> CompoundPolicy {
         Box::new(
             FixedWindowRoller::builder()
             .base(2)
-            .build("hitdns.{}.log.gz", 20)
+            .build(disk_filename_gzip().as_path().to_str().expect("unable to convert path to str"), 20)
             .expect("unable build FixedWindowRoller")
         ),
     )
