@@ -7,17 +7,22 @@ type curl
 type grep
 type sort
 type tee
+type mktemp
+type rm
 
-tmpfile="$(mktemp)"
-trap "rm -rfv $tmpfile" EXIT
+tmp="$(mktemp -d)"
+trap "rm -rfv $tmp" EXIT
+
+tmpfile="$tmp/tmpfile"
+tmpout="$tmp/tmpout"
 
 url='https://github.com/DNSCrypt/dnscrypt-resolvers/raw/refs/heads/master/v3/public-resolvers.md'
 
-echo "# Generated time: $(date -u -Is || echo N/A)" > $tmpfile
-echo "# URL: $url" >> $tmpfile
-echo >> $tmpfile
+curl "$url" -vL $* -o "$tmpfile"
 
-curl "$url" -vL $* | grep -F 'sdns://' | sort -u >> $tmpfile
+echo "# Generated time: $(date -u -Is || echo N/A)" > $tmpout
+echo "# URL: $url" >> $tmpout
+echo >> $tmpout
+cat "$tmpfile" | grep -F 'sdns://' | sort -u >> $tmpout
 
-mv -v $tmpfile dnscrypt.sdns.v3.txt
-trap 'true' EXIT
+mv -v "$tmpout" dnscrypt.sdns.v3.txt
