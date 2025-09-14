@@ -271,9 +271,6 @@ impl DNSResolver {
                         continue;
                     }
                 },
-                Random => {
-
-                },
                 Reliable => {
                     if new.metrics().reliability() < old.metrics().reliability() {
                         continue;
