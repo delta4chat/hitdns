@@ -158,8 +158,8 @@ impl DNSResolver {
 
         this.policy.include(&Arc::new(DNSUpstreamFilter::WithoutLogs(true))).await;
 
-        let loaded = this.add_builtin_upstreams(provider).await.expect("matches");
-        log::info!("loaded {} upstreams from built-in upstreams list (sdns).", loaded);
+        let loaded = this.add_builtin_upstreams(provider).await.expect("provided built-in upstream provider name does not matches any lists!"); // this is programming bugs from downstream code, so panic.
+        log::info!("loaded {} upstreams from built-in upstreams list ({}).", loaded, provider);
 
         this
     }
@@ -271,12 +271,16 @@ impl DNSResolver {
                         continue;
                     }
                 },
+                Random => {
+
+                },
                 Reliable => {
                     if new.metrics().reliability() < old.metrics().reliability() {
                         continue;
                     }
                 },
                 _ => {
+                    // handled before
                     unreachable!();
                 },
             }
@@ -340,6 +344,12 @@ pub enum DNSUpstreamSelector {
     /// 4. A
     /// 5. A
     Fixed = Self::FIXED,
+}
+
+impl Default for DNSUpstreamSelector {
+    fn default() -> Self {
+        Self::Unspecified
+    }
 }
 
 impl DNSUpstreamSelector {

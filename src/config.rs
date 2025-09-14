@@ -63,7 +63,7 @@ pub fn get_log_dir() -> PathBuf {
 
 #[derive(Debug)]
 pub struct LoggerConfig {
-    no_log_extern_libs: AtomicBool,
+    log_extern_libs: AtomicBool,
     always_log_self: AtomicBool,
     level: AtomicU8,
 }
@@ -71,7 +71,7 @@ impl LoggerConfig {
     pub const fn global() -> &'static Self {
         static GLOBAL: LoggerConfig =
             LoggerConfig {
-                no_log_extern_libs: AtomicBool::new(false),
+                log_extern_libs: AtomicBool::new(true),
                 always_log_self: AtomicBool::new(true),
                 level: AtomicU8::new(loglevel_to_u8(log::Level::Warn)),
             };
@@ -79,11 +79,11 @@ impl LoggerConfig {
         &GLOBAL
     }
 
-    pub fn no_log_extern_libs(&self) -> bool {
-        self.no_log_extern_libs.load(Relaxed)
+    pub fn log_extern_libs(&self) -> bool {
+        self.log_extern_libs.load(Relaxed)
     }
-    pub fn set_no_log_extern_libs(&self, nel: bool) {
-        self.no_log_extern_libs.store(nel, Relaxed)
+    pub fn set_log_extern_libs(&self, lel: bool) {
+        self.log_extern_libs.store(lel, Relaxed)
     }
 
     pub fn always_log_self(&self) -> bool {

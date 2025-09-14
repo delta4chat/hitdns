@@ -76,7 +76,7 @@ log4rs = { version = "1.3.0", default-features = false, features = ["console_app
 
 [profile.dev]
 panic = "unwind"
-opt-level = 2
+opt-level = 0
 lto = "off"
 #strip = "none"
 codegen-units = 256
@@ -91,7 +91,7 @@ panic = "unwind"
 opt-level = 0
 lto = "off"
 #strip = "none"
-codegen-units = 1048576
+codegen-units = 10240
 overflow-checks = true
 debug-assertions = true
 debug = "full"

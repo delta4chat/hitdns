@@ -38,7 +38,7 @@ pub fn my_filter() -> impl log4rs::filter::Filter {
             let cfg = config::LoggerConfig::global();
 
             let log_self = cfg.always_log_self();
-            let nolog_lib = cfg.no_log_extern_libs();
+            let nolog_lib = ! cfg.log_extern_libs();
 
             if log_self || nolog_lib {
                 let is_self = {

@@ -15,8 +15,8 @@ use hitdns::{
 };
 
 async fn main_async() {
+    config::LoggerConfig::global().set_log_extern_libs(false);
     eprintln!("log4rs logger init: {:?}", log4rs_handle());
-    log::warn!("Test log");
     log::info!("dnscrypt sdns list: \n{}", {
         let mut s = String::new();
         for it in ulist::dnscrypt::SDNS_LIST.iter() {
@@ -35,6 +35,8 @@ async fn main_async() {
     let db = DNSDatabase::auto_open().unwrap();
     let resolver = DNSResolver::new_builtin_upstreams("hitdns").await;
     let cache = DNSCache::new(db, resolver);
+    // cache.query //
+
     let tcp = TcpListener::bind(SocketAddr::from_str("127.0.0.1:10053").unwrap()).expect("cannot bind tcp");
     let tcp_inbound = TcpDNSInbound::new(tcp, cache).expect("cannot create tcp inbound");
 

@@ -13,39 +13,43 @@
 /// 2. but this requirements other projects also uses prefixes "as a standard or guideline", which it's hardly and it's uniqueness is not guaranteed.
 /// 3. also prefixes is not easy to parsed separately, so you cannot easy to listing all of items within specified name-space, and causes more different works in IDE or syntax analyzer that can be avoided if has name-space.
 pub mod c_flatland {
-    pub use super::*;
-    pub use {
-        config::*,
-        dns::*,
-        query::*,
-        entry::*,
-        cache::*,
-        upstream::*,
-        resolver::*,
-        util::*,
-        asled::*,
-        database::*,
+    //pub use super::*;
+    pub use super::{
+        config::{self, *},
+        dns::{self, *},
+        query::{self, *},
+        entry::{self, *},
+        cache::{self, *},
+        upstream::{self, *},
+        resolver::{self, *},
+        util::{self, *},
+        asled::{self, *},
+        database::{self, *},
         protocol::{
+            self,
             *,
-            pool::*,
-            tcp::*,
-            tls::*,
-            h2::*,
+            pool::{self, *},
+            tcp::{self, *},
+            tls::{self, *},
+            h2::{self, *},
             inbound::{
+                self,
                 *,
                 tcp::*,
-                udp::*,
+                udp::{self, *},
             },
-            outbound::*,
+            outbound::{self, *},
         },
         data::{
+            self,
             *,
             upstreams_list::{
+                self,
                 *,
                 dnscrypt::*,
             },
         },
-        logs::*,
+        logs::{self, *},
     };
 }
 

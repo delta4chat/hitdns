@@ -54,6 +54,7 @@ impl DNSCacheEntry {
     }
 
     pub fn set_entry(&self, entry: DNSEntry) {
+        log::warn!("cache set entry {:?}", entry);
         let entry = sdd::Shared::new(entry);
         self.entry.swap(
             (Some(entry), sdd::Tag::None),

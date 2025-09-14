@@ -272,7 +272,7 @@ impl H2Client {
                                     }
                                 }
                             }
-                            return Ok(resp.map(move |_| { resp_body.freeze() }));
+                            return Ok(dbg!(resp.map(move |_| { resp_body.freeze() })));
                         },
                         Err(e) => {
                             return Err(std::io::Error::other(e));
