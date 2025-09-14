@@ -63,9 +63,7 @@ pub trait DNSQuery: Send + Sync {
         domain: dns::Name,
         rdclass: dns::RdClass,
         rdtype: dns::RdType,
-    ) -> Self where Self: Sized {
-        unimplemented!();
-    }
+    ) -> Self where Self: Sized;
 
     /// query domain name.
     fn domain<'a>(&'a self) -> &'a dns::Name;
@@ -101,7 +99,8 @@ impl fmt::Debug for dyn DNSQuery {
 
 impl Hash for dyn DNSQuery {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        format!("{:?}", self).hash(state);
+        //format!("{:?}", self).hash(state);
+
         self.domain().hash(state);
         self.rdclass().hash(state);
         self.rdtype().hash(state);
@@ -114,10 +113,10 @@ impl DNSQuery for dns::Query {
         rdclass: dns::RdClass,
         rdtype: dns::RdType,
     ) -> Self {
-        let mut this = Self::default();
-        this.set_name(domain);
-        this.set_query_class(rdclass);
-        this.set_query_type(rdtype);
+        let mut this = dns::Query::new();
+        this.set_name(domain)
+            .set_query_class(rdclass)
+            .set_query_type(rdtype);
         this
     }
 
@@ -181,7 +180,7 @@ pub trait DNSQueryExt: DNSQuery {
          // hitdns itself is just a forwarder (without recursion), so it's needed to set RA.
          .set_recursion_desired(true)
 
-         // RA is only for DNS recursor
+         // RA is set by DNS recursor only.
          .set_recursion_available(false)
 
          // CD and AD is only for DNS response
@@ -222,7 +221,7 @@ pub trait DNSQueryExt: DNSQuery {
 
     /// parse DNSQuery from Serialized format.
     fn decode<B: AsRef<[u8]>>(bytes: B) -> std::io::Result<Self> where Self: Sized {
-        let mut bytes = bytes.as_ref();
+        let mut bytes: &[u8] = bytes.as_ref();
 
         if bytes.len() > serialized::LEN_MAX {
             return err_invalid_input("bytes length exceeded maximum possible length!");
@@ -231,12 +230,12 @@ pub trait DNSQueryExt: DNSQuery {
         if bytes.is_empty() {
             return err_invalid_input("empty bytes provided!");
         }
-        let version = bytes[0];
-        bytes = &bytes[1..];
 
+        let version = bytes[0];
         if version != serialized::VERSION {
             return err_invalid_input("version mismatch!");
         }
+        bytes = &bytes[1..];
 
         if bytes.is_empty() {
             return err_invalid_input("missing domain length!");
