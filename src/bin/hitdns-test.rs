@@ -11,6 +11,7 @@ use hitdns::{
     cache::*,
     database::*,
     resolver::*,
+    query::*,
     data::upstreams_list as ulist,
 };
 
@@ -35,7 +36,13 @@ async fn main_async() {
     let db = DNSDatabase::auto_open().unwrap();
     let resolver = DNSResolver::new_builtin_upstreams("hitdns").await;
     let cache = DNSCache::new(db, resolver);
-    // cache.query //
+
+    let query: Arc<dyn DNSQuery> = Arc::new(dns::Query::default());
+    loop {
+        dbg!(cache.get(&query, DNSUpstreamSelector::Best).await);
+        std::thread::sleep(Duration::new(1, 0));
+    }
+
 
     let tcp = TcpListener::bind(SocketAddr::from_str("127.0.0.1:10053").unwrap()).expect("cannot bind tcp");
     let tcp_inbound = TcpDNSInbound::new(tcp, cache).expect("cannot create tcp inbound");

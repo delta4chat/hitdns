@@ -4,7 +4,7 @@ use crate::*;
 
 use core::ops::{Deref, DerefMut, Range};
 
-use portable_atomic::{*, Ordering::Relaxed};
+use portable_atomic::*;
 
 pub trait AtomicType: fmt::Debug {
     type Atomic;
@@ -55,20 +55,20 @@ macro_rules! atomic_impls {
 
             impl From<&Atomic<$t>> for $t {
                 fn from(val: &Atomic<$t>) -> $t {
-                    val.load(Relaxed)
+                    val.load(ATOM_LOAD)
                 }
             }
 
             impl PartialEq for Atomic<$t> {
                 fn eq(&self, other: &Self) -> bool {
-                    self.load(Relaxed) == other.load(Relaxed)
+                    self.load(ATOM_LOAD) == other.load(ATOM_LOAD)
                 }
             }
             impl Eq for Atomic<$t> {}
 
             impl Hash for Atomic<$t> {
                 fn hash<H: Hasher>(&self, state: &mut H) {
-                    self.load(Relaxed).hash(state)
+                    self.load(ATOM_LOAD).hash(state)
                 }
             }
         )*
@@ -97,11 +97,14 @@ atomic_impls!(
 /// a getter that only can get value once.
 #[derive(Debug)]
 pub struct OnceGetter<T> {
+    // this only for fast-path hint, so no needed to keep it strong synchronized.
     empty: AtomicBool,
+
     inner: std::sync::Mutex<Option<T>>,
 }
 
 impl<T> OnceGetter<T> {
+    #[inline(always)]
     pub const fn new(val: T) -> Self {
         Self {
             empty: AtomicBool::new(false),
@@ -109,37 +112,50 @@ impl<T> OnceGetter<T> {
         }
     }
 
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
-        self.empty.load(Relaxed)
+        self.empty.load(ATOM_LOAD)
     }
 
+    #[inline(always)]
     pub fn get(&self) -> Option<T> {
         if self.is_empty() {
             return None;
         }
 
         let mv = self.inner.lock().unwrap_or_else(|e| { e.into_inner() }).take();
-        self.empty.store(true, Relaxed);
+        self.empty.store(true, ATOM_STORE);
 
         mv
     }
 
+    #[inline(always)]
     pub fn with<R, F>(&self, mut f: F) -> R
     where
         F: FnMut(&mut Option<T>) -> R,
     {
-        if self.empty.load(Relaxed) {
-            return f(&mut None);
+        let mut nothing = || {
+            // return a temporary created value of Option, so it's cannot to be used to set Some(T) again if the value has been taken.
+            let mut make_it_cannot_set_again = None;
+            f(&mut make_it_cannot_set_again)
+        };
+
+        if self.is_empty() {
+            return nothing();
         }
 
         let mut inner = self.inner.lock().unwrap_or_else(|e| { e.into_inner() });
         let inner = &mut *inner;
-        let r = f(inner);
 
         if inner.is_none() {
-            self.empty.store(true, Relaxed);
+            self.empty.store(true, ATOM_STORE);
+            return nothing();
         }
 
+        let r = f(inner);
+        if inner.is_none() {
+            self.empty.store(true, ATOM_STORE);
+        }
         r
     }
 }

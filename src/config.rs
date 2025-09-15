@@ -7,6 +7,26 @@ use crate::{
     resolver::*,
 };
 
+pub mod atomic_ordering {
+    use portable_atomic::Ordering::{self, *};
+
+    macro_rules! gen_consts {
+        ($($name:ident = $ord:expr,)*) => {
+            $(
+                pub const $name: Ordering = $ord;
+            )*
+        };
+    }
+
+    gen_consts!(
+        ATOM_LOAD = Acquire,
+        ATOM_STORE = Release,
+        ATOM_RMW = AcqRel,
+        ATOM_SYNC = SeqCst,
+    );
+}
+pub use atomic_ordering::*;
+
 pub static DATA_DIR: Lazy<PathBuf> = Lazy::new(make_data_dir);
 pub static LOG_DIR: Lazy<PathBuf> = Lazy::new(make_log_dir);
 
@@ -80,25 +100,25 @@ impl LoggerConfig {
     }
 
     pub fn log_extern_libs(&self) -> bool {
-        self.log_extern_libs.load(Relaxed)
+        self.log_extern_libs.load(ATOM_LOAD)
     }
     pub fn set_log_extern_libs(&self, lel: bool) {
-        self.log_extern_libs.store(lel, Relaxed)
+        self.log_extern_libs.store(lel, ATOM_STORE)
     }
 
     pub fn always_log_self(&self) -> bool {
-        self.always_log_self.load(Relaxed)
+        self.always_log_self.load(ATOM_LOAD)
     }
     pub fn set_always_log_self(&self, als: bool) {
-        self.always_log_self.store(als, Relaxed)
+        self.always_log_self.store(als, ATOM_STORE)
     }
 
     pub fn level(&self) -> log::Level {
-        u8_to_loglevel(self.level.load(Relaxed))
+        u8_to_loglevel(self.level.load(ATOM_LOAD))
         .expect("unexpected AtomicU8 value invalid")
     }
     pub fn set_level(&self, lv: log::Level) {
-        self.level.store(loglevel_to_u8(lv), Relaxed)
+        self.level.store(loglevel_to_u8(lv), ATOM_STORE)
     }
 }
 
@@ -117,11 +137,11 @@ impl ProtocolConfig {
     }
 
     pub fn allow_edns(&self) -> bool {
-        self.allow_edns.load(Relaxed)
+        self.allow_edns.load(ATOM_LOAD)
     }
 
     pub fn set_allow_edns(&self, allow: bool) {
-        self.allow_edns.store(allow, Relaxed)
+        self.allow_edns.store(allow, ATOM_STORE)
     }
 }
 
@@ -140,11 +160,11 @@ impl ResolverConfig {
     }
 
     pub fn selector(&self) -> DNSUpstreamSelector {
-        DNSUpstreamSelector::new(self.selector.load(Relaxed)).expect("unexpected AtomicU8 has invalid value")
+        DNSUpstreamSelector::new(self.selector.load(ATOM_LOAD)).expect("unexpected AtomicU8 has invalid value")
     }
 
     pub fn set_selector(&self, selector: DNSUpstreamSelector) {
-        self.selector.store(selector.value(), Relaxed)
+        self.selector.store(selector.value(), ATOM_STORE)
     }
 }
 
@@ -164,17 +184,17 @@ impl CacheConfig {
     }
 
     pub fn min_ttl(&self) -> u32 {
-        self.min_ttl.load(Relaxed)
+        self.min_ttl.load(ATOM_LOAD)
     }
     pub fn set_min_ttl(&self, ttl: u32) {
-        self.min_ttl.store(ttl, Relaxed)
+        self.min_ttl.store(ttl, ATOM_STORE)
     }
 
     pub fn max_ttl(&self) -> u32 {
-        self.max_ttl.load(Relaxed)
+        self.max_ttl.load(ATOM_LOAD)
     }
     pub fn set_max_ttl(&self, ttl: u32) {
-        self.max_ttl.store(ttl, Relaxed)
+        self.max_ttl.store(ttl, ATOM_STORE)
     }
 }
 

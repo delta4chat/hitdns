@@ -242,7 +242,7 @@ impl DNSResolver {
         }
         if selector == RoundRobin {
             upstreams.sort();
-            return Ok(upstreams[self.idx.fetch_add(1, Relaxed) % upstreams_len].clone());
+            return Ok(upstreams[self.idx.fetch_add(1, ATOM_RMW) % upstreams_len].clone());
         }
         if selector == Fixed {
             return Ok(upstreams[0].clone());

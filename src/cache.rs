@@ -50,7 +50,7 @@ impl DNSCacheEntry {
 
     pub fn get_entry(&self) -> Option<sdd::Shared<DNSEntry>> {
         let g = sdd::Guard::new();
-        self.entry.get_shared(Relaxed, &g)
+        self.entry.get_shared(ATOM_LOAD, &g)
     }
 
     pub fn set_entry(&self, entry: DNSEntry) {
@@ -58,12 +58,12 @@ impl DNSCacheEntry {
         let entry = sdd::Shared::new(entry);
         self.entry.swap(
             (Some(entry), sdd::Tag::None),
-            Relaxed
+            ATOM_RMW,
         );
     }
 
     pub fn is_updating(&self) -> bool {
-        self.updating.load(Relaxed)
+        self.updating.load(ATOM_LOAD)
     }
 
     pub fn update(
@@ -71,20 +71,19 @@ impl DNSCacheEntry {
         resolver: DNSResolver,
         selector: DNSUpstreamSelector,
     ) -> Option<impl Fut<std::io::Result<()>>> {
-        if self.updating.compare_exchange(false, true, Relaxed, Relaxed).is_err() {
+        if self.updating.compare_exchange(false, true, ATOM_RMW, ATOM_LOAD).is_err() {
             // another update task is running
             return None;
         }
 
-        let this = self.clone();
-
         let mut defer = {
             let this = self.clone();
             asyncute::Defer::new(move || {
-                this.updating.store(false, Relaxed);
+                this.updating.store(false, ATOM_STORE);
             })
         };
 
+        let this = self.clone();
         Some(async move {
             match resolver.resolve(this.query.deref(), selector).timeout(Self::UPDATE_TIMEOUT).await {
                 Some(ret) => {

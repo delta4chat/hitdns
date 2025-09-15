@@ -67,6 +67,8 @@ pub mod protocol;
 pub mod data;
 pub mod logs;
 
+pub use config::atomic_ordering::*;
+
 pub use core::{
     any::Any,
     cell::Cell,
@@ -92,7 +94,12 @@ pub use {
     bytes::{Bytes, BytesMut},
     country_code_enum::CountryCode,
     http_types::Url,
-    portable_atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicUsize, Ordering::Relaxed},
+    portable_atomic::{
+        AtomicBool,
+        AtomicU8,
+        AtomicU32,
+        AtomicUsize,
+    },
     event_listener::{
         Event,
         listener as event_listen,

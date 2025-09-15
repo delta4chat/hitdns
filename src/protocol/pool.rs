@@ -105,18 +105,18 @@ where
     }
 
     pub fn conns_len(&self) -> usize {
-        self.conns_len.load(Relaxed)
+        self.conns_len.load(ATOM_LOAD)
     }
 
     pub fn min_conns(&self) -> usize {
-        self.conns_min.load(Relaxed)
+        self.conns_min.load(ATOM_LOAD)
     }
 
     pub fn set_min_conns(&self, min: usize) -> bool {
         if min < Self::MIN_CONNS {
             return false;
         }
-        self.conns_min.store(min, Relaxed);
+        self.conns_min.store(min, ATOM_STORE);
         true
     }
 
@@ -150,7 +150,7 @@ where
     }
 
     pub async fn run(&self) -> std::io::Result<()> {
-        if self.running.compare_exchange(false, true, Relaxed, Relaxed).is_err() {
+        if self.running.compare_exchange(false, true, ATOM_RMW, ATOM_LOAD).is_err() {
             return Err(
                 std::io::Error::new(
                     std::io::ErrorKind::ResourceBusy,
@@ -159,7 +159,7 @@ where
             );
         }
         let _defer = asyncute::Defer::new(|| {
-            self.running.store(false, Relaxed);
+            self.running.store(false, ATOM_STORE);
         });
 
         let conn_timeout = Duration::from_secs(10);

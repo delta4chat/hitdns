@@ -414,18 +414,18 @@ impl DNSUpstreamMetrics {
 
     /// add new record to metrics.
     pub async fn record(&self, now: SystemTime, online: bool, maybe_latency: Option<Duration>) {
-        self.online.store(online, Relaxed);
+        self.online.store(online, ATOM_STORE);
 
         let maybe_unix = now.duration_since(SystemTime::UNIX_EPOCH);
 
         let rel = self.reliability.deref();
         if online {
-            let mut old = rel.load(Relaxed);
+            let mut old = rel.load(ATOM_LOAD);
             while old < 100 {
                 match
                     rel.compare_exchange(
                         old, old+1,
-                        Relaxed, Relaxed
+                        ATOM_RMW, ATOM_LOAD,
                     )
                 {
                     Ok(_) => {
@@ -467,7 +467,7 @@ impl DNSUpstreamMetrics {
     /// * 0 = all times offline.
     /// * 100 = all times online.
     pub fn reliability(&self) -> u8 {
-        self.reliability.load(Relaxed)
+        self.reliability.load(ATOM_LOAD)
     }
 
     /// get latency in average value.

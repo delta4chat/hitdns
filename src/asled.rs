@@ -18,7 +18,10 @@ use std::{
     time::Instant,
 };
 
-use portable_atomic::{AtomicBool, Ordering::{Relaxed, SeqCst}};
+use portable_atomic::{
+    AtomicBool,
+    Ordering::{Acquire, Release, AcqRel},
+};
 use once_cell::sync::OnceCell;
 use async_channel::{Sender, Receiver};
 
@@ -122,10 +125,10 @@ impl Future for SledWith {
             // it just performs update waker if it already has value.
             self.waker.swap(
                 (Some(waker.clone()), sdd::Tag::None),
-                SeqCst,
+                AcqRel,
             );
 
-            if self.waker.get_shared(Relaxed, &g).is_some() {
+            if self.waker.get_shared(Acquire, &g).is_some() {
                 log::trace!("asled poll: completed reg waker");
                 break;
             }
@@ -133,7 +136,7 @@ impl Future for SledWith {
 
         // check whether operation completes.
         for _ in 0..1000 {
-            if let Some(shared) = self.res.get_shared(SeqCst, &{ sdd::Guard::new() }) {
+            if let Some(shared) = self.res.get_shared(Acquire, &{ sdd::Guard::new() }) {
                 log::trace!("geted res: {:?}", &shared);
                 return Poll::Ready(shared);
             }
@@ -208,7 +211,7 @@ impl SledRunnerThreadState {
     }
 
     pub fn is_working(&self) -> bool {
-        self.is_working.load(Relaxed)
+        self.is_working.load(Acquire)
     }
 }
 
@@ -284,7 +287,7 @@ impl SledRunner {
 
         let mut t;
         loop {
-            if state.please_exit.load(Relaxed) {
+            if state.please_exit.load(Acquire) {
                 break;
             }
 
@@ -323,9 +326,9 @@ impl SledRunner {
             loop {
                 sw.res.swap(
                     (Some(shared_res.clone()), sdd::Tag::None),
-                    SeqCst,
+                    AcqRel,
                 );
-                if sw.res.get_shared(Relaxed, &g).is_some() {
+                if sw.res.get_shared(Acquire, &g).is_some() {
                     break;
                 }
             }
@@ -335,7 +338,7 @@ impl SledRunner {
             // but some executors not to polling if not waked, so must wait waker to complete or timed out.
             t = Instant::now();
             while t.elapsed() < WAKE_TIMEOUT {
-                if let Some(shared_waker) = sw.waker.get_shared(SeqCst, &g) {
+                if let Some(shared_waker) = sw.waker.get_shared(Acquire, &g) {
                     shared_waker.wake_by_ref();
                     log::debug!("sled runner wake done");
                     break;

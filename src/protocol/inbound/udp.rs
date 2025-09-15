@@ -158,7 +158,7 @@ impl UdpDNSInbound {
     }
 
     pub async fn run(&self) -> std::io::Result<()> {
-        if self.running.compare_exchange(false, true, Relaxed, Relaxed).is_err() {
+        if self.running.compare_exchange(false, true, ATOM_RMW, ATOM_LOAD).is_err() {
             return Err(
                 std::io::Error::new(
                     std::io::ErrorKind::ResourceBusy,
@@ -167,7 +167,7 @@ impl UdpDNSInbound {
             );
         }
         let _defer = asyncute::Defer::new(|| {
-            self.running.store(false, Relaxed);
+            self.running.store(false, ATOM_STORE);
         });
 
         let mut buf = [0u8; 65535];
