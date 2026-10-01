@@ -52,7 +52,7 @@ sled = { version = "0.34.7", features = ["lock_free_delays", "compression", "bac
 smoltimeout = "0.6.3"
 
 # TODO publish once this crate from alpha stage to beta
-non-tokio = { path = "../toolset/non-tokio" }
+notokio = { path = "../toolset/notokio" }
 
 async-net = "2.0.0"
 async-io = "2.4.1"
