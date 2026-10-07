@@ -47,7 +47,7 @@ impl DoHUpstream {
 
         let protocol = DNSProtocol::DoH(Arc::new(url.clone()));
 
-        let url: String = "https".chars().chain(url.as_str().chars().skip(4)).collect();
+        let url: String = dbg!("https".chars().chain(url.as_str().chars().skip(4)).collect());
         Self {
             sdns,
             protocol,
@@ -115,7 +115,7 @@ impl DNSUpstream for DoHUpstream {
                 .body(dns_req).map_err(std::io::Error::other)?;
 
             let client = H2Client::global();
-            let doh_resp = client.request(doh_req).await?;
+            let doh_resp = dbg!(client.request(doh_req).await)?;
 
             let dns_resp = {
                 let status = doh_resp.status();

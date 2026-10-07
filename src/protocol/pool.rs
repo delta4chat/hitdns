@@ -132,9 +132,11 @@ where
     /// * returned connection will be removed from pool to ensure no others to access it.
     pub fn pop_conn(&self) -> Option<C> {
         while let Some(getter) = self.conns.pop() {
-            if let Some(conn) = getter.get() {
+            if let Some(mut conn) = getter.get() {
                 self.conns_len.checked_sub(1);
-                return Some(conn);
+                if ! (self.manager.is_closed)(&mut conn) {
+                    return Some(conn);
+                }
             }
         }
         None

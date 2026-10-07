@@ -10,6 +10,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct DNSCacheEntryInner {
+    entry: sdd::AtomicShared<DNSEntry>,
     updating: AtomicBool,
     update_notify: Event,
 }
@@ -17,7 +18,6 @@ pub struct DNSCacheEntryInner {
 #[derive(Debug, Clone)]
 pub struct DNSCacheEntry {
     query: Arc<dyn DNSQuery>,
-    entry: sdd::AtomicShared<DNSEntry>,
 
     inner: Arc<DNSCacheEntryInner>,
 }
@@ -36,8 +36,8 @@ impl DNSCacheEntry {
     pub fn new(query: Arc<dyn DNSQuery>, entry: Option<DNSEntry>) -> Self {
         Self {
             query,
-            entry: entry.map(sdd::AtomicShared::new).unwrap_or_else(sdd::AtomicShared::null),
             inner: Arc::new(DNSCacheEntryInner {
+                entry: entry.map(sdd::AtomicShared::new).unwrap_or_else(sdd::AtomicShared::null),
                 updating: AtomicBool::new(false),
                 update_notify: Event::new(),
             }),
@@ -251,7 +251,7 @@ impl DNSCache {
             if let Some(fut) = dce.update(resolver, selector) {
                 log::debug!("spawning");
                 asyncute::spawn(async move {
-                    fut.await.expect("DNSCacheEntry update failed");
+                    dbg!(fut.await).expect("DNSCacheEntry update failed");
                 }).detach();
             } else {
                 log::debug!("not spawning");
@@ -276,7 +276,7 @@ impl DNSCache {
                     },
                     _ => {
                         log::debug!("dce geted nothing");
-                        if self.load_one(query).await.ok() == Some(true) {
+                        if dbg!(self.load_one(query).await).ok() == Some(true) {
                             log::debug!("load_one ok");
                             i += 1;
                             continue;

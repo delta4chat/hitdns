@@ -22,7 +22,7 @@ use h2::{
     client::handshake,
 };
 
-use non_tokio::io::Compat;
+use notokio::io::Compat;
 
 #[derive(Debug)]
 pub struct H2ClientInner {

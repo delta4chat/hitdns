@@ -39,6 +39,7 @@ async fn main_async() {
 
     let query: Arc<dyn DNSQuery> = Arc::new(dns::Query::default());
     loop {
+        break;
         dbg!(cache.get(&query, DNSUpstreamSelector::Best).await);
         std::thread::sleep(Duration::new(1, 0));
     }
