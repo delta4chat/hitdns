@@ -87,7 +87,7 @@ impl DNSDatabase {
             let mut rows = stmt.query([])?;
 
             sql.clear();
-            write!(sql, "DELETE FROM {table} WHERE query = ? LIMIT 1").unwrap();
+            write!(sql, "DELETE FROM {table} WHERE query = ?").unwrap();
 
             while let Some(row) = dbg!(rows.next())? {
                 let q = row.get_ref(0)?.as_blob()?;
@@ -98,7 +98,7 @@ impl DNSDatabase {
                         Ok(v) => v,
                         Err(e) => {
                             log::warn!("deleting invalid query keys {q:?} / error: {e:?}");
-                            let _ = conn.execute(sql.as_str(), [q]);
+                            dbg!(conn.execute(sql.as_str(), [q]));
                             continue;
                         }
                     };
