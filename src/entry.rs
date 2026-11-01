@@ -170,7 +170,7 @@ impl DNSResponseSource {
                 written += 2;
             },
             Self::Internet(peer) => {
-                let mut url =
+                let url =
                     match peer {
                         Ok(upstream) => {
                             upstream.protocol().url().to_string().into_bytes()
@@ -194,7 +194,7 @@ impl DNSResponseSource {
                 out.extend((url_len as u16).to_be_bytes());
                 written += 2;
 
-                out.append(&mut url);
+                out.extend(&url);
                 written += url_len;
             },
             Self::Unknown => {
@@ -416,16 +416,19 @@ impl DNSEntry {
     /// +-----------------------+---------+----------------+
     /// ```
     pub fn encode(&self) -> Vec<u8> {
-        let mut resp: Vec<u8> = self.response.to_vec().expect("unexpectedly dns::Message invalid");
+        let resp: Vec<u8> = self.response.to_vec().expect("unexpectedly dns::Message invalid");
         let resp_len = resp.len();
+        if resp_len > 65535 {
+            panic!("unexpected DNS response message exceeds u16 type!");
+        }
 
         let mut out_len = 1 + 8 + 2 + resp_len;
         let mut out = Vec::with_capacity(out_len);
 
         out.push(query::serialized::VERSION);
         out.extend(self.expire_time.duration_since(SystemTime::UNIX_EPOCH).expect("system time earlier unix epoch!?").as_secs().to_be_bytes());
-        out.extend(resp_len.to_be_bytes());
-        out.append(&mut resp);
+        out.extend((resp_len as u16).to_be_bytes());
+        out.extend(resp);
 
         out_len += self.source.encode(&mut out);
 
@@ -463,7 +466,7 @@ impl DNSEntry {
             return err_invalid_input("DNSEntry: Response too short!");
         }
 
-        let response = Arc::new(dns::Message::from_vec(&bytes[..resp_len]).map_err(invalid_input)?);
+        let response = Arc::new(dbg!(dns::Message::from_vec(&bytes[..resp_len])).map_err(invalid_input)?);
         bytes = &bytes[resp_len..];
 
         let source = DNSResponseSource::decode(bytes).unwrap_or(DNSResponseSource::Unknown);

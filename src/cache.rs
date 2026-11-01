@@ -66,7 +66,7 @@ impl DNSCacheEntry {
         &self,
         resolver: DNSResolver,
         selector: DNSUpstreamSelector,
-    ) -> std::io::Result<()> {
+    ) -> std::io::Result<DNSEntry> {
         if self.updating.compare_exchange(false, true, ATOM_RMW, ATOM_LOAD).is_err() {
             // another update task is running
             return Err(std::io::Error::new(std::io::ErrorKind::ResourceBusy, "this DNSCacheEntry is already update progress."));
@@ -81,10 +81,10 @@ impl DNSCacheEntry {
             Some(ret) => {
                 match ret {
                     Ok(entry) => {
-                        self.set_entry(entry);
+                        self.set_entry(entry.clone());
                         defer.run();
                         self.update_notify.notify_relaxed(usize::MAX);
-                        Ok(())
+                        Ok(entry)
                     },
                     Err(e) => {
                         defer.run();
@@ -243,10 +243,14 @@ impl DNSCache {
                 log::debug!("already updating: not spawning update task");
             } else {
                 log::debug!("spawning update task");
+                let query = query.clone();
                 let dce = dce.clone();
-                let resolver = self.resolver.clone();
+                let this = self.clone();
+                let resolver = this.resolver.clone();
+
                 asyncute::spawn(async move {
-                    dce.update(resolver, selector).await.expect("DNSCacheEntry update failed");
+                    let entry = dce.update(resolver, selector).await.expect("DNSCacheEntry update failed");
+                    this.disk.cache_put(query.deref(), &entry).await.expect("write to disk db failed");
                 }).detach();
             }
         };
@@ -304,8 +308,19 @@ impl DNSCache {
                     )
                 }).await;
 
+        // spawn background task to update in-disk database due to operation may causes a lot of time.
+        let dbput = || {
+            let query = query.clone();
+            let entry = entry.clone();
+            let disk = self.disk.clone();
+            asyncute::spawn(async move {
+                dbg!(disk.cache_put(query.deref(), &entry).await).expect("unable to store DNSEntry to disk!");
+            }).detach();
+        };
+
         // if called DNSCacheEntry::new
         if moka_entry.is_fresh() {
+            dbput();
             return true;
         }
 
@@ -322,16 +337,7 @@ impl DNSCache {
 
         dce.set_entry(entry.clone());
 
-        // spawn background task to update in-disk database due to operation may causes a lot of time.
-        {
-            let query = query.clone();
-            let entry = entry.clone();
-            let disk = self.disk.clone();
-            asyncute::spawn(async move {
-                disk.cache_put(query.deref(), &entry).await.expect("unable to store DNSEntry to disk!");
-            }).detach();
-        }
-
+        dbput();
         true
     }
 }

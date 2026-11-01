@@ -46,7 +46,7 @@ impl DNSDatabase {
         ) STRICT;
         ").unwrap();
         self.sqlite.conn(move |conn| {
-            conn.execute_batch(sql.as_str())
+            dbg!(conn.execute_batch(dbg!(sql.as_str())))
         }).await
     }
 
@@ -89,7 +89,7 @@ impl DNSDatabase {
             sql.clear();
             write!(sql, "DELETE FROM {table} WHERE query = ? LIMIT 1").unwrap();
 
-            while let Some(row) = rows.next()? {
+            while let Some(row) = dbg!(rows.next())? {
                 let q = row.get_ref(0)?.as_blob()?;
                 let ent = row.get_ref(1)?.as_blob()?;
 
@@ -140,11 +140,12 @@ impl DNSDatabase {
         write!(sql, "SELECT * FROM {table} WHERE query = ? LIMIT 1").unwrap();
 
         let ret = self.sqlite.conn(move |conn| {
-            conn.query_one(sql.as_str(), [key.as_slice()], |row| {
+            dbg!(conn.query_one(sql.as_str(), [key.as_slice()], |row| {
+                dbg!(&row);
                 let ent = row.get_ref(1)?.as_blob()?;
 
                 Ok(DNSEntry::decode(ent))
-            })
+            }))
         }).await.map_err(std::io::Error::other)?;
 
         ret
@@ -156,7 +157,7 @@ impl DNSDatabase {
         let key = query.encode();
         let value = entry.encode();
 
-        let mut sql = heapless::String::<64>::new();
+        let mut sql = heapless::String::<128>::new();
 
         /* // old way
         write!(sql, "
@@ -168,9 +169,13 @@ impl DNSDatabase {
         // new way
         write!(sql, "INSERT INTO {table} VALUES(?1, ?2) ON CONFLICT(query) DO UPDATE SET entry=?2").unwrap();
 
+        let k = key.clone();
         self.sqlite.conn(move |conn| {
-            conn.execute(sql.as_str(), [key.as_slice(), value.as_slice()])?;
+            dbg!(conn.execute(sql.as_str(), [k.as_slice(), value.as_slice()]))?;
             Ok(())
-        }).await.map_err(std::io::Error::other)
+        }).await.map_err(std::io::Error::other)?;
+
+        self.negative_keys.remove(&key).await;
+        Ok(())
     }
 }

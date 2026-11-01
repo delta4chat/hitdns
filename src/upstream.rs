@@ -132,12 +132,8 @@ impl DNSProtocol {
                             return false;
                         }
                         if sni.num_labels() == 4 {
-                            for label in sni.iter() {
-                                // Iterator::all() returns true even if iterator is empty.
-                                // this is no problem due to empty TLD always invalid.
-                                if label.into_iter().all(u8::is_ascii_digit) {
-                                    return false;
-                                }
+                            if sni.iter().all(|label| { label.into_iter().all(u8::is_ascii_digit) }) {
+                                return false;
                             }
                         }
                     }
