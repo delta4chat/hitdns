@@ -373,7 +373,7 @@ impl DNSEntry {
         let min_ttl = conf.min_ttl();
         let max_ttl = conf.max_ttl();
 
-        let mut ttl = min_ttl;
+        let mut ttl = u32::MAX;
         for it in response.all_sections().map(|record| { record.ttl() }) {
             if it < ttl {
                 ttl = it;
