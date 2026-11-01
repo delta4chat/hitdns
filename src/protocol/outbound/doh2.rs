@@ -3,20 +3,40 @@ use crate::{
     query::*,
     entry::*,
     upstream::*,
-    protocol::h2::*,
 };
 
 use dns_stamp_parser::{Props, DnsOverHttps};
 
+static UGI_CLIENT: Lazy<ugi::Client> = Lazy::new(|| {
+    ugi::Client::builder()
+    .dual_stack(true)
+    .dns_cache_ttl(Duration::from_secs(600))
+
+    .alpn_protocols(["h2"])
+    .http2_only()
+    .h2_keepalive(Duration::from_secs(2), Duration::from_secs(5))
+
+    .compression_mode(ugi::CompressionMode::Manual)
+    .redirect(ugi::RedirectPolicy::None)
+    .retry(ugi::RetryPolicy::None)
+
+    .pool_config(ugi::PoolConfig {
+        max_idle_per_host: 3,
+        idle_timeout: None,
+    })
+
+    .build().expect("Failed to create global ugi::Client!")
+});
+
 #[derive(Debug, Clone)]
-pub struct DoHUpstream {
+pub struct DoH2Upstream {
     sdns: Arc<DnsOverHttps>,
     protocol: DNSProtocol,
     url: Arc<String>,
     metrics: DNSUpstreamMetrics,
 }
 
-impl Deref for DoHUpstream {
+impl Deref for DoH2Upstream {
     type Target = DnsOverHttps;
 
     fn deref<'a>(&'a self) -> &'a DnsOverHttps {
@@ -24,7 +44,7 @@ impl Deref for DoHUpstream {
     }
 }
 
-impl DoHUpstream {
+impl DoH2Upstream {
     pub fn new(sdns: DnsOverHttps) -> Self {
         Self::new_arc(Arc::new(sdns))
     }
@@ -57,7 +77,7 @@ impl DoHUpstream {
     }
 }
 
-impl DNSUpstream for DoHUpstream {
+impl DNSUpstream for DoH2Upstream {
     fn name<'a>(&'a self) -> &'a str {
         self.hostname.as_str()
     }
@@ -107,27 +127,25 @@ impl DNSUpstream for DoHUpstream {
                 buf
             };
 
-            let doh_req =
-                http::Request::post(this.url.as_str())
-                .version(http::Version::HTTP_2)
-                .header("content-type", "application/dns-message")
-                .header("content-length", dns_req_len.as_bytes())
-                .body(dns_req).map_err(std::io::Error::other)?;
-
-            let client = H2Client::global();
-            let doh_resp = dbg!(client.request(doh_req).await)?;
+            let doh_resp =
+                UGI_CLIENT
+                .post(this.url.as_str())
+                .header("content-type", "application/dns-message").expect("cannot set content-type")
+                .header("content-length", dns_req_len.as_str()).expect("cannot set content-length")
+                .body(dns_req)
+                .await.map_err(std::io::Error::other)?;
 
             let dns_resp = {
                 let status = doh_resp.status();
                 if ! status.is_success() {
-                    return err_invalid_data(format!("DoH/2 upstream server responds HTTP non-2XX status code for DNS query! code={}, query={:?}, resp={:?}", status, q, doh_resp));
+                    return err_invalid_data(format!("DoH/2 upstream server responds HTTP non-2XX status code for DNS query! code={}, query={:?}, resp={:?}", status.as_u16(), q, doh_resp));
                 }
 
-                let msg = dns::Message::from_vec(doh_resp.body()).map_err(invalid_data)?;
+                let data = doh_resp.bytes().await.map_err(std::io::Error::other)?;
+                let msg = dns::Message::from_vec(&data).map_err(invalid_data)?;
                 let source = DNSResponseSource::Internet(Ok(Arc::new(this)));
                 DNSEntry::new(msg, source)
             };
-
             Ok(dns_resp)
         })
     }

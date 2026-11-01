@@ -1,7 +1,7 @@
 use crate::{
     *,
     upstream::DNSUpstream,
-    protocol::outbound::doh::DoHUpstream,
+    protocol::outbound::doh2::DoH2Upstream,
 };
 
 use dns_stamp_parser::*;
@@ -99,10 +99,10 @@ pub static SDNS_UPSTREAM_LIST: Lazy<Box<[Arc<dyn DNSUpstream>]>> =
         let mut list: Vec<Arc<dyn DNSUpstream>> = Vec::with_capacity(len);
 
         for doh in SDNS_DOH_LIST.iter() {
-            list.push(Arc::new(DoHUpstream::new(doh.clone())));
+            list.push(Arc::new(DoH2Upstream::new(doh.clone())));
         }
         for odoh in SDNS_ODOH_LIST.iter() {
-            list.push(Arc::new(DoHUpstream::new(odoh.clone())));
+            list.push(Arc::new(DoH2Upstream::new(odoh.clone())));
         }
 
         list.into_boxed_slice() // this internally calls Vec::shrink_to_fit()

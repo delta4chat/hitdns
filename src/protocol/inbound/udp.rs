@@ -54,7 +54,7 @@ impl UdpDNSInbound {
             peer, data.escape_ascii(),
         );
 
-        // no need to store this in struct field due to this is no cost.
+        // no need to store this in struct field due to this is nearly no cost.
         let cfg = Config::global();
 
         let mut req =

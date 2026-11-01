@@ -2,25 +2,57 @@ use crate::{
     *,
     query::*,
     entry::*,
-    asled::{SledRunner, SledOperation},
     util::*,
 };
 
+use async_sqlite::{
+    Client as Sqlite,
+    ClientBuilder as SqliteBuilder,
+};
+type SqliteResult<T> = Result<T, async_sqlite::Error>;
+
 #[derive(Debug, Clone)]
 pub struct DNSDatabase {
-    sled: SledRunner,
+    sqlite: NonDebug<Sqlite>,
     negative_keys: MokaCache<DNSQuerySerialized, ()>,
 }
 
-impl DNSDatabase {
-    pub const NS_CACHE_V1: &'static [u8] = b"hitdns_cache_v1";
-    pub const NS_LOGS_V1: &'static [u8] = b"hitdns_logs_v1";
-    pub const NS_STATS_V1: &'static [u8] = b"hitdns_stats_v1";
+macro_rules! _table_consts {
+    ($($name:ident = $value:literal,)+) => {
+        $(
+            const $name: &'static str = $value;
+        )+
 
-    pub fn open<P: AsRef<Path>>(path: P) -> sled::Result<Self> {
-        let sled = SledRunner::open(path)?;
-        Ok(Self {
-            sled,
+        pub const TABLES: &'static [&'static str] = &[$($value,)+];
+    }
+}
+
+impl DNSDatabase {
+    _table_consts!(
+        TABLE_CACHE = "hitdns_cache_v2",
+        TABLE_STATS = "hitdns_stats_v2",
+    );
+
+    async fn sqlite_initial(&self) -> SqliteResult<()> {
+        let table = Self::TABLE_CACHE;
+
+        let mut sql = heapless::String::<512>::new();
+        write!(sql,
+        "
+        PRAGMA journal_mode = WAL;
+        CREATE TABLE IF NOT EXISTS {table} (
+            query BLOB NOT NULL UNIQUE,
+            entry BLOB NOT NULL
+        ) STRICT;
+        ").unwrap();
+        self.sqlite.conn(move |conn| {
+            conn.execute_batch(sql.as_str())
+        }).await
+    }
+
+    pub async fn open<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+        let this = Self {
+            sqlite: NonDebug(SqliteBuilder::new().path(path).open().await.map_err(std::io::Error::other)?),
             negative_keys: {
                 MokaCacheBuilder::default()
                 .name("hitdns database negative keys cache")
@@ -30,178 +62,115 @@ impl DNSDatabase {
                 .time_to_live(Duration::from_secs(60)) // one minute for time-to-live
                 .build_with_hasher(ahash::RandomState::new())
             },
-        })
+        };
+        this.sqlite_initial().await.map_err(std::io::Error::other)?;
+        Ok(this)
     }
 
     /// try to open DNS Database automatically using DATA_DIR
-    pub fn auto_open() -> sled::Result<Self> {
+    pub async fn auto_open() -> std::io::Result<Self> {
         let mut path = (&*config::DATA_DIR).clone();
-        path.push("hitdns-db-sled-v0.34");
-        Self::open(path)
+        path.push("hitdns.db.sqlite3");
+        Self::open(path).await
     }
 
-    pub async fn cache_scan<Q: DNSQuery + Any + Sized>(&self) -> sled::Result<Vec<(Q, DNSEntry)>> {
-        let op =
-            SledOperation::new(move |db| {
-                let f =
-                    move || -> OnceGetter<sled::Result<Vec<(Q, DNSEntry)>>> {
-                        let tree =
-                            match db.open_tree(Self::NS_CACHE_V1) {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    return OnceGetter::new(Err(e));
-                                }
-                            };
+    pub async fn cache_scan<Q: DNSQueryExt>(
+        &self,
+        mut yields: impl FnMut(Q, DNSEntry) -> Result<(), ()>+Send+'static,
+    ) -> std::io::Result<()> {
+        let table = Self::TABLE_CACHE;
 
-                        let mut out = Vec::with_capacity(1024);
-                        let mut query;
-                        let mut entry;
-                        for ret in tree.iter() {
-                            match ret {
-                                Ok((key, value)) => {
-                                    let key: &[u8] = key.as_ref();
+        let mut sql = heapless::String::<64>::new();
+        write!(sql, "SELECT * FROM {table}").unwrap();
+        self.sqlite.conn(move |conn| {
+            let mut stmt = conn.prepare(sql.as_str())?;
+            let mut rows = stmt.query([])?;
 
-                                    query =
-                                        match Q::decode(key) {
-                                            Ok(v) => v,
-                                            Err(e) => {
-                                                log::warn!("corrupted DNSQuery format! error={:?}", e);
-                                                let _ = tree.remove(key);
-                                                continue;
-                                            }
-                                        };
+            sql.clear();
+            write!(sql, "DELETE FROM {table} WHERE query = ? LIMIT 1").unwrap();
 
-                                    entry =
-                                        match DNSEntry::decode(value) {
-                                            Ok(v) => v,
-                                            Err(e) => {
-                                                log::warn!("corrupted DNSEntry format! error={:?}", e);
-                                                let _ = tree.remove(key);
-                                                continue;
-                                            }
-                                        };
+            while let Some(row) = rows.next()? {
+                let q = row.get_ref(0)?.as_blob()?;
+                let ent = row.get_ref(1)?.as_blob()?;
 
-                                    out.push((query, entry));
-                                },
-                                Err(e) => {
-                                    log::warn!("failed to iterating in-disk DNS cache! error={:?}", e);
-                                }
-                            }
+                let query =
+                    match Q::decode(q) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::warn!("deleting invalid query keys {q:?} / error: {e:?}");
+                            let _ = conn.execute(sql.as_str(), [q]);
+                            continue;
                         }
-
-                        OnceGetter::new(Ok(out))
                     };
-                Box::new(f())
-            });
+                let entry =
+                    match DNSEntry::decode(ent) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::warn!("unexpected invalid dns entry in db {q:?}={e:?} / error: {e:?}");
+                            continue;
+                        }
+                    };
 
-        let sw_fut = self.sled.queue(op).await;
-        let sw_res = sw_fut.await;
-        let sw_res: &Box<dyn Any+Send+Sync> = sw_res.deref();
-        let sw_res: &(dyn Any+Send+Sync) = sw_res.deref();
-
-        let res: &OnceGetter<sled::Result<Vec<(Q, DNSEntry)>>> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_scan()");
-        res.get().expect("must have value")
+                if yields(query, entry).is_err() {
+                    break;
+                }
+            }
+            Ok(())
+        }).await.map_err(std::io::Error::other)
     }
 
-    pub async fn cache_get(&self, query: &dyn DNSQuery) -> sled::Result<Option<DNSEntry>> {
+    pub async fn cache_get(&self, query: &dyn DNSQuery) -> std::io::Result<DNSEntry> {
         let key = query.encode();
 
         if self.negative_keys.get(&key).await.is_some() {
-            return Ok(None);
+            return Err(std::io::Error::other("negative key hit"));
         }
 
-        let op =
-            SledOperation::new(move |db| {
-                let f =
-                    move || -> sled::Result<Option<DNSEntry>> {
-                        db
-                        .open_tree(Self::NS_CACHE_V1)?
-                        .transaction(move |tree| {
-                            let key: &[u8] = key.as_ref();
-                            if let Some(value) = tree.get(key)? {
-                                let value: &[u8] = value.as_ref();
-                                match DNSEntry::decode(value) {
-                                    Ok(entry) => Ok(Some(entry)),
-                                    Err(_err) => {
-                                        let _ = tree.remove(key)?;
-                                        log::warn!(
-                                            "deleting corrupted DNS Entry in disk! key={} data={}",
-                                            key.escape_ascii(),
-                                            value.escape_ascii(),
-                                        );
-                                        Ok(None)
-                                    }
-                                }
-                            } else {
-                                Ok(None)
-                            }
-                        }).map_err(|tx_err: sled::transaction::TransactionError<()>| {
-                            use sled::transaction::TransactionError::*;
-                            match tx_err {
-                                Storage(err) => err,
-                                Abort(_) => {
-                                    unreachable!("no code for abort transaction!");
-                                },
-                            }
-                        })
-                    };
-                Box::new(f())
-            });
-
-        let sw_fut = self.sled.queue(op).await;
-        let sw_res = sw_fut.await;
-        let sw_res: &Box<dyn Any+Send+Sync> = sw_res.deref();
-        let sw_res: &(dyn Any+Send+Sync) = sw_res.deref();
-
-        let res: &sled::Result<Option<DNSEntry>> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_get()");
-        res.clone() // this clone is cheap due to DNSEntry internally uses Arc.
+        let ret = self._cache_key_get(key.clone()).await;
+        if ! ret.is_ok() {
+            self.negative_keys.insert(key.clone(), ()).await;
+        }
+        ret
     }
 
-    pub async fn cache_put(&self, query: &dyn DNSQuery, entry: &DNSEntry) -> sled::Result<()> {
+    async fn _cache_key_get(&self, key: DNSQuerySerialized) -> std::io::Result<DNSEntry> {
+        let table = Self::TABLE_CACHE;
+
+        let mut sql = heapless::String::<64>::new();
+        write!(sql, "SELECT * FROM {table} WHERE query = ? LIMIT 1").unwrap();
+
+        let ret = self.sqlite.conn(move |conn| {
+            conn.query_one(sql.as_str(), [key.as_slice()], |row| {
+                let ent = row.get_ref(1)?.as_blob()?;
+
+                Ok(DNSEntry::decode(ent))
+            })
+        }).await.map_err(std::io::Error::other)?;
+
+        ret
+    }
+
+    pub async fn cache_put(&self, query: &dyn DNSQuery, entry: &DNSEntry) -> std::io::Result<()> {
+        let table = Self::TABLE_CACHE;
+
         let key = query.encode();
         let value = entry.encode();
 
-        let op = {
-            let key = key.clone();
-            SledOperation::new(move |db| {
+        let mut sql = heapless::String::<64>::new();
 
-                let f =
-                    move || -> sled::Result<()> {
-                        db
-                        .open_tree(Self::NS_CACHE_V1)?
-                        .transaction(move |tree| {
-                            let key: &[u8] = key.as_ref();
-                            if let Some(old_value) = tree.get(key)? {
-                                let old_value: &[u8] = old_value.as_ref();
-                                if old_value == value {
-                                    return Ok(());
-                                }
-                            }
+        /* // old way
+        write!(sql, "
+        INSERT OR IGNORE INTO {table} VALUES (?1, ?2);
+        UPDATE {table} SET entry = ?2 WHERE query = ?1;
+        ").unwrap();
+        */
 
-                            tree.insert(key, &value[..])?;
-                            Ok(())
-                        }).map_err(|tx_err: sled::transaction::TransactionError<()>| {
-                            use sled::transaction::TransactionError::*;
-                            match tx_err {
-                                Storage(err) => err,
-                                Abort(_) => {
-                                    unreachable!("no code for abort transaction!");
-                                },
-                            }
-                        })
-                    };
-                Box::new(f())
-            })
-        };
-        let sw_fut = self.sled.queue(op).await;
-        let sw_res = sw_fut.await;
-        let sw_res: &Box<dyn Any+Send+Sync> = sw_res.deref();
-        let sw_res: &(dyn Any+Send+Sync) = sw_res.deref();
+        // new way
+        write!(sql, "INSERT INTO {table} VALUES(?1, ?2) ON CONFLICT(query) DO UPDATE SET entry=?2").unwrap();
 
-        let res: &sled::Result<()> = sw_res.downcast_ref().expect("bug: return type mismatch in DNSDatabase::cache_put()");
-        if res.is_ok() {
-            self.negative_keys.invalidate(&key).await;
-        }
-        res.clone()
+        self.sqlite.conn(move |conn| {
+            conn.execute(sql.as_str(), [key.as_slice(), value.as_slice()])?;
+            Ok(())
+        }).await.map_err(std::io::Error::other)
     }
 }

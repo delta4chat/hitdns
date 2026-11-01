@@ -8,17 +8,18 @@ use crate::{
     resolver::*,
 };
 
+use asyncute::sdd;
+
 #[derive(Debug)]
 pub struct DNSCacheEntryInner {
-    entry: sdd::AtomicShared<DNSEntry>,
+    query: Arc<dyn DNSQuery>,
+    entry: Atom<DNSEntry>,
     updating: AtomicBool,
     update_notify: Event,
 }
 
 #[derive(Debug, Clone)]
 pub struct DNSCacheEntry {
-    query: Arc<dyn DNSQuery>,
-
     inner: Arc<DNSCacheEntryInner>,
 }
 
@@ -35,9 +36,9 @@ impl DNSCacheEntry {
 
     pub fn new(query: Arc<dyn DNSQuery>, entry: Option<DNSEntry>) -> Self {
         Self {
-            query,
             inner: Arc::new(DNSCacheEntryInner {
-                entry: entry.map(sdd::AtomicShared::new).unwrap_or_else(sdd::AtomicShared::null),
+                query,
+                entry: entry.into(),
                 updating: AtomicBool::new(false),
                 update_notify: Event::new(),
             }),
@@ -49,67 +50,57 @@ impl DNSCacheEntry {
     }
 
     pub fn get_entry(&self) -> Option<sdd::Shared<DNSEntry>> {
-        let g = sdd::Guard::new();
-        self.entry.get_shared(ATOM_LOAD, &g)
+        self.entry.get()
     }
 
     pub fn set_entry(&self, entry: DNSEntry) {
         log::warn!("cache set entry {:?}", entry);
-        let entry = sdd::Shared::new(entry);
-        self.entry.swap(
-            (Some(entry), sdd::Tag::None),
-            ATOM_RMW,
-        );
+        self.entry.set(entry);
     }
 
     pub fn is_updating(&self) -> bool {
         self.updating.load(ATOM_LOAD)
     }
 
-    pub fn update(
+    pub async fn update(
         &self,
         resolver: DNSResolver,
         selector: DNSUpstreamSelector,
-    ) -> Option<impl Fut<std::io::Result<()>>> {
+    ) -> std::io::Result<()> {
         if self.updating.compare_exchange(false, true, ATOM_RMW, ATOM_LOAD).is_err() {
             // another update task is running
-            return None;
+            return Err(std::io::Error::new(std::io::ErrorKind::ResourceBusy, "this DNSCacheEntry is already update progress."));
         }
 
-        let mut defer = {
-            let this = self.clone();
-            asyncute::Defer::new(move || {
-                this.updating.store(false, ATOM_STORE);
-            })
-        };
+        let mut defer =
+            asyncute::Defer::new(|| {
+                self.updating.store(false, ATOM_STORE);
+            });
 
-        let this = self.clone();
-        Some(async move {
-            match resolver.resolve(this.query.deref(), selector).timeout(Self::UPDATE_TIMEOUT).await {
-                Some(ret) => {
-                    match ret {
-                        Ok(entry) => {
-                            this.set_entry(entry);
-                            this.update_notify.notify_relaxed(usize::MAX);
-                            defer.run();
-                            Ok(())
-                        },
-                        Err(e) => {
-                            defer.run();
-                            Err(e)
-                        }
+        match resolver.resolve(self.query.deref(), selector).timeout(Self::UPDATE_TIMEOUT).await {
+            Some(ret) => {
+                match ret {
+                    Ok(entry) => {
+                        self.set_entry(entry);
+                        defer.run();
+                        self.update_notify.notify_relaxed(usize::MAX);
+                        Ok(())
+                    },
+                    Err(e) => {
+                        defer.run();
+                        Err(e)
                     }
-                },
-                _ => {
-                    Err(
-                        std::io::Error::new(
-                            std::io::ErrorKind::TimedOut,
-                            "DNSCacheEntry::update() timed out"
-                        )
-                    )
                 }
+            },
+            _ => {
+                Err(
+                    std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "DNSCacheEntry::update() timed out"
+                    )
+                )
             }
-        })
+        }
     }
 
     pub async fn wait_timeout(&self, timeout: Duration) -> bool {
@@ -201,26 +192,29 @@ impl DNSCache {
         }
     }
 
-    pub async fn load_all<Q: DNSQuery + Any + Sized>(&self) -> std::io::Result<usize> {
-        let mut arr: Vec<(Q, DNSEntry)> = self.disk.cache_scan().await.map_err(std::io::Error::other)?;
+    pub async fn load_all<Q: DNSQueryExt+'static>(&self) -> std::io::Result<usize> {
 
-        let len = arr.len();
-        log::info!("loaded {} cache items from in-disk database.", len);
-
-        let mut query: Arc<dyn DNSQuery>;
-        while let Some((q, entry)) = arr.pop() {
-            query = Arc::new(q);
-            self.put(&query, &entry).await;
+        let loads = Arc::new(AtomicUsize::new(0));
+        {
+            let this = self.clone();
+            let loads = loads.clone();
+            self.disk.cache_scan::<Q>(move |query, entry| {
+                let query: Arc<dyn DNSQuery> = Arc::new(query);
+                async_io::block_on(async {
+                    this.put(&query, &entry).await;
+                });
+                loads.fetch_add(1, ATOM_RMW);
+                Ok(())
+            }).await?;
         }
-        Ok(len)
+        let loads = loads.load(ATOM_LOAD);
+        log::info!("loaded {} cache items from in-disk database.", loads);
+        Ok(loads)
     }
-    pub async fn load_one(&self, query: &Arc<dyn DNSQuery>) -> std::io::Result<bool> {
-        if let Some(entry) = self.disk.cache_get(&**query).await.map_err(std::io::Error::other)? {
-            self.put(query, &entry).await;
-            Ok(true)
-        } else {
-            Ok(false)
-        }
+    pub async fn load_one(&self, query: &Arc<dyn DNSQuery>) -> std::io::Result<()> {
+        let entry = self.disk.cache_get(&**query).await?;
+        self.put(query, &entry).await;
+        Ok(())
     }
 
     /// try to get a DNSEntry from DNSCache:
@@ -245,17 +239,15 @@ impl DNSCache {
         log::debug!("entering dce: {:?}", &dce);
 
         let update = || {
-            let dce = dce.clone();
-            let resolver = self.resolver.clone();
-            log::debug!("updating");
-            if let Some(fut) = dce.update(resolver, selector) {
-                log::debug!("spawning");
-                asyncute::spawn(async move {
-                    dbg!(fut.await).expect("DNSCacheEntry update failed");
-                }).detach();
+            if dce.is_updating() {
+                log::debug!("already updating: not spawning update task");
             } else {
-                log::debug!("not spawning");
-                // another update task running
+                log::debug!("spawning update task");
+                let dce = dce.clone();
+                let resolver = self.resolver.clone();
+                asyncute::spawn(async move {
+                    dce.update(resolver, selector).await.expect("DNSCacheEntry update failed");
+                }).detach();
             }
         };
 
@@ -276,7 +268,7 @@ impl DNSCache {
                     },
                     _ => {
                         log::debug!("dce geted nothing");
-                        if dbg!(self.load_one(query).await).ok() == Some(true) {
+                        if dbg!(self.load_one(query).await).is_ok() {
                             log::debug!("load_one ok");
                             i += 1;
                             continue;

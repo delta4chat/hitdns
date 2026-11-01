@@ -55,8 +55,8 @@ pub type Filter = Arc<DNSUpstreamFilter>;
 
 #[derive(Debug)]
 pub struct DNSResolverPolicy {
-    whitelist: scc2::HashIndex<Filter, bool>,
-    blacklist: scc2::HashIndex<Filter, bool>,
+    whitelist: scc::HashIndex<Filter, bool>,
+    blacklist: scc::HashIndex<Filter, bool>,
 }
 
 impl DNSResolverPolicy {
@@ -95,7 +95,7 @@ impl DNSResolverPolicy {
     }
 
     pub fn is_valid(&self, upstream: &dyn DNSUpstream) -> bool {
-        let g = scc2::ebr::Guard::new();
+        let g = scc::Guard::new();
 
         for (bf, enable) in self.blacklist.iter(&g) {
             if ! enable {
@@ -123,7 +123,7 @@ impl DNSResolverPolicy {
 
 #[derive(Debug)]
 pub struct DNSResolverInner {
-    upstreams: scc2::HashIndex<Arc<dyn DNSUpstream>, ()>,
+    upstreams: scc::HashIndex<Arc<dyn DNSUpstream>, ()>,
     policy: DNSResolverPolicy,
     idx: AtomicUsize,
 }
@@ -222,7 +222,7 @@ impl DNSResolver {
 
         let mut upstreams: Vec<&Arc<dyn DNSUpstream>> = Vec::with_capacity(self.upstreams.len());
 
-        let g = scc2::ebr::Guard::new();
+        let g = scc::Guard::new();
         for (k, _) in self.upstreams.iter(&g) {
             if upstreams.contains(&k) {
                 continue;

@@ -284,7 +284,7 @@ pub trait DNSUpstream: Send + Sync {
     fn resolve(&self, query: &dyn DNSQuery) -> PinFut<std::io::Result<DNSEntry>>;
 }
 
-impl fmt::Debug for dyn DNSUpstream {
+impl<'a> fmt::Debug for dyn DNSUpstream+'a {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("dyn DNSUpstream")
          .field("name", &(self.name()))
@@ -299,7 +299,7 @@ impl fmt::Debug for dyn DNSUpstream {
     }
 }
 
-impl PartialEq for dyn DNSUpstream {
+impl<'a> PartialEq for dyn DNSUpstream+'a {
     fn eq(&self, other: &Self) -> bool {
         self.name() == other.name()
         &&
@@ -314,9 +314,9 @@ impl PartialEq for dyn DNSUpstream {
         self.is_without_logs() == other.is_without_logs()
     }
 }
-impl Eq for dyn DNSUpstream {}
+impl<'a> Eq for dyn DNSUpstream+'a {}
 
-impl Hash for dyn DNSUpstream {
+impl<'a> Hash for dyn DNSUpstream+'a {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name().hash(state);
         self.protocol().hash(state);
@@ -327,7 +327,7 @@ impl Hash for dyn DNSUpstream {
     }
 }
 
-impl Ord for dyn DNSUpstream {
+impl<'a> Ord for dyn DNSUpstream+'a {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         static RS: ahash::RandomState =
             ahash::RandomState::with_seeds(
@@ -341,7 +341,7 @@ impl Ord for dyn DNSUpstream {
     }
 }
 
-impl PartialOrd for dyn DNSUpstream {
+impl<'a> PartialOrd for dyn DNSUpstream+'a {
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }

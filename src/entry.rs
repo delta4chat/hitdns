@@ -410,7 +410,7 @@ impl DNSEntry {
     /// +-----------------------+---------+----------------+
     /// | DNS Response Length   | Integer | 2              |
     /// +-----------------------+---------+----------------+
-    /// | DNS Response          | Length  | variable       |
+    /// | DNS Response          | Bytes   | variable       |
     /// +-----------------------+---------+----------------+
     /// | DNS Upstream Source   | Source  | variable       |
     /// +-----------------------+---------+----------------+

@@ -41,7 +41,7 @@ pub type Res = Box<dyn Any + Send + Sync>;
 pub trait WithDb: (FnOnce(&sled::Db) -> Res) + Send + Sync + 'static {}
 impl<T: (FnOnce(&sled::Db) -> Res) + Send + Sync + 'static> WithDb for T {}
 
-impl fmt::Debug for dyn WithDb {
+impl<'a> fmt::Debug for dyn WithDb+'a {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("dyn WithDb")
          .field("function", &"dyn FnOnce(&sled::Db) -> Box<dyn Any + Send>")
@@ -220,7 +220,7 @@ pub struct SledRunner {
     db: sled::Db,
     ops_tx: Sender<SledOperation>,
     ops_rx: Receiver<SledOperation>,
-    threads: Arc<scc2::HashIndex<u128, Arc<SledRunnerThreadState>>>,
+    threads: Arc<scc::HashIndex<u128, Arc<SledRunnerThreadState>>>,
 }
 
 impl SledRunner {

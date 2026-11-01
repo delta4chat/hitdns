@@ -33,9 +33,10 @@ async fn main_async() {
         s
     });
 
-    let db = DNSDatabase::auto_open().unwrap();
+    let db = DNSDatabase::auto_open().await.unwrap();
     let resolver = DNSResolver::new_builtin_upstreams("hitdns").await;
     let cache = DNSCache::new(db, resolver);
+    dbg!(cache.load_all::<dns::Query>().await);
 
     let query: Arc<dyn DNSQuery> = Arc::new(dns::Query::default());
     loop {

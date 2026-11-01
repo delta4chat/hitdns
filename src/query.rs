@@ -75,7 +75,7 @@ pub trait DNSQuery: Send + Sync {
     fn rdtype(&self) -> dns::RdType;
 }
 
-impl PartialEq for dyn DNSQuery {
+impl<'a> PartialEq for dyn DNSQuery+'a {
     fn eq(&self, other: &Self) -> bool {
         self.domain() == other.domain()
         &&
@@ -85,9 +85,9 @@ impl PartialEq for dyn DNSQuery {
     }
 }
 
-impl Eq for dyn DNSQuery {}
+impl<'a> Eq for dyn DNSQuery+'a {}
 
-impl fmt::Debug for dyn DNSQuery {
+impl<'a> fmt::Debug for dyn DNSQuery+'a {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("dyn DNSQuery")
          .field("domain", self.domain())
@@ -97,7 +97,7 @@ impl fmt::Debug for dyn DNSQuery {
     }
 }
 
-impl Hash for dyn DNSQuery {
+impl<'a> Hash for dyn DNSQuery+'a {
     fn hash<H: Hasher>(&self, state: &mut H) {
         //format!("{:?}", self).hash(state);
 

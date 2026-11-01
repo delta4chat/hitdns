@@ -130,18 +130,20 @@ impl<T> OnceGetter<T> {
     }
 
     #[inline(always)]
-    pub fn with<R, F>(&self, mut f: F) -> R
-    where
-        F: FnMut(&mut Option<T>) -> R,
-    {
-        let mut nothing = || {
+    pub fn with<R>(
+        &self,
+        f: impl FnOnce(&mut Option<T>) -> R,
+    ) -> R {
+        fn nothing<T, R>(
+            f: impl FnOnce(&mut Option<T>) -> R,
+        ) -> R {
             // return a temporary created value of Option, so it's cannot to be used to set Some(T) again if the value has been taken.
             let mut make_it_cannot_set_again = None;
             f(&mut make_it_cannot_set_again)
-        };
+        }
 
         if self.is_empty() {
-            return nothing();
+            return nothing(f);
         }
 
         let mut inner = self.inner.lock().unwrap_or_else(|e| { e.into_inner() });
@@ -149,7 +151,7 @@ impl<T> OnceGetter<T> {
 
         if inner.is_none() {
             self.empty.store(true, ATOM_STORE);
-            return nothing();
+            return nothing(f);
         }
 
         let r = f(inner);
@@ -159,3 +161,32 @@ impl<T> OnceGetter<T> {
         r
     }
 }
+
+/// A wrapper for handling types does not implement Debug, but should not effect other types that can be Debug.
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct NonDebug<T>(pub T);
+impl<T> core::fmt::Debug for NonDebug<T> {
+    fn fmt(&self, _: &mut core::fmt::Formatter) -> core::fmt::Result {
+        Ok(())
+    }
+}
+
+impl<T> From<T> for NonDebug<T> {
+    fn from(val: T) -> Self {
+        Self(val)
+    }
+}
+
+impl<T> core::ops::Deref for NonDebug<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &(self.0)
+    }
+}
+impl<T> core::ops::DerefMut for NonDebug<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut (self.0)
+    }
+}
+

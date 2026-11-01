@@ -1,6 +1,6 @@
 //! Hit DNS library for reusable functions (for example DNS Cache, DNS Query trait, Database load/store logic).
 
-// TODO momdify "deny" to "forbid" after splitting some utils to independence crates.
+// TODO change from "deny" to "forbid" after splitting some utils to independence crates.
 #![deny(unsafe_code)]
 
 // TODO re-enable this after alpha developing completes
@@ -13,7 +13,6 @@
 /// 2. but this requirements other projects also uses prefixes "as a standard or guideline", which it's hardly and it's uniqueness is not guaranteed.
 /// 3. also prefixes is not easy to parsed separately, so you cannot easy to listing all of items within specified name-space, and causes more different works in IDE or syntax analyzer that can be avoided if has name-space.
 pub mod c_flatland {
-    //pub use super::*;
     pub use super::{
         config::{self, *},
         dns::{self, *},
@@ -23,15 +22,16 @@ pub mod c_flatland {
         upstream::{self, *},
         resolver::{self, *},
         util::{self, *},
-        asled::{self, *},
         database::{self, *},
         protocol::{
             self,
             *,
+            /*
             pool::{self, *},
             tcp::{self, *},
             tls::{self, *},
             h2::{self, *},
+            */
             inbound::{
                 self,
                 *,
@@ -61,7 +61,6 @@ pub mod cache;
 pub mod upstream;
 pub mod resolver;
 pub mod util;
-pub mod asled;
 pub mod database;
 pub mod protocol;
 pub mod data;
@@ -105,9 +104,8 @@ pub use {
         listener as event_listen,
     },
     smoltimeout::TimedExt,
-    asyncute::util::{AtomicChecked, AtomicDuration, AtomicRangeStrict},
+    asyncute::{Atom, AtomicChecked, AtomicDuration, AtomicRangeStrict},
     once_cell::sync::Lazy,
-    scc2::LinkedList,
     futures_lite::{
         future::FutureExt,
         io::{AsyncReadExt, AsyncWriteExt},
@@ -130,8 +128,8 @@ pub type MokaCache<K, V> = moka::future::Cache<K, V, ahash::RandomState>;
 pub type BoxFut<T> = Box<dyn Future<Output=T> + Send + 'static>;
 pub type PinFut<T> = Pin<BoxFut<T>>;
 
-pub trait Fut<T>: Future<Output=T> + Send {}
-impl<T, F: Future<Output=T> + Send> Fut<T> for F {}
+pub trait Fut<T>: Future<Output=T> {}
+impl<T, F: Future<Output=T>> Fut<T> for F {}
 
 pub fn average<T, I>(iter: I) -> T
 where
