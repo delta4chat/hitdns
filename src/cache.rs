@@ -330,7 +330,7 @@ impl DNSCache {
         let dce = moka_entry.into_value();
 
         if let Some(old_entry) = dce.get_entry() {
-            if old_entry.expire_time > entry.expire_time {
+            if old_entry.expire_time >= entry.expire_time {
                 return false;
             }
         }
