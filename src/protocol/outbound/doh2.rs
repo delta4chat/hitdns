@@ -16,9 +16,9 @@ static UGI_CLIENT: Lazy<ugi::Client> = Lazy::new(|| {
     .http2_only()
     .h2_keepalive(Duration::from_secs(2), Duration::from_secs(5))
 
-    .compression_mode(ugi::CompressionMode::Manual)
+    .compression_mode(ugi::CompressionMode::Auto)
     .redirect(ugi::RedirectPolicy::None)
-    .retry(ugi::RetryPolicy::None)
+    .retry(ugi::RetryPolicy::Limit(2))
 
     .pool_config(ugi::PoolConfig {
         max_idle_per_host: 3,
@@ -75,6 +75,49 @@ impl DoH2Upstream {
             metrics: DNSUpstreamMetrics::new(),
         }
     }
+
+    async fn _resolve(&self, q: dns::Query) -> std::io::Result<DNSEntry> {
+        let t = Instant::now();
+        let ret = self._do_resolve(&q).await;
+        let t = t.elapsed();
+
+        let now = SystemTime::now();
+        let online = ret.is_ok();
+        self.metrics.record(now, online, Some(t)).await;
+        ret
+    }
+
+    async fn _do_resolve(&self, q: &dyn DNSQuery) -> std::io::Result<DNSEntry> {
+        let m = q.message();
+
+        let dns_req = Bytes::copy_from_slice(m.to_vec().map_err(invalid_input)?.as_ref());
+        let dns_req_len = {
+            let mut buf = heapless::String::<5>::new(); // dns request length <= 65535
+            write!(buf, "{}", dns_req.len()).map_err(std::io::Error::other)?;
+            buf
+        };
+
+        let doh_resp =
+            UGI_CLIENT
+            .post(self.url.as_str())
+            .header("content-type", "application/dns-message").expect("cannot set content-type")
+            .header("content-length", dns_req_len.as_str()).expect("cannot set content-length")
+            .body(dns_req)
+            .await.map_err(std::io::Error::other)?;
+
+        let dns_resp = {
+            let status = doh_resp.status();
+            if ! status.is_success() {
+                return err_invalid_data(format!("DoH/2 upstream server responds HTTP non-2XX status code for DNS query! code={}, query={:?}, resp={:?}", status.as_u16(), q, doh_resp));
+            }
+
+            let data = doh_resp.bytes().await.map_err(std::io::Error::other)?;
+            let msg = dns::Message::from_vec(&data).map_err(invalid_data)?;
+            let source = DNSResponseSource::Internet(Ok(Arc::new(self.clone())));
+            DNSEntry::new(msg, source)
+        };
+        Ok(dns_resp)
+    }
 }
 
 impl DNSUpstream for DoH2Upstream {
@@ -117,36 +160,10 @@ impl DNSUpstream for DoH2Upstream {
     }
 
     fn resolve(&self, q: &dyn DNSQuery) -> PinFut<std::io::Result<DNSEntry>> {
-        let q = q.message();
+        let q = q.query();
         let this = self.clone();
         Box::pin(async move {
-            let dns_req = Bytes::copy_from_slice(q.to_vec().map_err(invalid_input)?.as_ref());
-            let dns_req_len = {
-                let mut buf = heapless::String::<5>::new(); // dns request length <= 65535
-                write!(buf, "{}", dns_req.len()).map_err(std::io::Error::other)?;
-                buf
-            };
-
-            let doh_resp =
-                UGI_CLIENT
-                .post(this.url.as_str())
-                .header("content-type", "application/dns-message").expect("cannot set content-type")
-                .header("content-length", dns_req_len.as_str()).expect("cannot set content-length")
-                .body(dns_req)
-                .await.map_err(std::io::Error::other)?;
-
-            let dns_resp = {
-                let status = doh_resp.status();
-                if ! status.is_success() {
-                    return err_invalid_data(format!("DoH/2 upstream server responds HTTP non-2XX status code for DNS query! code={}, query={:?}, resp={:?}", status.as_u16(), q, doh_resp));
-                }
-
-                let data = doh_resp.bytes().await.map_err(std::io::Error::other)?;
-                let msg = dns::Message::from_vec(&data).map_err(invalid_data)?;
-                let source = DNSResponseSource::Internet(Ok(Arc::new(this)));
-                DNSEntry::new(msg, source)
-            };
-            Ok(dns_resp)
+            this._resolve(q).await
         })
     }
 }

@@ -30,7 +30,7 @@ required-features = ["bin"]
 [dependencies]
 ahash = { version = "0.8.12", default-features = false, features = ["atomic-polyfill", "compile-time-rng"] }
 async-channel = "2.5.0"
-asyncute = { version = "0.1.4", default-features = false, features = ["crossbeam-channel"] }
+asyncute = { version = "0.1.5", default-features = false, features = ["crossbeam-channel"] }
 bytes = "1.12.1"
 country-code-enum = "0.2.0"
 event-listener = { version = "5.4.2", features = ["portable-atomic"] }

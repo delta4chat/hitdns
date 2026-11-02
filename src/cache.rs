@@ -161,7 +161,7 @@ impl Eq for DNSCacheStatus {}
 
 /// in-memory DNS Cache that focus to cache hit ratio.
 /// 1. if query miss, start update task and waiting.
-/// 2. if response exists but TTL expired, it start update task in background.
+/// 2. if response exists but TTL expired, it start update task in background, and return expired response immediately.
 /// 3. if response exists and TTL does not expired, cache hit.
 #[derive(Debug, Clone)]
 pub struct DNSCache {

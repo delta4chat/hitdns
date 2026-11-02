@@ -6,53 +6,6 @@
 // TODO re-enable this after alpha developing completes
 //#![warn(missing_docs)]
 
-/// The C Language's Flat Earth Theory.
-/// * this should not be used in cases other than for-test, for-fun or for-satire.
-/// * so you can see what happens if your programming language does not have name-space:
-/// 1. almost all C projects uses function prefix or global variable prefix to prevent name conflation.
-/// 2. but this requirements other projects also uses prefixes "as a standard or guideline", which it's hardly and it's uniqueness is not guaranteed.
-/// 3. also prefixes is not easy to parsed separately, so you cannot easy to listing all of items within specified name-space, and causes more different works in IDE or syntax analyzer that can be avoided if has name-space.
-pub mod c_flatland {
-    pub use super::{
-        config::{self, *},
-        dns::{self, *},
-        query::{self, *},
-        entry::{self, *},
-        cache::{self, *},
-        upstream::{self, *},
-        resolver::{self, *},
-        util::{self, *},
-        database::{self, *},
-        protocol::{
-            self,
-            *,
-            /*
-            pool::{self, *},
-            tcp::{self, *},
-            tls::{self, *},
-            h2::{self, *},
-            */
-            inbound::{
-                self,
-                *,
-                tcp::*,
-                udp::{self, *},
-            },
-            outbound::{self, *},
-        },
-        data::{
-            self,
-            *,
-            upstreams_list::{
-                self,
-                *,
-                dnscrypt::*,
-            },
-        },
-        logs::{self, *},
-    };
-}
-
 pub mod config;
 pub mod dns;
 pub mod query;
@@ -104,7 +57,7 @@ pub use {
         listener as event_listen,
     },
     smoltimeout::TimedExt,
-    asyncute::{Atom, AtomicChecked, AtomicDuration, AtomicRangeStrict},
+    asyncute::{Atom, AtomicChecked, AtomicDuration, AtomicRangeStrict, duration_from_nanos},
     once_cell::sync::Lazy,
     futures_lite::{
         future::FutureExt,
@@ -131,7 +84,7 @@ pub type PinFut<T> = Pin<BoxFut<T>>;
 pub trait Fut<T>: Future<Output=T> {}
 impl<T, F: Future<Output=T>> Fut<T> for F {}
 
-pub fn average<T, I>(iter: I) -> T
+pub fn average<T, I>(iter: I) -> Option<T>
 where
     T: Default + Clone + AddAssign + DivAssign + From<bool>,
     I: Iterator<Item=T>,
@@ -148,11 +101,11 @@ where
     }
 
     if empty {
-        return T::default();
+        return None;
     }
 
     sum /= len;
-    sum
+    Some(sum)
 }
 
 pub fn err_invalid_input<T, M>(msg: M) -> std::io::Result<T>

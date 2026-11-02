@@ -140,7 +140,6 @@ impl TcpDNSInbound {
                 };
 
             resp = entry.response.deref().clone();
-            dbg!(&resp);
             resp.set_id(req.id());
 
             /* no need do this due to this logic already implemented in the constructor of DNSEntry.

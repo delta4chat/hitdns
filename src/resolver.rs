@@ -262,7 +262,7 @@ impl DNSResolver {
 
             match selector {
                 Unspecified | Best => {
-                    if new.metrics().score() < old.metrics().score() {
+                    if dbg!(new.metrics()).score() < dbg!(old.metrics()).score() {
                         continue;
                     }
                 },

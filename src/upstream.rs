@@ -449,6 +449,13 @@ impl DNSUpstreamMetrics {
         }
     }
 
+    pub fn online(&self) -> bool {
+        self.online.load(ATOM_LOAD)
+    }
+    pub fn offline(&self) -> bool {
+        ! self.online()
+    }
+
     /// get last request successful time.
     pub fn last_okey(&self) -> SystemTime {
         SystemTime::UNIX_EPOCH.checked_add(self.last_okey.get()).expect("timestamp overflow!")
@@ -470,19 +477,23 @@ impl DNSUpstreamMetrics {
     /// * it's DNS application-layer latency between send request and received DNS response from server.
     /// * it's not ICMP ping, TCP ping, or HTTP ping.
     pub fn latency(&self) -> Duration {
-        Duration::from_secs_f64(
+        duration_from_nanos(
             average(
                 self.latency
                     .iter()
-                    .map(|(_, v)| { v.as_secs_f64() })
-            )
+                    .map(|(_, v)| { v.as_nanos() })
+            ).unwrap_or(0)
         )
     }
 
     pub fn score(&self) -> f64 {
+        if self.offline() {
+            return 0.0;
+        }
+
         let rel_score = (self.reliability() as f64) / 100.0;
 
-        let lat = self.latency().as_secs_f64();
+        let lat = dbg!(self.latency().as_secs_f64());
         let lat_score =
             if lat == 0.0 {
                 0.0
